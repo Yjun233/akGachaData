@@ -207,7 +207,7 @@ function buildOption(rows, rarity, ax) {
           const row = rows[params.dataIndex];
           if (!row || row.value === null) return null;
           const p = api.coord([api.value(0), api.value(1)]);
-          const d = AVATAR_PT;
+          const d = AVATAR_PT * 1.5;
           return {
             type: 'group',
             clipPath: { type: 'circle', shape: { cx: p[0], cy: p[1], r: d / 2 } },
