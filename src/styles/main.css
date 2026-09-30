@@ -1,0 +1,609 @@
+/* 明日方舟寻访数据站 — 全局样式
+   由 prototype/template.html 的 <style> 迁移而来。
+   与原型唯一的差别：原型的「纯 CSS 页签 / 抽屉开合」（隐藏 radio + :checked）
+   在 Vue 阶段改为路由 + 类驱动，见文件内相关注释。
+   改动样式时请保持以下既有约定（都踩过坑，详见 README）：
+   - 卡池表 table-layout:fixed + colgroup；统计表 table-layout:auto（内容自适应）
+   - .tbl-scroll 限高 + width:fit-content（横滚条留在视野、纵滚条贴表格右侧）
+   - 统计表用 border-collapse:separate + inset box-shadow 画线（sticky 表头不丢边框）
+   - 两行 sticky 表头：thead th 固定 line-height:18px，第一行下边线走 box-shadow
+   - 同星级两表 .pair 用 flex-basis:auto 按自然宽度并排 */
+
+:root{
+  --blue-900:#123863;
+  --blue-700:#1b4f9c;
+  --blue-600:#2563b0;
+  --blue-500:#3b82d6;
+  --blue-200:#c9dcf3;
+  --blue-100:#e8f1fb;
+  --blue-50:#f5f9fe;
+  --ink:#1f2937;
+  --ink-2:#4b5563;
+  --muted:#7b8794;
+  --border:#dce6f2;
+  --bg:#f3f7fc;
+  --white:#fff;
+  --r6:#e0780c;
+  --r6-bg:#fff3e2;
+  --r5:#c39a00;
+  --r5-bg:#fdf8e2;
+  --ok:#0f8a5f;
+  --ok-bg:#e6f6ef;
+  /* 商店兑换：全站统一用绿色（卡池列表的「兑」标记、统计表的「商店兑换」组、
+     UP 历史里进店的小圆点、各处 tooltip） */
+  --shop-600:#15803d;
+  --shop-100:#e8f7ee;
+  --shop-200:#9fd9b8;
+  --shop-700:#0f5132;
+  --warn:#b45309;      /* 黄：距今天数 ≥180 天 */
+  --danger:#c0392b;    /* 红：距今天数 ≥365 天 */
+  --head-h:34px;
+  --top-h:52px;
+  --drawer-w:250px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+a{color:var(--blue-600);text-decoration:none}
+code{background:var(--blue-50);border:1px solid var(--blue-100);border-radius:5px;padding:0 5px;font-size:12px}
+
+/* ---------------- 顶栏 ---------------- */
+header.topbar{
+  position:fixed;left:0;right:0;top:0;height:var(--top-h);z-index:70;
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:rgba(255,255,255,.96);backdrop-filter:saturate(180%) blur(8px);
+  border-bottom:1px solid var(--border);
+  transition:left .2s ease,right .2s ease;
+}
+.tb-btn{
+  display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;
+  height:32px;padding:0 12px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--blue-200);background:#fff;color:var(--blue-700);
+  font-size:13px;font-weight:600;font-family:inherit;user-select:none;
+}
+.tb-btn:hover{background:var(--blue-100)}
+.tb-btn .glyph{font-size:15px;line-height:1}
+.tb-title{
+  display:flex;align-items:baseline;gap:8px;min-width:0;flex:0 1 auto;
+}
+.tb-title .t{font-size:16px;font-weight:700;color:var(--blue-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-spacer{flex:1 1 auto;min-width:0}
+
+/* 统计页的四级定位按钮（放顶栏，只在统计页渲染） */
+.tb-toc{display:flex;align-items:center;gap:6px;overflow-x:auto;min-width:0}
+.tb-toc a{
+  flex:0 0 auto;font-size:12.5px;padding:5px 10px;border-radius:999px;
+  background:#fff;border:1px solid var(--blue-200);color:var(--blue-700);font-weight:600;
+  white-space:nowrap;
+}
+.tb-toc a:hover{background:var(--blue-100)}
+
+/* ---------------- 页面切换 ---------------- */
+/* 原型阶段用隐藏 radio + :checked 切换页签；Vue 阶段由 Vue Router 接管，
+   视图组件按路由渲染，这里不再需要任何 display 开关。 */
+
+/* ---------------- 左右抽屉 ---------------- */
+aside.drawer{
+  position:fixed;top:0;bottom:0;z-index:75;width:var(--drawer-w);
+  background:var(--white);display:flex;flex-direction:column;
+  transition:transform .2s ease;overflow-y:auto;overflow-x:hidden;
+}
+aside.drawer-left{left:0;border-right:1px solid var(--border);transform:translateX(-100%)}
+aside.drawer-right{right:0;border-left:1px solid var(--border);transform:translateX(100%)}
+/* .show = 抽屉可见。含义随形态而变：
+   浮层（竖屏 / 窄屏）默认收起，.show 表示「用户展开」；
+   停靠（横屏宽屏）默认展开，不加 .show 表示「用户收起」。 */
+aside.drawer.show{transform:none}
+.backdrop.show{opacity:1;pointer-events:auto}
+
+.backdrop{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(15,40,80,.36);opacity:0;pointer-events:none;
+  transition:opacity .2s ease;
+}
+
+/* 横屏宽屏：抽屉改为「停靠」——默认展开并挤压中间内容，勾选 = 收起，无遮罩。
+   顶栏宽度收进中间区域（左右被抽屉占掉），抽屉顶到最上方。
+   这样操作中间页面时不会把左右栏关掉。 */
+@media (orientation:landscape) and (min-width:900px){
+  aside.drawer{transform:none;box-shadow:none}
+  aside.drawer:not(.show){transform:translateX(-100%)}
+  aside.drawer-right:not(.show){transform:translateX(100%)}
+  .layout.nav-show header.topbar{left:var(--drawer-w)}
+  .layout.filter-show header.topbar{right:var(--drawer-w)}
+  .layout.nav-show main.content{margin-left:var(--drawer-w)}
+  .layout.filter-show main.content{margin-right:var(--drawer-w)}
+  .backdrop{opacity:0;pointer-events:none}
+}
+
+.drawer-hd{
+  display:flex;align-items:center;gap:8px;height:var(--top-h);padding:0 14px;
+  border-bottom:1px solid var(--border);background:#fbfdff;flex:0 0 auto;
+}
+.drawer-hd .h{font-size:14px;font-weight:700;color:var(--blue-900);flex:1 1 auto}
+.drawer-close{cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px}
+.drawer-close:hover{background:var(--blue-100);color:var(--blue-700)}
+.drawer-bd{padding:14px;display:flex;flex-direction:column;gap:14px}
+
+nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
+.navitem{
+  display:flex;align-items:center;gap:9px;width:100%;
+  border:1px solid transparent;background:transparent;color:var(--ink-2);
+  padding:9px 12px;font-size:13.5px;font-weight:600;border-radius:9px;
+  cursor:pointer;box-sizing:border-box;
+}
+.navitem:hover{background:var(--blue-50);color:var(--blue-600)}
+.navitem .ic{width:14px;height:14px;flex:0 0 auto;border-radius:4px;border:1.5px solid currentColor;opacity:.7}
+.navitem.active{
+  background:var(--blue-100);color:var(--blue-700);border-color:var(--blue-200);
+}
+.navitem.active .ic{
+  background:var(--blue-500);border-color:var(--blue-500);
+}
+.drawer-note{
+  margin:0 10px 12px;font-size:11.5px;color:var(--muted);line-height:1.9;
+  border-top:1px solid var(--border);padding-top:10px;
+}
+.drawer-note b{color:var(--blue-700)}
+
+/* 左栏：服务器选择 + 干员展示模式（都放在 .drawer-bottom 里整体贴底） */
+.drawer-bottom{margin-top:auto;padding-bottom:10px;display:flex;flex-direction:column;gap:10px}
+.avgroup,.sgroup{
+  margin:0 10px;padding:10px 11px;display:flex;flex-direction:column;gap:6px;
+  border:1px solid var(--blue-200);background:var(--blue-50);border-radius:10px;
+}
+.avgroup > label,.sgroup > label{font-size:12px;color:var(--blue-700);font-weight:700}
+.sgroup select{
+  width:100%;border:1px solid var(--blue-200);border-radius:8px;padding:7px 9px;
+  font-size:13px;background:#fff;color:var(--ink);font-family:inherit;cursor:pointer;
+}
+.sgroup select:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+
+/* 二选一分段按钮（干员展示模式 / 图表口径切换） */
+.seg{display:flex;border:1px solid var(--blue-200);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{
+  flex:1 1 0;padding:6px 4px;border:0;background:#fff;cursor:pointer;
+  font-family:inherit;font-size:12px;font-weight:600;color:var(--blue-700);white-space:nowrap;
+}
+.seg button + button{border-left:1px solid var(--blue-200)}
+.seg button:hover{background:var(--blue-50)}
+.seg button.on{background:var(--blue-600);color:#fff}
+
+/* ---------------- 右栏：筛选表单（竖排） ---------------- */
+/* 右栏内容随页面切换：pane 由所在视图按需渲染 */
+.fgroup{display:flex;flex-direction:column;gap:6px}
+.fgroup > label{font-size:12px;color:var(--muted);font-weight:600}
+.fgroup select,.fgroup input[type=text],.fgroup input[type=date]{
+  width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 9px;
+  font-size:13px;background:#fff;color:var(--ink);font-family:inherit;
+}
+.fgroup select:focus,.fgroup input:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--blue-200);background:#fff;color:var(--blue-700);
+  border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;
+  font-weight:600;font-family:inherit;
+}
+.btn:hover{background:var(--blue-100)}
+.btn.primary{background:var(--blue-600);border-color:var(--blue-600);color:#fff}
+.btn.primary:hover{background:var(--blue-700)}
+.btn-row{display:flex;gap:6px}
+.btn-row .btn{flex:1 1 0}
+
+/* 右栏：一行放「文字 + 输入框 + 确认」的紧凑行（近 N 年 / 日期范围） */
+.btn.sm{padding:7px 12px;font-size:12.5px;flex:0 0 auto}
+.quick-row{display:flex;align-items:center;gap:6px}
+.quick-row .q-txt{flex:0 0 auto;font-size:12.5px;color:var(--ink-2)}
+.quick-row input{
+  flex:0 0 auto;width:9ch;text-align:center;
+  border:1px solid var(--border);border-radius:8px;padding:7px 6px;
+  font-size:13px;font-family:inherit;background:#fff;color:var(--ink);
+}
+.quick-row input:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+.quick-row .btn{margin-left:auto}
+.date-row{display:flex;align-items:center;gap:6px}
+.date-row input{flex:1 1 auto;min-width:0}
+/* 改了但还没点确认：把输入框描红提醒 */
+.fgroup input.dirty{border-color:var(--danger);background:#fff6f6}
+.fgroup input.dirty:focus{outline-color:#f0c8c2;border-color:var(--danger)}
+.ferr{margin:0;font-size:12px;color:var(--danger);font-weight:600}
+
+/* ---------------- 右栏：卡池类型按钮组（UP 历史） ----------------
+   两级：大类按钮（全选 / 取消该大类）+ 其下的类型按钮（点了立刻筛选、选中变蓝）。
+   以前是下拉菜单，展开再勾选太麻烦，改成常驻按钮组。 */
+.fcount{margin-left:6px;font-weight:500;color:var(--muted)}
+.typebtns{display:flex;flex-direction:column;gap:8px}
+.typebtns.disabled .tgroup{background:#f6f8fb}
+.tgroup{border:1px solid var(--blue-100);border-radius:9px;overflow:hidden;background:#fff}
+.tcat{
+  display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;
+  border:0;background:var(--blue-50);cursor:pointer;text-align:left;
+  font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink-2);
+}
+.tcat:hover{background:var(--blue-100)}
+/* 选中态的底色 / 字色由组件按 CAT_COLOR / CAT_INK 内联给出（黄底要深字，不然白字看不清） */
+.tcat .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.tcat > span:first-of-type{flex:1 1 auto}
+.tcat-act{flex:0 0 auto;font-size:11px;font-weight:600;opacity:.75}
+.tcat:disabled,.ttype:disabled{cursor:not-allowed}
+.trow{display:flex;flex-wrap:wrap;gap:5px;padding:7px}
+.ttype{
+  padding:5px 9px;border:1px solid var(--blue-200);border-radius:999px;background:#fff;
+  font-family:inherit;font-size:12px;font-weight:600;color:var(--blue-700);cursor:pointer;
+  white-space:nowrap;
+}
+.ttype:hover{background:var(--blue-50)}
+.ttype.on{background:var(--blue-600);border-color:var(--blue-600);color:#fff}
+.tfoot{display:flex;justify-content:flex-end}
+.tfoot .btn{padding:5px 12px;font-size:12.5px}
+
+.chk{display:flex;align-items:flex-start;gap:7px;font-size:13px;color:var(--ink-2);cursor:pointer}
+.chk input{margin-top:2px;flex:0 0 auto}
+.chk small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+
+/* ---------------- UP 历史一览：横向时间轴 ----------------
+   三段式结构（顶部固定刻度条 + 左侧固定名字列 + 主体画布）：
+
+   .tl-scroll 是**唯一**的滚动容器（横竖都能滚），所以
+   - `.tl-head` 的 `position:sticky;top:0` 能钉在它的顶部 → 横轴固定显示
+   - `.tl-names` / `.tl-corner` 的 `position:sticky;left:0` 钉在左侧 → 横向滚动时名字不跑
+   为了让 sticky 生效，容器必须有高度上限（否则纵向不会滚动，钉住也就无从谈起）。 */
+.tl-scroll{
+  margin:0 16px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;
+  overflow:auto;overscroll-behavior:contain;
+  max-height:max(320px, calc(100dvh - var(--top-h) - 210px));
+  scrollbar-color:#9db4cf #eef3f9;
+}
+.tl-scroll::-webkit-scrollbar{width:13px;height:13px}
+.tl-scroll::-webkit-scrollbar-track{background:#eef3f9}
+.tl-scroll::-webkit-scrollbar-thumb{background:#9db4cf;border-radius:7px;border:2px solid #eef3f9}
+.tl-scroll::-webkit-scrollbar-thumb:hover{background:#7f9dbd}
+.tl-scroll::-webkit-scrollbar-corner{background:#eef3f9}
+/* 块级 + min-width：容器够宽时铺满，不够宽时撑出最小宽度由 .tl-scroll 横向滚动 */
+.tl-inner{position:relative}
+
+.tl-head{
+  position:sticky;top:0;z-index:6;display:flex;
+  background:#fff;border-bottom:1px solid var(--blue-200);
+}
+/* 左上角：盖住名字列滚上来的内容（要是不透明且在最上层） */
+.tl-corner{flex:0 0 auto;position:sticky;left:0;z-index:8;background:#fff}
+.tl-headchart{flex:1 1 auto;min-width:0}
+
+.tl-rows{display:flex;align-items:stretch}
+.tl-names{
+  flex:0 0 auto;position:sticky;left:0;z-index:5;background:#fff;
+  border-right:1px solid var(--border);
+}
+.tl-name{
+  padding-right:10px;text-align:right;font-size:12px;color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tl-body{flex:1 1 auto;min-width:0}
+
+.fresult{
+  font-size:12.5px;color:var(--blue-700);background:var(--blue-50);
+  border:1px solid var(--blue-200);border-radius:8px;padding:8px 10px;
+}
+.fhint{font-size:11.5px;color:var(--muted);line-height:1.7}
+
+/* ---------------- 内容区 ---------------- */
+main.content{
+  padding:calc(var(--top-h) + 16px) 20px 60px;min-width:0;
+  transition:margin .2s ease,padding .2s ease;
+}
+/* 顶部说明块（noscript 兜底用的 .note 已随 Vue 阶段调整） */
+
+.card{
+  background:var(--white);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 1px 2px rgba(27,79,156,.05);margin-bottom:18px;overflow:hidden;
+}
+.card > .hd{
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fbfdff;
+}
+.card > .hd h2{margin:0;font-size:15px;color:var(--blue-900);font-weight:700}
+.card > .hd .count{font-size:12px;color:var(--muted)}
+
+/* ---------------- 表格 ---------------- */
+/* 表格容器限高：这样横向滚动条会贴在容器底部（而不是长表格的最末尾），
+   始终留在页面视野内。限高值 = 视口高 − 顶栏 − 表格上方内容高度，
+   保证「容器底部 ≤ 视口底部」，任何形态（横屏 / 竖屏 / 触屏）都成立。
+   两行同写是为了兼容：不认 dvh 的浏览器会忽略第二行、退回 vh。
+   下限取 180px —— 视口极矮时宁可少显示几行，也要保证底部滚动条露出来。
+   余量取值来自实测：卡池表的表格距顶 118px（+130 余量足够）；
+   统计表最坏情况距顶 324px（横屏停靠时内容区变窄、卡片头换行更多），
+   说明行 .toc-hint 删掉后又少了约 34px，故余量由 285 收到 250。 */
+:root{
+  --tbl-max:max(180px, calc(100vh  - var(--top-h) - 130px));
+  --tbl-max:max(180px, calc(100dvh - var(--top-h) - 130px));
+  --tbl-max-sec:max(180px, calc(100vh  - var(--top-h) - 250px));
+  --tbl-max-sec:max(180px, calc(100dvh - var(--top-h) - 250px));
+}
+/* 宽度足够时容器收缩到表格宽度（width:fit-content）——
+   否则容器会铺满父级，纵向滚动条被推到内容区右边缘、离表格老远。
+   fit-content 在窄容器下自动退化为「可用宽度」，横向滚动照常。 */
+.tbl-scroll{
+  overflow:auto;max-height:var(--tbl-max);
+  width:fit-content;max-width:100%;
+}
+.tbl-scroll.plain{overflow:auto;max-height:var(--tbl-max-sec)}
+/* 滚动条加粗上色，避免默认细条在浅色表格里「看不见」。
+   注意：不要写 scrollbar-width —— Chrome 121+ 会用它覆盖 ::-webkit-scrollbar 的宽度，
+   把滚动条压回 thin（约 10px）；scrollbar-color 只留给 Firefox。 */
+.tbl-scroll{scrollbar-color:#9db4cf #eef3f9;overscroll-behavior-x:contain}
+.tbl-scroll::-webkit-scrollbar{width:13px;height:13px}
+.tbl-scroll::-webkit-scrollbar-track{background:#eef3f9}
+.tbl-scroll::-webkit-scrollbar-thumb{
+  background:#9db4cf;border-radius:7px;border:2px solid #eef3f9;
+}
+.tbl-scroll::-webkit-scrollbar-thumb:hover{background:#7f9dbd}
+.tbl-scroll::-webkit-scrollbar-corner{background:#eef3f9}
+/* table-layout:fixed + <colgroup> 显式列宽 —— 全屏时表格不会拉伸占满屏幕。
+   （卡池列表用这套；统计表改用下面 .stat-tbl 的内容自适应列宽） */
+table.grid{border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:13px}
+table.grid th,table.grid td{
+  padding:8px 10px;border-bottom:1px solid var(--border);
+  text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;
+}
+table.grid thead th{
+  /* line-height 必须写死：默认 normal 下，13px 的分组表头（.group）内容高度
+     会略高于 12.5px 的字段表头，第一行被撑破 --head-h，
+     而第二行 sticky 的 top 是写死的 var(--head-h) —— 滚动后就会往上缩 1~2px。
+     18px 行高 + 上下 8px padding = 34px，正好等于 --head-h。 */
+  height:var(--head-h);line-height:18px;background:#eef5fd;color:var(--blue-700);
+  font-weight:700;font-size:12.5px;border-bottom:1px solid var(--blue-200);
+  cursor:pointer;user-select:none;
+}
+table.grid thead th.no-sort{cursor:default}
+table.grid thead th.group{
+  text-align:center;background:#e2eefb;color:var(--blue-900);font-size:13px;
+}
+table.grid thead th .arw{
+  color:var(--blue-500);font-size:10px;margin-left:3px;opacity:.22;
+  display:inline-block;transition:transform .12s ease;
+}
+table.grid thead th.sort-asc .arw,table.grid thead th.sort-desc .arw{opacity:1}
+/* 降序时小三角翻转朝下 */
+table.grid thead th.sort-desc .arw{transform:rotate(180deg)}
+table.grid.floating thead th{position:sticky;z-index:5}
+table.grid.floating thead tr:first-child th{top:0;z-index:6}
+table.grid.floating thead tr:nth-child(2) th{top:var(--head-h);z-index:5}
+table.grid tbody tr:hover{background:#f7fbff}
+table.grid tbody tr:nth-child(even){background:#fcfdff}
+table.grid tbody tr:nth-child(even):hover{background:#f7fbff}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.num{text-align:right}
+
+/* ---------------- 统计表：内容自适应列宽 + 列间竖线 ----------------
+   table-layout:auto + width:auto → 表格宽度 = 各列内容最大宽度之和（不再固定列宽），
+   因此总宽比原先的固定列宽窄很多，全屏时也不会被拉伸。
+
+   两个关键点（踩过两次坑）：
+   1) 必须用 border-collapse:separate。合并模式下边框由「表格」统一绘制，
+      position:sticky 的表头滚动时边框会留在原地 —— 表现就是横线消失、
+      且因为右半边是两行表头，消失的横线数量不一致，看起来像错位。
+      separate 模式下边框属于单元格自身，会跟着 sticky 一起走。
+   2) 竖线用 inset box-shadow 而不是 border：
+      - 不参与布局，不会多占 1px 影响列宽，也不会出现相邻两条边框各画 1px 的错位；
+      - 每个单元格在右边缘画 1px（最后一列除外），列边界的线由左列负责，
+        表头 / 数据行同列同宽，竖线天然对齐；
+      - box-shadow 属于单元格，sticky 时同样不会消失。 */
+table.grid.stat-tbl{
+  width:auto;table-layout:auto;border-collapse:separate;
+}
+table.grid.stat-tbl th,
+table.grid.stat-tbl td{
+  overflow:visible;padding:8px 11px;
+  box-shadow:inset -1px 0 0 var(--border);
+}
+/* 最后一列不要右边线（表格外侧不出线） */
+table.grid.stat-tbl th:last-child,
+table.grid.stat-tbl td:last-child{box-shadow:none}
+/* 两行表头 sticky 对齐（踩过的第三个坑）：
+   第二行的 top 是写死的 var(--head-h)=34px，它必须正好等于第一行「占掉的高度」。
+   第一行原本还有 border-bottom:1px，这 1px 也算在占位里 → 34 vs 35，
+   滚动后第二行就比自然流位置高 1px，表现为「距今天数那行往上缩了一点」。
+   解法：第一行的下边线改用 box-shadow（和竖线一样不参与布局），
+   于是第一行严格 34px，top:34px 精确对齐；阴影属于单元格，sticky 时跟着走。 */
+table.grid.stat-tbl thead tr:first-child th{
+  border-bottom:0;
+  box-shadow:inset -1px 0 0 var(--border),inset 0 -1px 0 var(--blue-200);
+}
+table.grid.stat-tbl thead tr:first-child th:last-child{
+  box-shadow:inset 0 -1px 0 var(--blue-200);
+}
+/* 统计表列宽本就按内容自适应，干员名不需要换行 ——
+   覆盖掉上面给卡池列表用的 .wrapcell（否则窄屏下「玛恩纳」会被折成两行） */
+table.grid.stat-tbl td.wrapcell{
+  white-space:nowrap;overflow-wrap:normal;word-break:normal;
+  padding-top:8px;padding-bottom:8px;
+}
+/* 干员列：允许换行，行高自动加高。
+   选择器必须写到 table.grid td.ops 这一级 —— 只写 .ops 会被上面
+   table.grid td 的 white-space:nowrap 压过（优先级更低），换行不生效。 */
+table.grid th.ops,table.grid td.ops{
+  white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.9;
+}
+table.grid td.ops{padding-top:9px;padding-bottom:9px;vertical-align:top}
+table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+.tag{
+  display:inline-block;padding:0 7px;margin:1px 3px 1px 0;border-radius:6px;
+  font-size:12px;line-height:19px;border:1px solid transparent;white-space:nowrap;
+}
+.tag.r6{color:var(--r6);background:var(--r6-bg);border-color:#f6d9b0;font-weight:700}
+.tag.r5{color:var(--r5);background:var(--r5-bg);border-color:#ecdfae;font-weight:700}
+/* 干员名左侧的状态标记：限 = 限定干员，兑 = 商店兑换 */
+.mk{
+  display:inline-block;min-width:15px;height:15px;line-height:15px;text-align:center;
+  padding:0 2px;border-radius:4px;font-size:11px;font-style:normal;font-weight:700;
+  color:#fff;margin-right:3px;vertical-align:1px;white-space:nowrap;
+}
+.mk-lim{background:#8b5cf6}
+.mk-shop{background:var(--shop-600)}
+
+/* ---------------- 图片模式：干员头像（正方形 / 圆形） ----------------
+   头像是**真实素材**（96×96 PNG，来自资源仓库经 jsDelivr CDN，见 src/lib/avatars.js），
+   显示尺寸 26px。卡池列表 / 出率提升记录用圆角正方形（CSS 裁出来），
+   首次进店间隔与 UP 历史的点是圆形（素材本身是方形半身像，由 zrender 的 clipPath 裁圆）。
+   「限」「兑」两个标记挪到头像右上角（并排挂在头像外侧一点点）。 */
+.avt{position:relative;display:inline-flex;width:26px;height:26px;margin:2px 5px 2px 0;vertical-align:middle}
+.avt .av,.avt-sq{
+  width:26px;height:26px;border-radius:7px;display:block;object-fit:cover;
+  background:var(--blue-100);
+}
+.avt .corners{position:absolute;top:-6px;right:-5px;display:flex;gap:2px;pointer-events:none}
+.avt .corners .mk{
+  margin:0;min-width:13px;height:13px;line-height:13px;font-size:10px;
+  padding:0 2px;border:1px solid #fff;
+}
+.badge{
+  display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;
+  border:1px solid var(--border);background:#f8fafc;color:var(--ink-2);
+}
+.badge.cat{background:var(--blue-100);border-color:var(--blue-200);color:var(--blue-700);font-weight:600}
+/* 卡池大类：全站统一配色（与 UP 历史时间轴的标记一致，见 constants 的 CAT_COLOR） */
+.badge.cat.c-std{background:#FFD524;border-color:#e6bf10;color:#5c4500}
+.badge.cat.c-mid{background:#0098DC;border-color:#0084c0;color:#fff}
+.badge.cat.c-lim{background:#8b5cf6;border-color:#7c4ded;color:#fff}
+.pill-live{
+  display:inline-block;padding:0 8px;border-radius:999px;font-size:12px;font-weight:700;
+  color:var(--ok);background:var(--ok-bg);border:1px solid #b9e6d4;
+}
+.dash{color:#b6c2d1}
+.warn{color:var(--warn);font-weight:600}   /* 距今天数 ≥180 天：标黄 */
+.hot{color:var(--danger);font-weight:700}  /* 距今天数 ≥365 天：标红 */
+
+/* ---------------- 窄屏卡片视图 ---------------- */
+.bcard-list{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.bcard{
+  border:1px solid var(--border);border-radius:10px;background:#fff;
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px;
+}
+.bcard-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bcard-name{font-weight:700;color:var(--blue-900);font-size:14.5px}
+.bcard-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.bcard-date{font-variant-numeric:tabular-nums}
+.bcard-row{display:flex;gap:8px;align-items:flex-start;border-top:1px dashed var(--border);padding-top:7px}
+.bcard-row .k{flex:0 0 80px;font-size:12px;color:var(--muted);font-weight:600;line-height:1.9}
+.bcard-row .v{flex:1 1 auto;min-width:0;line-height:1.9}
+.scroll-hint{display:none}
+
+/* ---------------- 统计页 ---------------- */
+.sec-title{
+  padding:10px 16px;background:linear-gradient(90deg,var(--blue-100),#fff);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  font-weight:700;color:var(--blue-900);font-size:14px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  scroll-margin-top:calc(var(--top-h) + 12px);
+}
+.grp-sep{
+  padding:12px 16px 6px;font-size:15px;font-weight:700;color:var(--blue-900);
+  border-top:2px solid var(--blue-200);background:#fbfdff;
+  scroll-margin-top:calc(var(--top-h) + 12px);
+}
+/* 统计页：每张表按**所在大类**着色（标准寻访 = 黄、中坚寻访 = 蓝，
+   与卡池列表的「大类」徽章、UP 历史的标记同一套色，见 constants 的 CAT_COLOR）。
+   做法是「浅底 + 左侧色条 + 深色标题字」而不是整条饱和色 —— 一屏里并排四张表时
+   大面积高饱和色会很刺眼。 */
+.sec-title.c-std{
+  background:linear-gradient(90deg,#fff3c9,#fff);
+  border-left:4px solid #FFD524;color:#7a5c00;
+}
+.sec-title.c-mid{
+  background:linear-gradient(90deg,#dceffb,#fff);
+  border-left:4px solid #0098DC;color:#00628f;
+}
+/* 统计表表头：两组按语义着色 —— 商店兑换用全站统一的绿色 */
+table.grid.stat-tbl thead th.group.grp-shop{background:var(--shop-100);color:var(--shop-700)}
+table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
+.grp-sep:first-child{border-top:none}
+
+/* ---------------- 统计页：同星级两表自适应并排 ----------------
+   同一星级的「标准寻访」表与「中坚寻访」表放进 .pair：
+   - 两张表的自然宽度之和 + 16px（间距）≤ 可用宽度时，左右并列；
+   - 宽度不够时 flex-wrap 自动换行，两张表恢复上下竖排、各占满整行。
+   列用 flex-basis:auto，实际宽度由子元素（即表格）的 max-content 决定，
+   所以宽度足够时表格不会被压窄，也不会出现横向滚动条。
+   min-width:0 保证换行后单列能收进容器宽度，不会撑破布局。 */
+.pair{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.pair-col{flex:0 1 auto;min-width:0;max-width:100%}
+/* 节标题不再挂提示语（.hint 已删除）：两列标题都是单行，表格顶部天然对齐 */
+
+/* ---------------- 说明 / 页脚 ---------------- */
+.note{
+  background:var(--white);border:1px dashed var(--blue-200);border-radius:10px;
+  padding:12px 16px;color:var(--ink-2);font-size:12.5px;
+}
+.note b{color:var(--blue-700)}
+footer.foot{color:var(--muted);font-size:12px;text-align:center;padding:22px 0 8px;line-height:1.9}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+
+@media (max-width:900px), (orientation:portrait){
+  /* 抽屉本来就是浮层，不会挤压内容；这里只做窄化处理 */
+  :root{--drawer-w:min(84vw,300px)}
+  /* 触屏下同样限高 —— 否则横向滚动条会被推到长表末尾，滚到一半就看不见了。
+     手指可以直接在表格上左右滑，容器限高不冲突。 */
+  .tbl-scroll,
+  .tbl-scroll.plain{-webkit-overflow-scrolling:touch}
+  /* 标题不压缩，定位按钮在剩余空间里横向滚动 */
+  .tb-title{flex:0 0 auto}
+  .tb-toc{flex:0 1 auto;min-width:0}
+  .tb-title .t{font-size:15px}
+  .tb-toc a{font-size:12px;padding:4px 8px}
+}
+@media (max-width:640px){
+  main.content{padding:calc(var(--top-h) + 12px) 10px 48px}
+  .bcard-list{padding:12px}
+  .tb-btn{padding:0 9px;font-size:12px}
+}
+/* 视口偏矮（桌面窄高窗口等）：收紧表格限高余量，
+   否则表格容器底部的横向滚动条会被挤出视野。实测 1024×600 / 900×500 均覆盖。 */
+@media (max-height:620px){
+  :root{
+    --tbl-max:max(140px, calc(100vh  - var(--top-h) - 130px));
+    --tbl-max:max(140px, calc(100dvh - var(--top-h) - 130px));
+    --tbl-max-sec:max(140px, calc(100vh  - var(--top-h) - 240px));
+    --tbl-max-sec:max(140px, calc(100dvh - var(--top-h) - 240px));
+  }
+}
+
+/* ---------------- 图表（首次进店间隔） ----------------
+   每个干员一个点、点上要写干员名，横轴还要写完整的首次进店日期 ——
+   一屏塞不下 60~90 个点时点会挤成一团，所以绘图区按「点数 × 每点宽度」铺开，
+   外层容器横向滚动；滚动条样式与表格保持一致（细条在浅色底上看不见）。
+
+   横向滚动带来一个新问题：echarts 自己画的 y 轴会跟着滚出视野。
+   所以纵轴刻度**抽出来做成两侧的 .ybar 刻度条**（position:sticky 固定在左右边缘），
+   echarts 那边关掉 axisLabel、只留 splitLine —— 网格线与刻度文本都是 14 的倍数，天然对齐。
+   刻度条的宽度/位置由组件内联样式给出（要与 grid 的 left/right 严格一致，不在这里写死）。 */
+.chart-scroll{
+  overflow-x:auto;overflow-y:hidden;padding:6px 0 12px;
+  scrollbar-color:#9db4cf #eef3f9;overscroll-behavior-x:contain;
+}
+.chart-scroll::-webkit-scrollbar{height:13px}
+.chart-scroll::-webkit-scrollbar-track{background:#eef3f9}
+.chart-scroll::-webkit-scrollbar-thumb{
+  background:#9db4cf;border-radius:7px;border:2px solid #eef3f9;
+}
+.chart-scroll::-webkit-scrollbar-thumb:hover{background:#7f9dbd}
+.chart-scroll::-webkit-scrollbar-corner{background:#eef3f9}
+.echart{min-width:100%}
+
+.chart-row{display:flex;align-items:flex-start}
+.ybar{position:sticky;z-index:2;background:#fff}
+.ybar-l{left:0}
+.ybar-r{right:0}
+.ybar .tk{
+  position:absolute;font-size:11px;line-height:1;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.ybar-l .tk{right:14px;transform:translateY(-50%)}
+.ybar-r .tk{left:14px;transform:translateY(-50%)}
+.ybar .unit{position:absolute;top:6px;font-size:11px;color:var(--muted)}
+.ybar-l .unit{right:14px}
+.ybar-r .unit{left:14px}

@@ -1,0 +1,32 @@
+{
+  "name": "ak-gacha-data",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "明日方舟寻访数据站 — 数据抓取脚本 + Vue 3 前端",
+  "scripts": {
+    "dev": "vite",
+    "dev:lan": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "preview:lan": "vite preview --host",
+    "build:data": "node ../akGachaResource/scripts/fetch-data.mjs",
+    "build:prototype": "node scripts/build-prototype.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs prototype/index.html",
+    "verify:data": "node scripts/verify-data.mjs",
+    "verify:render": "node scripts/verify-render.mjs",
+    "verify": "node scripts/verify-data.mjs && node scripts/verify-render.mjs",
+    "build:avatars": "node ../akGachaResource/scripts/fetch-avatars.mjs"
+  },
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "pinia": "^4.0.3",
+    "pinyin-pro": "^3.26.0",
+    "vue": "^3.5.43",
+    "vue-router": "^5.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.9",
+    "vite": "^8.3.1"
+  }
+}
