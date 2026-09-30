@@ -508,7 +508,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 }
 .badge{
   display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;
-  border:1px solid var(--border);background:#f8fafc;color:var(--ink-2);
+  border:1px solid var(--border);background:#f8fafc;color:var(--ink-2);margin-left: auto;
 }
 .badge.cat{background:var(--blue-100);border-color:var(--blue-200);color:var(--blue-700);font-weight:600}
 /* 卡池大类：全站统一配色（与 UP 历史时间轴的标记一致，见 constants 的 CAT_COLOR） */
