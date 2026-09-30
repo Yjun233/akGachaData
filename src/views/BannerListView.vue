@@ -18,12 +18,6 @@ const rows = computed(() => site.bannerRows);
 
 <template>
   <div class="card">
-    <div class="hd">
-      <h2>卡池列表</h2>
-      <span class="count">
-        共 {{ rows.length }} 个<template v-if="rows.length !== site.banners.length">（已筛选 / 全部 {{ site.banners.length }}）</template>
-      </span>
-    </div>
     <BannerCards v-if="isCard" :rows="rows" />
     <BannerTable v-else :rows="rows" />
   </div>

@@ -40,7 +40,9 @@ export const useSiteStore = defineStore('site', {
     shopRange: { from: '', to: '' },   // 首次进店间隔页：按首次进店日期筛（空 = 不限）
     shopAxis: 'firstShop',             // 横轴口径：firstShop 按首次进店日期 | release 按实装日期
     shopMetric: 'gap',                 // 纵轴口径：gap 距上个首次进店 | sinceRelease 距实装日期
-    upRange: { from: '', to: '' },     // UP 历史：只控制图表横轴范围（不影响纵轴干员集合）
+    upRange: { from: '', to: '' },     // UP 历史：控制图表横轴范围，**同时**决定哪些干员占行
+                                       //（范围内没有任何标记的干员不显示，见 computeUpHistory）
+    upShowAll: false,                  // UP 历史：勾上则忽略上面那条，范围内没 UP 的干员也占行
     upSort: 'release-asc',             // UP 历史：纵轴排序
     upRarity: 6,                       // UP 历史：一次只显示一个星级（默认六星）
     upTypes: [],                       // UP 历史：选中的卡池类型（空 = 全部）
@@ -129,6 +131,9 @@ export const useSiteStore = defineStore('site', {
         relDateOf: this.relDateOf,
         types: s.upTypes,
         shopOnly: s.upShopOnly,
+        /* 时间范围既决定横轴可视范围，也决定哪些干员占行（范围内没标记的不占行）；
+           勾了「显示范围内未 UP 干员」就传 null，等于不做这层过滤 */
+        range: s.upShowAll ? null : s.upRange,
         sort: s.upSort,
       });
     },
@@ -192,6 +197,7 @@ export const useSiteStore = defineStore('site', {
       this.upRarity = 6;
       this.upTypes = [];
       this.upShopOnly = false;
+      this.upShowAll = false;
       this.statSort = {};
       this.bannerSort = { key: 'startDate', dir: 'desc' };
     },
@@ -281,6 +287,11 @@ export const useSiteStore = defineStore('site', {
     setUpShopOnly(on) {
       this.upShopOnly = !!on;
       if (this.upShopOnly) this.upTypes = [];
+    },
+
+    /** 是否显示「时间范围内没有 UP 过」的干员（默认不显示） */
+    setUpShowAll(on) {
+      this.upShowAll = !!on;
     },
 
     /** 干员展示模式：简洁（名字）/ 图片（头像） */

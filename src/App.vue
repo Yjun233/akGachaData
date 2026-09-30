@@ -33,12 +33,6 @@ onMounted(() => site.load());
       </div>
       <div v-else-if="!site.ready" class="note">正在加载数据…</div>
       <router-view v-else />
-
-      <footer class="foot">
-        数据来源 <a href="https://prts.wiki" target="_blank" rel="noreferrer">PRTS Wiki</a> ·
-        每日自动更新<br />
-        本工具仅供数据查阅，与鹰角网络无关
-      </footer>
     </main>
   </div>
 </template>

@@ -72,7 +72,8 @@ function onServerChange(e) {
     <div class="drawer-note">
       干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.serverMeta.bannerCount ?? 0 }}</b> 个<br />
       数据更新 <b>{{ site.snapshotDate }}</b><br />
-      来源 <a href="https://prts.wiki" target="_blank" rel="noreferrer">PRTS Wiki</a>
+      卡池信息来源 <a href="https://prts.wiki" target="_blank" rel="noreferrer">PRTS Wiki</a><br /><br />
+      网站内使用的游戏图片、文本原文等，仅用于更好地辅助数据查询，其版权属于鹰角网络。本网站与鹰角网络无关。
     </div>
   </aside>
 </template>

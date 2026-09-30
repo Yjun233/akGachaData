@@ -1,7 +1,12 @@
 <script setup>
 /**
  * 卡池列表（宽屏表格）。
- * 固定列宽（table-layout:fixed + colgroup），全屏时不拉伸。
+ *
+ * 列宽：`table-layout:fixed` + `<colgroup>`，各列按 `BANNER_COLS` 的比例分配
+ * （`width: w/totalWidth%`），并给每列一个 `min-width: w` 兜底下限 ——
+ * 于是**宽屏时表格铺满可用宽度、窄屏时退到 1225px 后横向滚动**。
+ * （2026-09-30 起由「固定 1225px 不拉伸」改成这样。）
+ *
  * 商店兑换不单独占列，而是在干员名前加「兑」标记（见 OpTag）。
  */
 import { computed } from 'vue';
@@ -28,9 +33,9 @@ const sortClass = (key) =>
 
 <template>
   <div class="tbl-scroll">
-    <table class="grid floating" :style="{ width: totalWidth + 'px' }">
+    <table class="grid floating" :style="{ width: 100 + '%', minWidth: totalWidth + 'px' }">
       <colgroup>
-        <col v-for="(w, i) in BANNER_COLS" :key="i" :style="{ width: w + 'px' }" />
+        <col v-for="(w, i) in BANNER_COLS" :key="i" :style="{ width: w / totalWidth + '%', minWidth: w + 'px' }" />
       </colgroup>
       <thead>
         <tr>
@@ -55,12 +60,15 @@ const sortClass = (key) =>
       </thead>
       <tbody>
         <tr v-if="!rows.length">
-          <td colspan="7"><div class="empty">没有符合条件的卡池</div></td>
+          <td colspan="7">
+            <div class="empty">没有符合条件的卡池</div>
+          </td>
         </tr>
         <tr v-for="b in rows" :key="b.id">
-          <td class="wrapcell"><b>{{ b.name }}</b>{{ ' ' }}<span v-if="isLive(b)" class="pill-live">进行中</span></td>
+          <td class="wrapcell"><span :class="{'pill-live':isLive(b)}"><b>{{ b.name }}</b>{{ ' ' }}</span></td>
           <td class="wrapcell"><span class="badge">{{ TYPE_LABEL[b.type] }}</span></td>
-          <td class="wrapcell"><span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{ site.categories[b.type] }}</span></td>
+          <td class="wrapcell"><span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{
+            site.categories[b.type] }}</span></td>
           <td class="num">{{ b.startDate }}</td>
           <td class="num">{{ b.endDate }}</td>
           <td class="ops">

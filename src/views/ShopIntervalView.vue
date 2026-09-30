@@ -262,25 +262,10 @@ const metricText = computed(() => (site.shopMetric === 'sinceRelease' ? '距实�
 <template>
   <div class="card">
     <div class="hd">
-      <h2>首次进店间隔</h2>
       <span class="count">
         六星 {{ data.six.length }} 位 · 五星 {{ data.five.length }} 位 ·
         横轴{{ axisText }} · 纵轴{{ metricText }} · 筛选范围 {{ rangeText }}
       </span>
-    </div>
-
-    <div class="note" style="margin: 14px 16px 4px">
-      横轴 = 同星级内<b>{{ axisText }}</b>排序的干员，轴标签写该干员对应的日期。纵轴 =
-      <template v-if="site.shopMetric === 'gap'">
-        该干员<b>首次进店日</b>与<b>同星级上一个点</b>首次进店日的天数差；刻度以 14 天（两周）为基准、
-        随筛选后的跨度自适应。按实装日期排序时会出现负值（更晚实装却更早进店）。
-      </template>
-      <template v-else>
-        该干员<b>首次进店日 − 实装日</b>（实装后等了多久才第一次进店）；刻度随跨度自动取整齐步长。
-      </template>
-      六星与五星各自成一条序列，<b>只在同星级内部比较</b>；已排除限定干员。
-      <template v-if="isImage">当前为图片模式，点上是干员头像（hover 可看名字）。</template>
-      <template v-else>点上写着干员名，横向拖到最左可以看更早的进店。</template>
     </div>
 
     <div class="grp-sep" id="g6">六星干员 · 首次进店间隔</div>

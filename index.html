@@ -8,6 +8,13 @@
     name="description"
     content="明日方舟标准 / 中坚 / 限定寻访的出率提升与商店兑换记录，支持按参考日期回看任意历史时点。"
   />
+
+  <!-- 站点图标。放在 src/assets 而不是 public/ —— 构建时 publicDir 关掉了
+       （避免把那两个指向资源仓库的目录联接复制进 dist），放在 src 下由 Vite 打包并自动加 base。
+       现代浏览器优先用 PNG，老浏览器退回 ico；iOS 加到主屏用 apple-touch-icon。 -->
+  <link rel="icon" type="image/png" sizes="32x32" href="./src/assets/favicon.png" />
+  <link rel="icon" type="image/x-icon" href="./src/assets/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./src/assets/apple-touch-icon.png" />
 </head>
 <body>
   <div id="app"></div>

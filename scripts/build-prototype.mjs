@@ -16,7 +16,13 @@ import { runPage } from './lib/dom-shim.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const DATA_DIR = path.join(ROOT, 'public', 'data');
+/* 数据的真身在独立资源仓库 ../akGachaResource（主仓库里没有副本，
+   public/ 下那两个只是开发用的目录联接，可能不存在）——直接读真身最稳。 */
+const DATA_DIR = path.resolve(ROOT, '..', 'akGachaResource', 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  console.error(`找不到资源仓库 ${DATA_DIR}\n请先确认 ../akGachaResource 存在。`);
+  process.exit(1);
+}
 const TEMPLATE = path.join(ROOT, 'prototype', 'template.html');
 const OUT = path.join(ROOT, 'prototype', 'index.html');
 

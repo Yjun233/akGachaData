@@ -8,8 +8,6 @@ export const TYPE_LABEL = {
   double: '常驻标准寻访',
   classic: '常驻中坚寻访',
   clafes: '中坚甄选',
-  /* 限定寻访细分为三类（2026-09-30）：庆典 / 春节 / 夏季。
-     原 `limited` 已不再产出 —— 数据里现在是这三个子类。 */
   limcel: '限定寻访·庆典',
   limspr: '限定寻访·春节',
   limsum: '限定寻访·夏季',
@@ -100,12 +98,14 @@ export const SHOP = {
   ink: '#0f5132', // 浅底上的深色字
 };
 
-/** UP 历史时间轴的纵轴排序方式（右栏） */
-export const UP_SORTS = [
-  { id: 'release-asc', label: '实装日期 ↑' },
-  { id: 'release-desc', label: '实装日期 ↓' },
-  { id: 'lastUp-asc', label: '最近 UP ↑' },
-  { id: 'lastUp-desc', label: '最近 UP ↓' },
+/**
+ * UP 历史时间轴的纵轴排序（右栏按钮组）。
+ * 两个维度 × 两个方向 —— 界面固定渲染成两行「左标签 + 右侧升/降序分段按钮」，
+ * 所以这里按维度成对给出，避免在模板里硬编码 4 组 id。
+ */
+export const UP_SORT_ROWS = [
+  { label: '实装日期', asc: 'release-asc', desc: 'release-desc' },
+  { label: 'UP 日期', asc: 'lastUp-asc', desc: 'lastUp-desc' },
 ];
 
 /** 干员实装日字段：各服一份，靠字段名区分 */
@@ -119,13 +119,17 @@ export const SERVER_FIELD = {
 export const WARN_DAYS = 180; // ≥ 180 天标黄
 export const DANGER_DAYS = 365; // ≥ 365 天标红
 
-/** 卡池列表列宽（px）—— table-layout:fixed + colgroup，全屏不拉伸 */
+/**
+ * 卡池列表的列宽（px）—— 既决定各列的**比例**（`width: w/total%`），
+ * 也作为各列的 **min-width 下限**；合计 1225px 是表格的 `min-width`，
+ * 低于它才横向滚动，宽屏时按比例铺满。
+ */
 export const BANNER_COLS = [190, 130, 105, 100, 100, 280, 320];
 
-/** 统计页四个分节的锚点（顶栏定位按钮用） */
+/** 统计页四个分节的锚点（顶栏定位按钮用）——要与 StatsView 里的分区标题文案一致 */
 export const STAT_SECTIONS = [
-  { id: 's-6-std', label: '六星 · 标准寻访' },
-  { id: 's-6-mid', label: '六星 · 中坚寻访' },
-  { id: 's-5-std', label: '五星 · 标准寻访' },
-  { id: 's-5-mid', label: '五星 · 中坚寻访' },
+  { id: 's-6-std', label: '六星干员·标准寻访' },
+  { id: 's-6-mid', label: '六星干员·中坚寻访' },
+  { id: 's-5-std', label: '五星干员·标准寻访' },
+  { id: 's-5-mid', label: '五星干员·中坚寻访' },
 ];

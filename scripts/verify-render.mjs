@@ -118,7 +118,10 @@ try {
   check('卡池数据行数', count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr>/g), 430);
   check('表头：出率提升（6★）', count(bh, /出率提升（6★）/g), 1);
   check('表头：出率提升（5★）', count(bh, /出率提升（5★）/g), 1);
-  check('列宽 1225px', bh.includes('width:1225px'), true);
+  /* ⚠️ 别再用 `includes('width:1225px')` —— `min-width:1225px` 里也含这个子串，
+     断言会一直「通过」，哪怕表格早就不这么排版了。这里按实际写法分别匹配。 */
+  check('卡池表：铺满可用宽度 + 1225px 兜底下限',
+    /width:100%;min-width:1225px/.test(bh.replace(/\s+/g, '')), true);
   check('「进行中」胶囊', count(bh, /pill-live/g) >= 1, true);
   check('商店兑换标记「兑」', count(bh, /mk-shop/g) >= 1, true);
   check('限定标记「限」', count(bh, /mk-lim/g) >= 1, true);
@@ -160,7 +163,13 @@ try {
   check('统计页：商店兑换的列头带 shopcol（绿色字）',
     count(sh, /class="num shopcol"/g) >= 12
     && /th\.shopcol\{color:var\(--shop-700\)\}/.test(cssAll), true);
-  check('统计页：两个顶级分组', count(sh, /class="grp-sep"/g), 2);
+  /* 2026-09-30 起卡片头与分组标题合并：不再有「六星干员 / 五星干员」两个大字分隔，
+     改为四个分节标题自带星级（分隔块只剩一个纯占位）。 */
+  check('统计页：四个分节标题自带星级',
+    ['六星干员·标准寻访', '六星干员·中坚寻访', '五星干员·标准寻访', '五星干员·中坚寻访']
+      .every((t) => sh.includes(t)), true);
+  check('统计页：只剩一个分隔块（星级已并入分节标题）',
+    count(sh, /class="grp-sep"/g), 1);
 
   /* 每张表的行数：与原型（44 / 48 / 44 / 68）一致 */
   const tableRows = (html, anchor) => {
@@ -180,18 +189,23 @@ try {
   check('统计页：可见卡池 430 个', /可见卡池 430 个/.test(sh), true);
   check('统计页：参与统计干员 204 位', /参与统计干员 204 位/.test(sh), true);
 
-  /* 顶部定位按钮（统计页才有） */
-  check('顶栏定位按钮 六星 · 标准寻访', /六星 · 标准寻访/.test(sh), true);
+  /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
+  check('顶栏定位按钮 六星干员·标准寻访', /六星干员·标准寻访/.test(sh), true);
 
   /* 首页不应出现统计表；统计页不应出现卡池表 */
   check('首页没有统计表', count(bh, /stat-tbl/g), 0);
-  check('统计页没有卡池表（无 1225px 固定宽度）', bh.includes('width:1225px') && !sh.includes('width:1225px'), true);
+  check('统计页没有卡池表（无 1225px 兜底下限）',
+    /min-width:1225px/.test(bh) && !/min-width:1225px/.test(sh), true);
 
   /* ---------------- 首次进店间隔 ---------------- */
   const shop = await renderRoute('/shop-interval');
   const ph = shop.html;
 
-  check('首次进店间隔页：标题', /<h2>首次进店间隔<\/h2>/.test(ph), true);
+  /* 页面内不再重复渲染 h2 大标题，标题只在顶栏出现一次（2026-09-30 去重） */
+  check('首次进店间隔页：页面内不再重复标题（顶栏那份负责）',
+    !/<h2>/.test(ph) && /首次进店间隔/.test(ph), true);
+  check('首次进店间隔页：卡片头统计（六星 N 位 · 五星 N 位）',
+    /六星 \d+ 位 · 五星 \d+ 位/.test(ph), true);
   check('首次进店间隔页：两个分节', count(ph, /class="grp-sep"/g), 2);
   check('首次进店间隔页：六星 / 五星分节标题',
     ph.includes('六星干员 · 首次进店间隔') && ph.includes('五星干员 · 首次进店间隔'), true);
@@ -200,8 +214,9 @@ try {
   check('首次进店间隔页：两个图表容器', count(ph, /class="echart"/g), 2);
   check('首次进店间隔页：图表外层可横向滚动', count(ph, /class="chart-scroll"/g), 2);
   check('首次进店间隔页：SSR 下不初始化 echarts（无 canvas）', count(ph, /<canvas/g), 0);
-  check('首次进店间隔页：口径说明含纵轴说明', /纵轴 =/.test(ph), true);
-  check('首次进店间隔页：口径说明强调「同星级」比较', count(ph, /同星级/g) >= 2, true);
+  /* 页内说明块已移除，横轴 / 纵轴的口径改由卡片头一行带过 */
+  check('首次进店间隔页：卡片头写明横轴 / 纵轴口径',
+    /横轴(按实装日期|按首次进店日期)/.test(ph) && /纵轴(距实装日|距上个首次进店)/.test(ph), true);
   check('首次进店间隔页：两侧固定刻度条（六星 + 五星各左右一条）',
     count(ph, /class="ybar ybar-l"/g) === 2 && count(ph, /class="ybar ybar-r"/g) === 2, true);
   check('首次进店间隔页：刻度条带单位标注', count(ph, /class="unit"/g), 4);
@@ -275,7 +290,7 @@ try {
     s.setShopMetric('sinceRelease');
   });
   check('口径切换：头信息跟随', /横轴按实装日期/.test(relShop.html) && /纵轴距实装日/.test(relShop.html), true);
-  check('口径切换：说明文案切到「距实装」', /首次进店日 − 实装日/.test(relShop.html), true);
+  check('口径切换：卡片头切到「纵轴距实装日」', /纵轴距实装日/.test(relShop.html), true);
   check('口径切换：按钮高亮跟随状态', count(relShop.html, /class="on"/g) >= 2, true);
 
   /* ---------------- 干员展示模式（简洁 / 图片） ---------------- */
@@ -301,15 +316,16 @@ try {
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
 
   const imgShop = await renderRoute('/shop-interval', (s) => s.setAvatarMode('image'));
-  check('图片模式：折线页说明提示当前为图片模式', /当前为图片模式/.test(imgShop.html), true);
+  /* 页内说明块已移除；图片模式的关键行为（点用头像）在数据层与 upTimeline 断言里守 */
+  check('图片模式：折线页仍正常渲染两个分节', count(imgShop.html, /class="grp-sep"/g), 2);
   check('图片模式：折线页仍渲染两侧刻度条', count(imgShop.html, /class="ybar ybar-l"/g), 2);
 
   /* ---------------- UP 历史一览 ---------------- */
   const up = await renderRoute('/up-history');
   const uh = up.html;
 
-  check('UP 历史页：标题与单一分节',
-    /<h2>UP 历史一览<\/h2>/.test(uh) && count(uh, /class="grp-sep"/g) === 1, true);
+  check('UP 历史页：页面内不再重复标题，只有单个分节',
+    !/<h2>/.test(uh) && count(uh, /class="grp-sep"/g) === 1, true);
   /* 注意：模板里是 `{{ upRarity }}星干员 · UP 历史`，SSR 会在插值处插注释锚点，
      所以不能直接匹配拼接后的整句 —— 用分节 id 判断更稳 */
   /* SSR 会在插值处插注释锚点（`六<!---->星干员`），文本断言前先剥掉 */
@@ -322,7 +338,7 @@ try {
      也照样通过。改成针对卡片头，并额外禁止数字写法。 */
   check('UP 历史页：卡片头统计（六星 92 位 · …）', /六星 92 位 ·/.test(uhPlain), true);
   check('UP 历史页：星级一律写汉字（不出现 6星 / 5星）', /[五六]?[0-9]星/.test(uhPlain), false);
-  check('UP 历史页：分节标题「六星干员 · UP 历史」', /六星干员 · UP 历史/.test(uhPlain), true);
+  check('UP 历史页：分节标题「六星干员」', /六星干员/.test(uhPlain), true);
   /* 顶部固定刻度条 + 左侧固定名字列 + 主体画布 = 两个图表容器 */
   check('UP 历史页：两个图表容器（顶部刻度条 + 主体）', count(uh, /class="echart"/g), 2);
   check('UP 历史页：SSR 下不初始化 echarts（无 canvas）', count(uh, /<canvas/g), 0);
@@ -338,7 +354,9 @@ try {
   check('UP 历史页：时间轴有最小宽度（内层 min-width 内联样式）',
     /class="tl-inner" style="min-width:\s*\d{3,}px/.test(uh), true);
   check('UP 历史页：名字列每人一行（92 行）', count(uh, /class="tl-name"/g), 92);
-  check('UP 历史页：口径说明写「已排除限定干员」', /已排除限定干员/.test(uhPlain), true);
+  /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
+  check('左栏底部：数据来源 + 版权声明',
+    /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
 
   check('UP 历史页：左栏导航四项',
     ['卡池列表', '出率提升记录', '首次进店间隔', 'UP 历史一览'].every((t) => uh.includes(t)), true);
@@ -348,8 +366,15 @@ try {
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
-  check('UP 历史页：纵轴排序四个选项',
-    ['实装日期 ↑', '实装日期 ↓', '最近 UP ↑', '最近 UP ↓'].every((t) => uh.includes(t)), true);
+  /* 纵轴排序：两行「左标签 + 升/降序分段按钮」，共 2 个标签 + 4 个按钮 */
+  check('UP 历史页：纵轴排序是两个维度 × 升/降序（共 4 个按钮）',
+    ['实装日期', 'UP 日期'].every((t) => uh.includes(t))
+    && count(uh, /class="sortrow"/g) === 2
+    && count(uh, /class="seg mini"/g) === 2
+    && count(uh, />升序<\/button>/g) === 2
+    && count(uh, />降序<\/button>/g) === 2, true);
+  check('UP 历史页：排序标签不再塞进 .seg（会被 flex 拉成一半宽）',
+    !/class="seg"><span/.test(uh), true);
   /* 卡池类型已改为**常驻按钮组**（不再是下拉）：3 个大类按钮 + 11 个类型按钮。
      按整段标签匹配，不要假设 class 与 disabled 的先后顺序。 */
   const ttypeTags = (html) => html.match(/<button[^>]*class="ttype[^"]*"[^>]*>/g) || [];
@@ -385,7 +410,26 @@ try {
     s.setUpShopOnly(false);
     s.setUpTypes(['double', 'classic']);
   });
-  check('取消只看进店后类型下拉恢复可用', !/class="dd-btn"[^>]*disabled/.test(upTypes.html), true);
+  check('取消只看进店后类型按钮恢复可用',
+    ttypeTags(upTypes.html).every((s) => !/disabled/.test(s)), true);
+
+  /* 时间范围：**范围内一次 UP 都没有的干员默认不占行**（2026-09-30 口径调整，
+     以前时间范围只改横轴、纵轴始终保留全部干员）；可用「显示范围内未 UP 干员」开关关掉这层过滤 */
+  const upNoRange = await renderRoute('/up-history', () => {});
+  const upRange = await renderRoute('/up-history', (s) => s.setUpRange('2026-01-01', ''));
+  check('时间范围：范围内无标记的干员被隐藏（行数变少）',
+    upRange.store.upHistory.six.length < upNoRange.store.upHistory.six.length, true);
+  const upFullRange = await renderRoute('/up-history', (s) => s.setUpRange('2000-01-01', '2099-12-31'));
+  check('时间范围：覆盖全时段时行数与不限范围一致',
+    upFullRange.store.upHistory.six.length === upNoRange.store.upHistory.six.length, true);
+  const upShowAll = await renderRoute('/up-history', (s) => {
+    s.setUpRange('2026-01-01', '');
+    s.setUpShowAll(true);
+  });
+  check('显示范围内未 UP 干员：勾上后行数恢复（等于不限范围）',
+    upShowAll.store.upHistory.six.length === upNoRange.store.upHistory.six.length, true);
+  check('显示范围内未 UP 干员：开关出现在右栏',
+    /显示范围内未 UP 干员/.test(upShowAll.html), true);
   check('类型筛选生效：store 两种类型', upTypes.store.upTypes.join(), 'double,classic');
 
   /* 切到五星 */
@@ -527,12 +571,17 @@ try {
       .every((f) => fs.existsSync(path.join(RES, 'data', f))), true);
   check('资源仓库里已无 banner-categories.json（已并入 constants.js）',
     fs.existsSync(path.join(RES, 'data', 'banner-categories.json')), false);
-  check('站点主仓库里不再有数据副本（public/data 是目录联接）',
-    fs.lstatSync(path.join(ROOT, 'public', 'data')).isSymbolicLink(), true);
+  /* public/{data,avatars} 只是开发用的目录联接，并且是 .gitignore 的 ——
+     它可能不存在（默认走 CDN 时用不到），所以这里只断言「站点里没有数据副本」，
+     不再要求联接一定在。 */
+  const pubData = path.join(ROOT, 'public', 'data');
+  check('站点主仓库里没有数据副本（public/data 要么不存在、要么是目录联接）',
+    !fs.existsSync(pubData) || fs.lstatSync(pubData).isSymbolicLink(), true);
+  check('构建产物里不含数据 / 头像（dist 应只有 index.html 与 assets）',
+    !fs.existsSync(path.join(ROOT, 'dist')) || !fs.existsSync(path.join(ROOT, 'dist', 'data')), true);
 
   const resSrc = fs.readFileSync(path.join(ROOT, 'src/lib/resource.js'), 'utf8');
   check('资源模块：指向 Yjun233/akGachaResource', /Yjun233\/akGachaResource/.test(resSrc), true);
-  check('资源模块：构建时走 jsDelivr CDN', /fastly\.jsdelivr\.net/.test(resSrc), true);
   check('资源模块：头像版本可用 commit sha 固定（AVATARS_SHA）',
     /AVATARS_SHA/.test(resSrc), true);
   check('资源模块：dev 与 build 一律走 CDN（保持一致），可用 VITE_RESOURCE=local 回退本地',
@@ -564,6 +613,37 @@ try {
     /publicDir: command === 'serve'/.test(viteCfg), true);
   check('vite：dev server 显式绑定 127.0.0.1（默认只监听 IPv6 的 [::1]）',
     /host: '127\.0\.0\.1'/.test(viteCfg), true);
+
+  /* ---------------- 站点图标 ----------------
+     放在 src/assets（由 Vite 打包并自动加 base），不能放 public/ ——
+     构建时 publicDir 是关掉的（见上面那条断言）。 */
+  const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  check('index.html 引用了 favicon 三件套（png / ico / apple-touch-icon）',
+    /rel="icon"[^>]*favicon\.png/.test(indexHtml)
+    && /rel="icon"[^>]*favicon\.ico/.test(indexHtml)
+    && /rel="apple-touch-icon"[^>]*apple-touch-icon\.png/.test(indexHtml), true);
+  check('图标文件确实存在（src/assets）',
+    ['favicon.ico', 'favicon.png', 'apple-touch-icon.png']
+      .every((f) => fs.existsSync(path.join(ROOT, 'src', 'assets', f))), true);
+
+  /* ---------------- 统计表冻结前两列 ---------------- */
+  const statSrc = fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8');
+  check('统计表：前两列定宽（sticky 的 left 偏移必须等于第 1 列宽度）',
+    /<colgroup>/.test(statSrc) && count(statSrc, /<col style="width: \d+px"/g) === 2, true);
+  check('统计表：冻结「实装时间」「干员」两列（CSS sticky + 第 2 列 left=100px）',
+    /stat-tbl th:nth-child\(-n\+2\)[\s\S]{0,80}position:sticky/.test(cssAll)
+    && /stat-tbl td:nth-child\(2\)[\s\S]{0,120}left:100px/.test(cssAll), true);
+  check('统计表：冻结列用 background:inherit 保证不透明（依赖 tbody tr 有背景色）',
+    /stat-tbl tbody tr\{background:#fff\}/.test(cssAll), true);
+  /* ⚠️ 冻结列表头的 z-index 必须**高于**分组表头，否则 DOM 靠后的「出率提升」会盖住「干员」。
+     而全局 `table.grid.floating thead tr:first-child th`（特异性 0,3,4）会压过
+     只写到 `.stat-tbl` 的规则 —— 所以选择器必须带上 .floating 与 tr。 */
+  check('统计表：冻结列表头 z-index 高于分组表头（选择器要压过 .floating 那条）',
+    /table\.grid\.stat-tbl\.floating thead tr:first-child th:nth-child\(-n\+2\)\{z-index:8\}/.test(cssAll), true);
+  /* 排序按钮要填满容器：否则 .seg 的框比按钮总宽大出一截，hover/选中只覆盖按钮 */
+  check('纵轴排序：按钮填满分段容器（不留不参变色的空白）',
+    /\.seg\.mini\{flex:0 0 auto\}/.test(cssAll)
+    && /\.seg\.mini button\{[^}]*width:60px/.test(cssAll), true);
 } finally {
   await vite.close();
 }

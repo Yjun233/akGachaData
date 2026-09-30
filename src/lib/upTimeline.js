@@ -37,7 +37,7 @@
  * - **手绘 text 的样式要用 zrender 的属性**（`fontSize` / `align` / `verticalAlign`），
  *   写 CSS 的 `font` 简写或 `textAlign` 都不生效；旋转用元素的 `rotation` + `originX/Y`。
  */
-import { CAT_COLOR, CAT_TINT, CAT_DEEP, SHOP } from './constants.js';
+import { TYPE_LABEL,BANNER_CATEGORIES , CAT_COLOR, CAT_TINT, CAT_DEEP, SHOP } from './constants.js';
 import { avatarUrl } from './avatars.js';
 import { diffDays } from './date.js';
 
@@ -248,7 +248,7 @@ export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorBy
           `<b>${row.name}</b>（${row.rarity}★）`,
           `${mark.bannerName}`,
           `卡池时间：${mark.date} ~ ${mark.endDate}`,
-          `类型：${mark.type}（${mark.cat}）`,
+          `类型：${TYPE_LABEL[mark.type]}（${mark.cat}）`,
         ];
         if (mark.isShop) lines.push(`<b style="color:${SHOP.color}">商店兑换</b>`);
         if (row.releaseDate) {
@@ -392,8 +392,17 @@ export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorBy
           if (mark.isShop) {
             children.push({
               type: 'circle',
-              shape: { cx: cx + d - 2, cy: cy - d / 2 + 2, r: 4.5 },
-              style: { fill: SHOP.color, stroke: '#fff', lineWidth: 1.5 },
+              shape: { cx: cx + d - 2, cy: cy - d / 2 + 2, r: 3.5 },
+              style: { fill: SHOP.color, stroke: '#fff', lineWidth: 1.2 },
+            });
+          }
+
+          /* 中坚甄选 = 右下角的蓝色小圆点（两种模式一致） */
+          if (mark.type === 'clafes') {
+            children.push({
+              type: 'circle',
+              shape: { cx: cx + d - 2, cy: cy + d / 2 - 2, r: 3.5 },
+              style: { fill: CAT_COLOR[BANNER_CATEGORIES[mark.type]], stroke: '#fff', lineWidth: 1.2 },
             });
           }
 

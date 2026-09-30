@@ -11,7 +11,7 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  TYPE_LABEL, TYPE_ORDER, CAT_ORDER, CAT_COLOR, CAT_INK, TYPES_BY_CATEGORY, UP_SORTS,
+  TYPE_LABEL, TYPE_ORDER, CAT_ORDER, CAT_COLOR, CAT_INK, TYPES_BY_CATEGORY, UP_SORT_ROWS,
 } from '../lib/constants.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
@@ -100,6 +100,7 @@ function resetUp() {
   site.setUpSort('release-asc');
   site.setUpTypes([]);
   site.setUpShopOnly(false);
+  site.setUpShowAll(false);
 }
 </script>
 
@@ -116,7 +117,7 @@ function resetUp() {
         <label for="f-type">寻访类型</label>
         <select id="f-type" v-model="site.filters.type">
           <option value="">全部类型</option>
-          <option v-for="t in TYPE_ORDER" :key="t" :value="t">{{ TYPE_LABEL[t] }}（{{ t }}）</option>
+          <option v-for="t in TYPE_ORDER" :key="t" :value="t">{{ TYPE_LABEL[t] }}</option>
         </select>
       </div>
       <div class="fgroup">
@@ -153,10 +154,9 @@ function resetUp() {
       </div>
       <div class="btn-row">
         <button class="btn" type="button" @click="site.setRefDate(site.today)">今天</button>
-        <button class="btn" type="button" @click="site.setRefDate(site.earliestDate)">全部</button>
       </div>
       <div class="fhint">
-        仅统计 <code>startDate ≤ 参考日期</code> 的卡池，用于回看任意历史时点的出率提升记录。
+        仅统计 <code>卡池开启日期 ≤ 参考日期</code> 的卡池，用于回看任意历史时点的出率提升记录。
         不影响「卡池列表」页。
       </div>
       <div class="fresult">{{ statResult }}</div>
@@ -240,7 +240,7 @@ function resetUp() {
     <!-- UP 历史一览 -->
     <div v-else class="drawer-bd pane pane-up">
       <div class="fgroup">
-        <label>星级（一次只显示一个）</label>
+        <label>切换星级</label>
         <div class="seg">
           <button
             type="button" :class="{ on: site.upRarity === 6 }"
@@ -288,13 +288,30 @@ function resetUp() {
 
       <p v-if="upError" class="ferr">{{ upError }}</p>
 
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.upShowAll"
+          @change="site.setUpShowAll($event.target.checked)"
+        />
+        <span>显示范围内未 UP 干员</span>
+      </label>
+
       <div class="fgroup">
         <label>纵轴排序</label>
-        <div class="seg wrap">
-          <button
-            v-for="s in UP_SORTS" :key="s.id" type="button"
-            :class="{ on: site.upSort === s.id }" @click="site.setUpSort(s.id)"
-          >{{ s.label }}</button>
+        <div class="sortrows">
+          <div v-for="r in UP_SORT_ROWS" :key="r.label" class="sortrow">
+            <span class="sortlabel">{{ r.label }}</span>
+            <div class="seg mini">
+              <button
+                type="button" :class="{ on: site.upSort === r.asc }"
+                @click="site.setUpSort(r.asc)"
+              >升序</button>
+              <button
+                type="button" :class="{ on: site.upSort === r.desc }"
+                @click="site.setUpSort(r.desc)"
+              >降序</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -349,10 +366,6 @@ function resetUp() {
 
       <div class="btn-row">
         <button class="btn" type="button" @click="resetUp">全部重置</button>
-      </div>
-      <div class="fhint">
-        「时间范围」只改变图表的<b>横轴可视范围</b>，纵轴仍保留全部干员；
-        条形从<b>实装日</b>画到筛选下最后一次 UP（勾「只看进店」时画到最后一次进店）。
       </div>
       <div class="fresult">{{ upResult }}</div>
     </div>

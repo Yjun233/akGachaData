@@ -18,28 +18,25 @@ const groups = computed(() => site.statGroups);
 
 <template>
   <div class="card">
-    <div class="hd"><h2>出率提升记录</h2></div>
-
-    <div class="grp-sep" id="g1">六星干员</div>
     <div class="pair">
       <div class="pair-col">
-        <div id="s-6-std" class="sec-title c-std">标准寻访</div>
+        <div id="s-6-std" class="sec-title c-std">六星干员·标准寻访</div>
         <StatTable table-id="6-std" :rows="groups['6-std']" />
       </div>
       <div class="pair-col">
-        <div id="s-6-mid" class="sec-title c-mid">中坚寻访</div>
+        <div id="s-6-mid" class="sec-title c-mid">六星干员·中坚寻访</div>
         <StatTable table-id="6-mid" :rows="groups['6-mid']" split />
       </div>
     </div>
 
-    <div class="grp-sep" id="g2">五星干员</div>
+    <div class="grp-sep"></div>
     <div class="pair">
       <div class="pair-col">
-        <div id="s-5-std" class="sec-title c-std">标准寻访</div>
+        <div id="s-5-std" class="sec-title c-std">五星干员·标准寻访</div>
         <StatTable table-id="5-std" :rows="groups['5-std']" />
       </div>
       <div class="pair-col">
-        <div id="s-5-mid" class="sec-title c-mid">中坚寻访</div>
+        <div id="s-5-mid" class="sec-title c-mid">五星干员·中坚寻访</div>
         <StatTable table-id="5-mid" :rows="groups['5-mid']" split />
       </div>
     </div>

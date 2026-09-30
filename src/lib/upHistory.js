@@ -13,7 +13,10 @@
  * - `types`：只保留这些卡池类型（`null` / 空数组 = 全部）
  * - `shopOnly`：只保留 `isShop` 的记录（与 `types` 互斥，由右栏保证）
  * - **在某筛选下没有任何记录的干员不占行**（否则勾「只看进店」会出现一排空行）
- * - 时间范围**不参与**这里 —— 它只控制图表的横轴范围，纵轴始终保留全部干员
+ * - `range`：时间范围。它**同时**决定横轴可视范围与「这位干员占不占行」——
+ *   范围内一个标记都没有的干员默认不显示（`null` = 不做这层过滤，
+ *   对应右栏的「显示范围内未 UP 干员」勾选框）。
+ *   ⚠️ 2026-09-30 口径调整：以前时间范围只改横轴、纵轴始终保留全部干员。
  */
 import { diffDays } from './date.js';
 
@@ -42,6 +45,8 @@ function sorter(sort) {
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
+ * @param {{from?:string,to?:string}|null} [ctx.range] 横轴可视范围；给了就**同时**
+ *        决定「这位干员占不占行」—— 范围内一个标记都没有的不占行（见下）
  * @param {string}  [ctx.sort]         release-asc / release-desc / lastUp-asc / lastUp-desc
  */
 export function computeUpHistory({
@@ -51,6 +56,7 @@ export function computeUpHistory({
   relDateOf,
   types = null,
   shopOnly = false,
+  range = null,
   sort = 'release-asc',
 }) {
   const typeSet = types && types.length ? new Set(types) : null;
@@ -89,6 +95,15 @@ export function computeUpHistory({
     const marks = r.marks.filter((m) => (!typeSet || typeSet.has(m.type))
       && (!shopOnly || m.isShop));
     if (!marks.length) continue; // 该筛选下没有任何记录 → 不占行
+
+    /* 时间范围**也要**参与「这位干员占不占行」：
+       可视范围内一个标记都没有的话，画出来只剩一根横条（甚至整条都在范围外），
+       既没有信息量又白占一行。（2026-09-30 口径调整：以前时间范围只改横轴、纵轴保留全部干员。） */
+    if (range && (range.from || range.to)) {
+      const visible = marks.some((m) => (!range.from || m.date >= range.from)
+        && (!range.to || m.date <= range.to));
+      if (!visible) continue;
+    }
 
     const op = operatorByName[r.name];
     rows.push({

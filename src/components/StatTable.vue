@@ -46,6 +46,12 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
 <template>
   <div class="tbl-scroll plain">
     <table class="grid floating stat-tbl">
+      <!-- 只给前两列定宽：它们要 sticky 冻结，第 2 列的 left 偏移必须等于第 1 列的实际宽度，
+           不能让它随内容变。最宽的干员名「凯尔希·思衡托」约 91px + 左右内边距 22px → 116px。 -->
+      <colgroup>
+        <col style="width: 100px" />
+        <col style="width: 116px" />
+      </colgroup>
       <thead>
         <tr>
           <th

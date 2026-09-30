@@ -221,7 +221,11 @@ const checks = [
   ['宽屏：兑 标记出现', count(wide.banners, /mk-shop/g) > 0, true],
   ['宽屏：每行 7 列', count(wide.banners.split('</tr>')[1] || '', /<td/g), 7],
   ['宽屏：colgroup 固定列宽', count(wide.banners, /<colgroup>/g), 1],
-  ['宽屏：表格宽度 1225px', wide.banners.includes('width:1225px'), true],
+  // ⚠️ 冒烟测的是 prototype/index.html —— **原型已冻结**，卡池表仍是「固定 1225px 不拉伸」的旧排版；
+  //   Vue 版早就改成 width:100% + min-width:1225px（宽屏铺满）了。这里按原型的实际写法断言，
+  //   并用 style="width:1225px" 精确匹配 —— 别写 includes('width:1225px')，
+  //   因为 min-width:1225px 里也含这个子串，会永远通过。
+  ['宽屏：卡池表固定宽 1225px（原型冻结版）', /style="width:1225px"/.test(wide.banners), true],
 
   // ---- 窄屏形态 ----
   ['窄屏：卡池列表改用卡片', count(narrow.banners, /class="bcard"/g), 430],

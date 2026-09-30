@@ -125,7 +125,7 @@ aside.drawer.show{transform:none}
   border-bottom:1px solid var(--border);background:#fbfdff;flex:0 0 auto;
 }
 .drawer-hd .h{font-size:14px;font-weight:700;color:var(--blue-900);flex:1 1 auto}
-.drawer-close{cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px}
+.drawer-close{cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border:none;border-radius:6px;background-color:#fbfdff;}
 .drawer-close:hover{background:var(--blue-100);color:var(--blue-700)}
 .drawer-bd{padding:14px;display:flex;flex-direction:column;gap:14px}
 
@@ -215,9 +215,23 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 /* ---------------- 右栏：卡池类型按钮组（UP 历史） ----------------
    两级：大类按钮（全选 / 取消该大类）+ 其下的类型按钮（点了立刻筛选、选中变蓝）。
    以前是下拉菜单，展开再勾选太麻烦，改成常驻按钮组。 */
+/* ---------------- 右栏：纵轴排序（UP 历史） ----------------
+   两行「左侧定宽标签 + 右侧升/降序分段按钮」。
+   ⚠️ 不要直接把 <span> 塞进 .seg —— .seg button 有 flex:1 1 0，
+   标签会被拉成一半宽度、和按钮挤在一起很别扭，所以标签单独放外面。 */
+.sortrows{display:flex;flex-direction:column;gap:6px}
+.sortrow{display:flex;align-items:center;gap:8px}
+.sortlabel{
+  flex:0 0 62px;font-size:12px;font-weight:600;color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.seg.mini{flex:0 0 auto}
+/* 按钮**填满**容器：否则 .seg 的边框比按钮总宽大出一截，
+   选中的蓝底 / hover 的浅蓝都只盖住按钮，右边那块空白不变色，看起来「框和按钮对不上」。 */
+.seg.mini button{flex:0 0 auto;width:60px;padding:5px 0;text-align:center}
+
 .fcount{margin-left:6px;font-weight:500;color:var(--muted)}
-.typebtns{display:flex;flex-direction:column;gap:8px}
-.typebtns.disabled .tgroup{background:#f6f8fb}
+.typebtns{display:flex;flex-direction:column;gap:8px}.typebtns.disabled .tgroup{background:#f6f8fb}
 .tgroup{border:1px solid var(--blue-100);border-radius:9px;overflow:hidden;background:#fff}
 .tcat{
   display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;
@@ -255,7 +269,7 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .tl-scroll{
   margin:0 16px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;
   overflow:auto;overscroll-behavior:contain;
-  max-height:max(320px, calc(100dvh - var(--top-h) - 210px));
+  max-height:max(320px, calc(100dvh - var(--top-h) - 150px));
   scrollbar-color:#9db4cf #eef3f9;
 }
 .tl-scroll::-webkit-scrollbar{width:13px;height:13px}
@@ -293,7 +307,7 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 
 /* ---------------- 内容区 ---------------- */
 main.content{
-  padding:calc(var(--top-h) + 16px) 20px 60px;min-width:0;
+  padding:calc(var(--top-h) + 16px) 20px 10px;min-width:0;
   transition:margin .2s ease,padding .2s ease;
 }
 /* 顶部说明块（noscript 兜底用的 .note 已随 Vue 阶段调整） */
@@ -319,10 +333,10 @@ main.content{
    统计表最坏情况距顶 324px（横屏停靠时内容区变窄、卡片头换行更多），
    说明行 .toc-hint 删掉后又少了约 34px，故余量由 285 收到 250。 */
 :root{
-  --tbl-max:max(180px, calc(100vh  - var(--top-h) - 130px));
-  --tbl-max:max(180px, calc(100dvh - var(--top-h) - 130px));
-  --tbl-max-sec:max(180px, calc(100vh  - var(--top-h) - 250px));
-  --tbl-max-sec:max(180px, calc(100dvh - var(--top-h) - 250px));
+  --tbl-max:max(180px, calc(100vh  - var(--top-h) - 50px));
+  --tbl-max:max(180px, calc(100dvh - var(--top-h) - 50px));
+  --tbl-max-sec:max(180px, calc(100vh  - var(--top-h) - 120px));
+  --tbl-max-sec:max(180px, calc(100dvh - var(--top-h) - 120px));
 }
 /* 宽度足够时容器收缩到表格宽度（width:fit-content）——
    否则容器会铺满父级，纵向滚动条被推到内容区右边缘、离表格老远。
@@ -343,12 +357,14 @@ main.content{
 }
 .tbl-scroll::-webkit-scrollbar-thumb:hover{background:#7f9dbd}
 .tbl-scroll::-webkit-scrollbar-corner{background:#eef3f9}
-/* table-layout:fixed + <colgroup> 显式列宽 —— 全屏时表格不会拉伸占满屏幕。
-   （卡池列表用这套；统计表改用下面 .stat-tbl 的内容自适应列宽） */
+/* table-layout:fixed + <colgroup> —— 卡池列表用这套：各列按 BANNER_COLS 的比例分配宽度，
+   每列再给一个 min-width 下限，表格自身 min-width = 各列之和（1225px）。
+   于是宽屏铺满可用宽度、窄屏退到 1225px 后横向滚动。
+   （统计表改用下面 .stat-tbl 的内容自适应列宽，表格不铺满） */
 table.grid{border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:13px}
 table.grid th,table.grid td{
   padding:8px 10px;border-bottom:1px solid var(--border);
-  text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;
+  text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;
 }
 table.grid thead th{
   /* line-height 必须写死：默认 normal 下，13px 的分组表头（.group）内容高度
@@ -423,6 +439,35 @@ table.grid.stat-tbl td.wrapcell{
   white-space:nowrap;overflow-wrap:normal;word-break:normal;
   padding-top:8px;padding-bottom:8px;
 }
+
+/* ---------------- 统计表：冻结「实装时间」「干员」两列 ----------------
+   横向滚动时这两列钉在左边（配合 StatTable 里的 colgroup 定宽；第 2 列的 left
+   必须等于第 1 列的实际宽度，所以第 1 列用 width/min/max 三重钉死，不给它撑开的机会）。
+
+   ⚠️ 冻结单元格必须**不透明**，否则横向滚动时后面的内容会透出来。这里用
+   `background:inherit` —— 所以下面同时把 tbody tr 的背景显式写出来（否则奇数行
+   tr 没有背景，inherit 拿到的是透明，滚动时就会穿帮）。 */
+table.grid.stat-tbl th:nth-child(1),
+table.grid.stat-tbl td:nth-child(1){
+  width:100px;min-width:100px;max-width:100px;left:0;
+}
+table.grid.stat-tbl th:nth-child(2),
+table.grid.stat-tbl td:nth-child(2){
+  width:116px;min-width:116px;max-width:116px;left:100px;
+}
+table.grid.stat-tbl th:nth-child(-n+2),
+table.grid.stat-tbl td:nth-child(-n+2){position:sticky}
+table.grid.stat-tbl tbody tr{background:#fff}
+table.grid.stat-tbl tbody tr:nth-child(even){background:#fcfdff}
+table.grid.stat-tbl tbody tr:hover{background:#f7fbff}
+table.grid.stat-tbl tbody td:nth-child(-n+2){z-index:2;background:inherit}
+/* 表头两层都要盖住 tbody 的冻结列。
+   ⚠️ 选择器必须写到 .floating 这一级：全局规则
+   `table.grid.floating thead tr:first-child th` 的特异性是 (0,3,4)，
+   只写 `table.grid.stat-tbl thead th:nth-child(-n+2)` 是 (0,3,3) —— 会被它压过，
+   结果是四列表头同为 z-index 6，DOM 靠后的「出率提升」把「干员」盖住。
+   这里补上 .floating 与 tr，特异性变成 (0,5,4)，稳赢。 */
+table.grid.stat-tbl.floating thead tr:first-child th:nth-child(-n+2){z-index:8}
 /* 干员列：允许换行，行高自动加高。
    选择器必须写到 table.grid td.ops 这一级 —— 只写 .ops 会被上面
    table.grid td 的 white-space:nowrap 压过（优先级更低），换行不生效。 */
@@ -454,7 +499,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 .avt{position:relative;display:inline-flex;width:26px;height:26px;margin:2px 5px 2px 0;vertical-align:middle}
 .avt .av,.avt-sq{
   width:26px;height:26px;border-radius:7px;display:block;object-fit:cover;
-  background:var(--blue-100);
+  background:var(--blue-100);margin: 0 auto;
 }
 .avt .corners{position:absolute;top:-6px;right:-5px;display:flex;gap:2px;pointer-events:none}
 .avt .corners .mk{
@@ -540,7 +585,8 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   padding:12px 16px;color:var(--ink-2);font-size:12.5px;
 }
 .note b{color:var(--blue-700)}
-footer.foot{color:var(--muted);font-size:12px;text-align:center;padding:22px 0 8px;line-height:1.9}
+/* 注：页脚（footer.foot）与各页的说明块（.note）已于 2026-09-30 移除，
+   来源与版权声明统一放在左栏底部（见 NavDrawer），样式随之删除。 */
 .empty{padding:26px;text-align:center;color:var(--muted)}
 
 @media (max-width:900px), (orientation:portrait){
@@ -563,14 +609,14 @@ footer.foot{color:var(--muted);font-size:12px;text-align:center;padding:22px 0 8
 }
 /* 视口偏矮（桌面窄高窗口等）：收紧表格限高余量，
    否则表格容器底部的横向滚动条会被挤出视野。实测 1024×600 / 900×500 均覆盖。 */
-@media (max-height:620px){
+/* @media (max-height:620px){
   :root{
-    --tbl-max:max(140px, calc(100vh  - var(--top-h) - 130px));
-    --tbl-max:max(140px, calc(100dvh - var(--top-h) - 130px));
-    --tbl-max-sec:max(140px, calc(100vh  - var(--top-h) - 240px));
-    --tbl-max-sec:max(140px, calc(100dvh - var(--top-h) - 240px));
+    --tbl-max:max(140px, calc(100vh  - var(--top-h) - 30px));
+    --tbl-max:max(140px, calc(100dvh - var(--top-h) - 30px));
+    --tbl-max-sec:max(140px, calc(100vh  - var(--top-h) - 150px));
+    --tbl-max-sec:max(140px, calc(100dvh - var(--top-h) - 150px));
   }
-}
+} */
 
 /* ---------------- 图表（首次进店间隔） ----------------
    每个干员一个点、点上要写干员名，横轴还要写完整的首次进店日期 ——

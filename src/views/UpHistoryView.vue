@@ -16,7 +16,7 @@
  *
  * 已排除限定干员；一次只显示一个星级（右栏切换，默认六星）。
  */
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { buildUpTimeline, chartHeight, minInnerWidth, TL } from '../lib/upTimeline.js';
 import EChart from '../components/EChart.vue';
@@ -41,8 +41,22 @@ const innerW = computed(() => minInnerWidth(built.value.xMin, built.value.xMax))
 
 /** 星级的汉字写法 —— 界面上要写「六星 / 五星」，不能直接输出 6 / 5 */
 const rarityChar = computed(() => (site.upRarity === 5 ? '五' : '六'));
-const otherChar = computed(() => (site.upRarity === 5 ? '六' : '五'));
-const otherCount = computed(() => (site.upRarity === 5 ? data.value.six.length : data.value.five.length));
+
+/* ---- 横向滚动条默认停在最右侧 ----
+   最新的 UP 都在右端，打开页面先看到最新的一段才合理。
+   ⚠️ 要等两拍：① ECharts 是 onMounted 里才 init 的，nextTick 时画布可能还没撑开；
+   ② 画布撑开后 scrollWidth 才准。所以 rAF 里再补一次。 */
+const scrollEl = ref(null);
+async function scrollToRight() {
+  await nextTick();
+  const el = scrollEl.value;
+  if (!el) return;
+  el.scrollLeft = el.scrollWidth - el.clientWidth;
+  requestAnimationFrame(() => { el.scrollLeft = el.scrollWidth - el.clientWidth; });
+}
+onMounted(scrollToRight);
+/** 切星级会整体换一批干员，重新贴回最右 */
+watch(() => site.upRarity, scrollToRight);
 
 const filterText = computed(() => {
   if (site.upShopOnly) return '只看进店';
@@ -54,27 +68,14 @@ const filterText = computed(() => {
 <template>
   <div class="card">
     <div class="hd">
-      <h2>UP 历史一览</h2>
       <span class="count">
-        {{ rarityChar }}星 {{ rows.length }} 位 · {{ filterText }} ·
-        {{ otherChar }}星 {{ otherCount }} 位可切换
+        {{ rarityChar }}星 {{ rows.length }} 位 · {{ filterText }}
       </span>
     </div>
 
-    <div class="note" style="margin: 14px 16px 4px">
-      每位干员一条横条：从<b>实装日</b>画到当前筛选下<b>最后一次 UP</b> 的卡池开始日；
-      条上按卡池开始日打标记（圆的左边缘对齐日期，超出可视范围的两端直接截断）。
-      标记统一是「浅底圆 + <b>大类色圆环</b>」——
-      <b style="color:#8a6d00">标准寻访</b> / <b style="color:#00628f">中坚寻访</b> /
-      <b style="color:#5b21b6">限定寻访</b>，环内是头像（图片模式）或干员名首字（简洁模式），
-      <b style="color:#15803d">商店兑换</b>是标记右上角的绿色小圆点；悬停可看该次卡池信息。
-      <b>已排除限定干员</b>；横轴斜排在顶部且固定（每月 1 号一条竖线），左侧名字列固定。
-      右栏的「时间范围」只改变横轴可视范围，纵轴始终保留全部干员。
-    </div>
-
-    <div class="grp-sep" :id="site.upRarity === 5 ? 'uh5' : 'uh6'">{{ rarityChar }}星干员 · UP 历史</div>
+    <div class="grp-sep" :id="site.upRarity === 5 ? 'uh5' : 'uh6'">{{ rarityChar }}星干员</div>
     <div v-if="!rows.length" class="empty">当前筛选下没有{{ rarityChar }}星干员的 UP 记录</div>
-    <div v-else class="tl-scroll">
+    <div v-else ref="scrollEl" class="tl-scroll">
       <div class="tl-inner" :style="{ minWidth: innerW + 'px' }">
         <!-- 顶部：固定的横轴刻度条 -->
         <div class="tl-head">
