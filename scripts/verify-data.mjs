@@ -191,7 +191,12 @@ check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.
 check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 26 位限定）', upAll.all.length, 204);
 check('UP 历史：不含任何限定干员',
   upAll.all.every((r) => !operators[r.name]?.isLimited), true);
-check('UP 历史：标记总数', upAll.all.reduce((a, r) => a + r.count, 0), 2495);
+/* 标记总数改成**独立算一遍**：把每个卡池里 5/6★ 且非限定的 UP 干员数加起来。
+   （原来写死 2495，一更新数据就红；独立算法还能顺带核对 computeUpHistory 没漏没重。） */
+const expectedMarks = banners.reduce((n, b) => n
+  + b.upOperators.filter((o) => !o.isLimited && (o.rarity || 0) >= 5).length, 0);
+check('UP 历史：标记总数 = 各卡池 UP 干员数之和',
+  upAll.all.reduce((a, r) => a + r.count, 0), expectedMarks);
 check('UP 历史：每位干员的标记按日期升序',
   upAll.all.every((r) => r.marks.every((m, i) => i === 0 || r.marks[i - 1].date <= m.date)), true);
 check('UP 历史：lastDate = 最后一个标记的日期',

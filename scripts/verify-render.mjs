@@ -108,14 +108,21 @@ try {
   const banners = await renderRoute('/');
   const bh = banners.html;
 
+  /* ⚠️ 卡池数 / 快照日会随每次数据更新而变，**不要写死** —— 写成从 metadata 派生的期望值。
+     （曾写死 430 / 2026-09-29，2026-09-30 数据更新到 431 后一堆断言集体变红。） */
+  const META = banners.store.meta;
+  const BANNER_N = META.servers.find((x) => x.id === 'sc').bannerCount;
+  const SNAP = META.generatedAt;
+
   check('数据层加载成功', banners.store.error, '');
-  check('卡池总数', banners.store.banners.length, 430);
+  check('卡池总数 = metadata.bannerCount', banners.store.banners.length, BANNER_N);
   check('干员总数', banners.store.operatorCount, 230);
   check('默认服务器', banners.store.server, 'sc');
-  check('参考日期初始值 = 数据快照日', banners.store.refDate, '2026-09-29');
+  check('参考日期初始值 = 数据快照日', banners.store.refDate, SNAP);
 
   check('卡池列表页渲染出卡片/表格', count(bh, /class="grid floating"/g) >= 1, true);
-  check('卡池数据行数', count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr>/g), 430);
+  check('卡池数据行数 = 卡池总数',
+    count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr>/g), BANNER_N);
   check('表头：出率提升（6★）', count(bh, /出率提升（6★）/g), 1);
   check('表头：出率提升（5★）', count(bh, /出率提升（5★）/g), 1);
   /* ⚠️ 别再用 `includes('width:1225px')` —— `min-width:1225px` 里也含这个子串，
@@ -125,9 +132,10 @@ try {
   check('「进行中」胶囊', count(bh, /pill-live/g) >= 1, true);
   check('商店兑换标记「兑」', count(bh, /mk-shop/g) >= 1, true);
   check('限定标记「限」', count(bh, /mk-lim/g) >= 1, true);
-  check('结果提示（命中 N / M）', /命中 430 \/ 430 个卡池/.test(bh), true);
+  check('结果提示（命中 N / M）',
+    new RegExp(`命中 ${BANNER_N} / ${BANNER_N} 个卡池`).test(bh), true);
   check('左栏元信息：干员 230 位', /干员 <b>230<\/b> 位/.test(bh), true);
-  check('左栏元信息：卡池 430 个', /卡池 <b>430<\/b> 个/.test(bh), true);
+  check('左栏元信息：卡池数', new RegExp(`卡池 <b>${BANNER_N}</b> 个`).test(bh), true);
 
 
   /* ---------------- 统计页 ---------------- */
@@ -185,8 +193,9 @@ try {
 
   /* 抽样：与原型逐格核对过的干员应出现在统计页 */
   check('统计页：包含「推进之王」', sh.includes('推进之王'), true);
-  check('统计页：结果提示含参考日期', /参考日期 2026-09-29/.test(sh), true);
-  check('统计页：可见卡池 430 个', /可见卡池 430 个/.test(sh), true);
+  check('统计页：结果提示含参考日期', new RegExp(`参考日期 ${SNAP}`).test(sh), true);
+  check('统计页：可见卡池数', new RegExp(`可见卡池 ${BANNER_N} 个`).test(sh), true);
+  /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值 */
   check('统计页：参与统计干员 204 位', /参与统计干员 204 位/.test(sh), true);
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */

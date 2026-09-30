@@ -4,9 +4,20 @@
 //  - 参考日期只影响出率提升记录，不影响卡池列表
 // 另外做简易 CSS 级联断言，防止优先级把样式规则吃掉。
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runPage } from './lib/dom-shim.mjs';
 
 const html = fs.readFileSync(process.argv[2], 'utf8');
+
+/* ⚠️ 卡池数会随数据更新而变（2026-09-30 就从 430 变成 431），**不要写死** ——
+   从资源仓库的 metadata 派生。冒烟测的是 prototype/index.html，而它就是拿这份数据生成的。 */
+const META = JSON.parse(fs.readFileSync(path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)), '..', '..',
+  'akGachaResource', 'data', 'metadata.json',
+), 'utf8'));
+const BANNER_N = META.servers.find((s) => s.id === 'sc').bannerCount;
+const SNAP = META.generatedAt;
 
 const epilogue = `
   const ref = state.refDate;
@@ -128,7 +139,7 @@ const statChunks = wide.stats.split(/<div class="grp-sep"/).filter(c => c.includ
 const checks = [
   // ---- 无 JS 兜底（构建期预渲染） ----
   ['兜底：卡池区已预渲染', /id="view-banners"><div class="card"/.test(html), true],
-  ['兜底：卡池区预渲染为卡片（窄屏可用）', count(staticBanners, /class="bcard"/g), 430],
+  ['兜底：卡池区预渲染为卡片（窄屏可用）', count(staticBanners, /class="bcard"/g), BANNER_N],
   ['兜底：卡池区不含宽表格', count(staticBanners, /<table/g), 0],
   ['兜底：统计区已预渲染', /id="view-stats"><div class="card"/.test(html), true],
   ['兜底：统计区含四节标题', ['1.1','1.2','2.1','2.2'].every(x => staticStats.includes('>' + x + '<')), true],
@@ -211,7 +222,7 @@ const checks = [
 
   // ---- 宽屏形态 ----
   ['宽屏：卡池列表为表格', count(wide.banners, /<table/g), 1],
-  ['宽屏：卡池列表数据行', count(wide.banners, /<tr/g) - 1, 430],
+  ['宽屏：卡池列表数据行', count(wide.banners, /<tr/g) - 1, BANNER_N],
   ['宽屏：无卡片标记', count(wide.banners, /class="bcard"/g), 0],
   ['宽屏：出率提升（6★）/（5★）两列',
     wide.banners.includes('出率提升（6★）') && wide.banners.includes('出率提升（5★）'), true],
@@ -228,16 +239,16 @@ const checks = [
   ['宽屏：卡池表固定宽 1225px（原型冻结版）', /style="width:1225px"/.test(wide.banners), true],
 
   // ---- 窄屏形态 ----
-  ['窄屏：卡池列表改用卡片', count(narrow.banners, /class="bcard"/g), 430],
+  ['窄屏：卡池列表改用卡片', count(narrow.banners, /class="bcard"/g), BANNER_N],
   ['窄屏：卡片视图不再输出宽表格', count(narrow.banners, /<table/g), 0],
   ['窄屏：卡片含干员标签', count(narrow.banners, /class="tag r/g) > 400, true],
 
   // ---- 参考日期的作用范围 ----
-  ['参考日期不影响卡池列表', count(wide.bannersAtPast, /<tr/g) - 1, 430],
+  ['参考日期不影响卡池列表', count(wide.bannersAtPast, /<tr/g) - 1, BANNER_N],
   ['参考日期影响出率提升记录', count(wide.statsAtPast, /<tr/g) < count(wide.statsAtNow, /<tr/g), true],
 
   // ---- 预渲染的卡池视图 ----
-  ['预渲染：输出卡片版', count(wide.preBanners, /class="bcard"/g), 430],
+  ['预渲染：输出卡片版', count(wide.preBanners, /class="bcard"/g), BANNER_N],
   ['预渲染：不输出宽表格', count(wide.preBanners, /<table/g), 0],
 
   // ---- 统计页 ----
@@ -334,7 +345,7 @@ const checks = [
 
   // ---- 日期基准 ----
   ['日期：TODAY 为真实日期格式', /^\d{4}-\d{2}-\d{2}$/.test(wide.today), true],
-  ['日期：SNAPSHOT_DATE = 数据的 generatedAt', wide.snapshotDate, '2026-09-29'],
+  ['日期：SNAPSHOT_DATE = 数据的 generatedAt', wide.snapshotDate, SNAP],
   ['日期：参考日期初始值取数据快照日', wide.refDateInit, wide.snapshotDate],
   ['日期：卡池列表「进行中」按真实日期判断（用 TODAY）',
     /const isLive = b => b\.startDate <= TODAY && TODAY <= b\.endDate;/.test(html), true],

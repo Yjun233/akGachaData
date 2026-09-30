@@ -185,7 +185,7 @@ function buildOption(rows, rarity, ax) {
             show: true,
             position: 'top',
             distance: 6,
-            fontSize: 10,
+            fontSize: 12,
             color: BLUE_DARK,
             formatter: (p) => rows[p.dataIndex].name,
           },

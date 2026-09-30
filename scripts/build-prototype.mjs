@@ -9,6 +9,7 @@
  * 页签切换用纯 CSS（hidden radio + :checked），同样不依赖 JS。
  */
 
+import { existsSync } from 'node:fs';   // ⚠️ fs/promises 没有 existsSync，别混用
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,7 @@ const ROOT = path.resolve(__dirname, '..');
 /* 数据的真身在独立资源仓库 ../akGachaResource（主仓库里没有副本，
    public/ 下那两个只是开发用的目录联接，可能不存在）——直接读真身最稳。 */
 const DATA_DIR = path.resolve(ROOT, '..', 'akGachaResource', 'data');
-if (!fs.existsSync(DATA_DIR)) {
+if (!existsSync(DATA_DIR)) {
   console.error(`找不到资源仓库 ${DATA_DIR}\n请先确认 ../akGachaResource 存在。`);
   process.exit(1);
 }
