@@ -7,8 +7,9 @@
  *  2. 界面：server、refDate、filters、各表排序
  *
  * 关键语义（勿混用）：
- *  - `snapshotDate`  = metadata.generatedAt，数据快照日，**参考日期的初始值**
- *  - `today`         = 页面打开时的真实当天，**卡池列表「进行中」的判定基准**
+ *  - `today`       = 页面打开时的真实当天，**参考日期的初始值**，也是「进行中」的判定基准
+ *  - `updateDates` = 三个服务器各自的**数据更新日**（纯展示，不参与计算）：
+ *                    国服 = metadata.generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt
  */
 import { defineStore } from 'pinia';
 import { BANNER_CATEGORIES } from '../lib/constants.js';
@@ -58,8 +59,12 @@ export const useSiteStore = defineStore('site', {
     availableServers: (s) => (s.meta.servers ?? []).filter((x) => x.available),
     serverMeta: (s) => (s.meta.servers ?? []).find((x) => x.id === s.server) ?? {},
 
-    /** 数据快照日 —— 参考日期的初始值 */
-    snapshotDate: (s) => s.meta.generatedAt || '',
+    /** 三个服务器各自的「数据更新日」（左栏展示用；缺值显示 —） */
+    updateDates: (s) => ({
+      sc: s.meta.generatedAt || '—',
+      en: s.meta.enGeneratedAt || '—',
+      tc: s.meta.tcGeneratedAt || '—',
+    }),
     operatorCount: (s) => s.meta.operatorCount ?? Object.keys(s.operators).length,
 
     /** 当前服务器的卡池（数组，带 id） */
@@ -99,7 +104,7 @@ export const useSiteStore = defineStore('site', {
         categories: s.categories,
         operatorByName: s.operators,
         operatorIndex: this.operatorIndex,
-        refDate: s.refDate || this.snapshotDate,
+        refDate: s.refDate || this.today,
         relDateOf: this.relDateOf,
       });
     },
@@ -149,7 +154,7 @@ export const useSiteStore = defineStore('site', {
 
     /** 四个分节：每组已按各自记录的排序排好 */
     statGroups(s) {
-      const refDate = s.refDate || this.snapshotDate;
+      const refDate = s.refDate || this.today;
       const pick = (rarity, everMid) =>
         sortStatRows(
           this.statRows.filter((r) => r.rarity === rarity && r.everMid === everMid),
@@ -177,7 +182,8 @@ export const useSiteStore = defineStore('site', {
         this.categories = data.categories;
         this.bannersByServer = data.bannersByServer;
         this.server = data.meta.defaultServer;
-        this.refDate = data.meta.generatedAt || '';
+        /* 参考日期初始值 = 打开页面的真实当天（2026-10-01 口径调整；以前取数据快照日） */
+        this.refDate = this.today;
         this.ready = true;
       } catch (err) {
         this.error = err?.message || String(err);
@@ -190,7 +196,7 @@ export const useSiteStore = defineStore('site', {
     setServer(id) {
       if (!id || !this.bannersByServer[id]) return;
       this.server = id;
-      this.refDate = this.snapshotDate;
+      this.refDate = this.today;
       this.filters = emptyFilters();
       this.shopRange = { from: '', to: '' };
       this.upRange = { from: '', to: '' };
@@ -304,7 +310,7 @@ export const useSiteStore = defineStore('site', {
     },
 
     resetRefDate() {
-      this.refDate = this.snapshotDate;
+      this.refDate = this.today;
     },
 
     resetFilters() {
@@ -326,7 +332,7 @@ export const useSiteStore = defineStore('site', {
 
     /** 单行的「最后一次」信息（视图层用） */
     endInfo(arr) {
-      return endInfo(arr, this.refDate || this.snapshotDate);
+      return endInfo(arr, this.refDate || this.today);
     },
   },
 });

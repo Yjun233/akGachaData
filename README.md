@@ -11,21 +11,23 @@
 
 | 路径 | 内容 |
 | --- | --- |
-| `/` | **卡池一览**：430 个卡池，可按寻访类型 / 大类 / 日期 / 干员名筛选 |
-| `/operators` | **出率提升记录**：204 位干员的 UP 次数与商店兑换次数（六星 / 五星 × 标准 / 中坚） |
+| `/` | **卡池一览**：可按寻访类型 / 大类 / 日期 / 干员名筛选 |
+| `/operators` | **出率提升记录**：干员的 UP 次数与商店兑换次数（六星 / 五星 × 标准 / 中坚） |
 | `/shop-interval` | **首次进店间隔**：相邻两次进店隔了多久，看轮换节奏 |
 | `/up-history` | **UP 历史一览**：横向时间轴，看每位干员的出率提升历史 |
 
 ## 快速开始
 
 ```bash
-pnpm install        # 没装 pnpm 可用 npx pnpm@9 install
+pnpm install        # 没装 pnpm 可用 npx --yes pnpm@9 install
 pnpm dev            # http://127.0.0.1:5173
-pnpm build          # 构建到 dist/（纯静态，约 709 KB）
+pnpm build          # 构建到 dist/（纯静态，约 757 KB）
 ```
 
-> 需要联网：**卡池数据与干员头像默认都从 jsDelivr CDN 读取**（见下）。
-> 断网开发可以临时用 `VITE_RESOURCE=local pnpm dev`（读本地资源仓库）。
+> **开发默认读本地**：`public/data`、`public/avatars` 是指向同级 `akGachaResource` 仓库的目录联接，
+> 所以本地改完数据不用推送就能看到效果（首次拿到仓库后需要建这两个联接，见资源仓库的 README）。
+> 想看**线上**数据（jsDelivr CDN）用 `VITE_RESOURCE=cdn pnpm dev`。
+> **构建产物一律走 CDN** —— `dist/` 里不含任何数据或图片。
 
 ## 数据从哪来
 
@@ -39,7 +41,8 @@ https://cdn.jsdelivr.net/gh/Yjun233/akGachaResource@<sha>/avatars/char_306_leizi
 
 所以站点的构建产物里不含任何数据或图片。
 
-- **卡池 / 干员数据**：抓取自 [PRTS Wiki](https://prts.wiki/)（目前只有国服）
+- **卡池 / 干员数据**：**国服**抓取自 [PRTS Wiki](https://prts.wiki/)、**国际服**抓取自
+  [arknights.wiki.gg](https://arknights.wiki.gg/)、**繁中服**由人工维护的表格生成
 - **干员头像**：来自 [ArknightsGameResource](https://github.com/yuanyan3060/ArknightsGameResource)，
   已压缩到 96×96
 
@@ -52,4 +55,4 @@ Vue 3 + Vite + Vue Router + Pinia + ECharts。
 ## 声明
 
 本站点是个人非商业的数据整理项目。《明日方舟》相关素材与数据的著作权归上海鹰角网络科技有限公司所有。
-数据来源为 PRTS Wiki（玩家共建 Wiki）。
+数据来源为 PRTS Wiki 与 arknights.wiki.gg（均为玩家共建 Wiki），繁中服数据来自人工整理的卡池记录表。

@@ -25,7 +25,7 @@ const site = useSiteStore();
 const isImage = computed(() => site.avatarMode === 'image');
 const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'square');
 
-const refDate = computed(() => site.refDate || site.snapshotDate);
+const refDate = computed(() => site.refDate || site.today);
 const sort = computed(() => site.statSort[props.tableId]);
 
 /** 预计算每行的「最后一次出率提升 / 商店兑换」信息，避免模板里反复遍历 */

@@ -63,6 +63,201 @@ check('干员总数', Object.keys(operators).length, meta.operatorCount);
 check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount);
 check('参与统计干员数', rows.length, 204);
 
+/* ---------------- 卡池的三个名字字段（name / scName / enName） ----------------
+   三服卡池的 `name` 都是**国服中文名**（`scName` 是同值的显式一列，便于跨服对齐）；
+   国际服专有的英文名放在 `enName`，只有「限定寻访 / 单六寻访 / 双五寻访」三类有
+   —— 它们三服的叫法不同（国服「遗愿焰火」/ 国际服 "Cremation Last Wish"）。
+   带序号的池子（常驻标准寻访N / 联合行动N…）三服同名，`enName` 为 null。
+   ⚠️ 这里的匹配键是**照着资源仓库 scripts/lib/banner-names.mjs 独立算了一遍**，
+      当作交叉验证（lim / single 只看六星、five 看全集合）。 */
+const nameGroupOf = (t) => (t === 'five' ? 'five' : t === 'single' ? 'single'
+  : /^lim(cel|spr|sum)$/.test(t) ? 'lim' : null);
+const nameKeyOf = (b, g) => {
+  const ups = b.upOperators || [];
+  const xs = g === 'five' ? ups : ups.filter((o) => o.rarity === 6);
+  return [...new Set(xs.map((o) => o.name))].sort().join('|');
+};
+const nameFieldsOk = (b) => Boolean(b.name) && b.scName === b.name && 'enName' in b;
+/** 「限定 / 单六 / 双五」里能反查到英文名的比例 —— 对不上的是「国际服还没出这个池子」
+    和国服特有的「返场」池，所以用比例而不是死数字。 */
+const enNameRate = (list) => {
+  const g = list.filter((b) => nameGroupOf(b.type));
+  return g.length ? g.filter((b) => b.enName).length / g.length : 1;
+};
+
+check('国服：卡池都有 name / scName / enName（且 name === scName）', banners.every(nameFieldsOk), true);
+check('国服：带序号的池子没有英文名（enName 为 null）',
+  banners.filter((b) => !nameGroupOf(b.type)).every((b) => b.enName === null), true);
+check('国服：限定·单六·双五的英文名命中率 > 90%', enNameRate(banners) > 0.9, true);
+
+/* ---------------- 国际服（banners_en.json，由资源仓库的 fetch-data-en.mjs 产出）---------------- */
+
+const enMeta = meta.servers.find((s) => s.id === 'en') || {};
+check('metadata：国际服已启用（available）', enMeta.available, true);
+check('banners_en.json 已产出', fs.existsSync(path.join(RES_DIR, 'banners_en.json')), true);
+
+if (fs.existsSync(path.join(RES_DIR, 'banners_en.json'))) {
+  const enMap = read('banners_en.json');
+  const enBanners = Object.entries(enMap).map(([id, b]) => ({ id, ...b }));
+
+  check('国际服卡池数 = metadata.en.bannerCount', enBanners.length, enMeta.bannerCount);
+  check('国际服卡池的开头 = metadata.en.earliestBanner',
+    Object.keys(enMap).length ? enBanners.map((b) => b.startDate).sort()[0] : null, enMeta.earliestBanner);
+  check('国际服 type 都在本站 11 种之内', enBanners.every((b) => b.type in TYPE_LABEL), true);
+  check('国际服 ID 的类型段与 type 一致', enBanners.every((b) => b.id.includes(`_${b.type}_`)), true);
+  check('国际服 UP 干员都能按中文名对上干员表',
+    enBanners.every((b) => b.upOperators.every((o) => operators[o.name])), true);
+  /* 「国际服还没上线的干员自动排除」这条约定的落地检查：
+     凡出现在国际服卡池里的干员，都必须有 enReleaseDate（否则站点侧会算出空日期）。 */
+  check('国际服卡池里的干员都有国际服实装日',
+    enBanners.every((b) => b.upOperators.every((o) => operators[o.name]?.enReleaseDate)), true);
+  check('国际服「双五寻访」恰好 3 个', enBanners.filter((b) => b.type === 'five').length, 3);
+  check('国际服卡池按 (开始日, id) 升序', (() => {
+    const ks = Object.keys(enMap);
+    for (let i = 1; i < ks.length; i++) {
+      const a = enMap[ks[i - 1]];
+      const b = enMap[ks[i]];
+      const d = a.startDate.localeCompare(b.startDate);
+      if (d > 0 || (d === 0 && ks[i - 1].localeCompare(ks[i]) > 0)) return false;
+    }
+    return true;
+  })(), true);
+
+  /* 名字字段：国际服的 `name` 也是国服中文名，英文名挪到 `enName` */
+  check('国际服：卡池都有 name / scName / enName（且 name === scName）', enBanners.every(nameFieldsOk), true);
+  check('国际服：限定·单六·双五都有英文名（纯 ASCII）',
+    enBanners.filter((b) => nameGroupOf(b.type)).every((b) => /^[\x20-\x7e]+$/.test(b.enName || '')), true);
+  check('国际服：带序号的池子没有英文名（enName 为 null）',
+    enBanners.filter((b) => !nameGroupOf(b.type)).every((b) => b.enName === null), true);
+  /* ⚠️ **5 倍权值的往期限定已剔除**（wiki.gg 的 `|limited = 2`，不算 UP）：
+     剔除后限定寻访只剩「2 六星 + 1 五星」这个标准构成；没剔的话会多出 2~3 个六星。 */
+  const cntRarity = (b, r) => b.upOperators.filter((o) => o.rarity === r).length;
+  check('国际服：限定寻访每池 2 六星 + 1 五星（5 倍权值的往期限定已剔除）',
+    enBanners.filter((b) => /^lim/.test(b.type))
+      .every((b) => cntRarity(b, 6) === 2 && cntRarity(b, 5) === 1), true);
+
+  /* 三个页面在国际服下都要能算出东西（不只是「不报错」）。
+     实装日按服务器取：国际服用 enReleaseDate。 */
+  const enList = Object.entries(enMap).map(([id, b]) => ({ id, ...b }));
+  const enRel = (op) => (op ? op.enReleaseDate || null : null);
+  const enShop = computeFirstShop({
+    banners: enList, operatorByName: operators, relDateOf: enRel, from: '', to: '', axis: 'firstShop', metric: 'gap',
+  });
+  check('国际服：首次进店序列（六星 / 五星）都非空', enShop.six.length > 0 && enShop.five.length > 0, true);
+
+  const enUp = computeUpHistory({
+    banners: enList, categories, operatorByName: operators, relDateOf: enRel, types: null, shopOnly: false, sort: 'release-asc',
+  });
+  check('国际服：UP 历史六星行数 > 0', enUp.six.length > 0, true);
+  check('国际服：UP 历史每行都有实装日（说明没混进未上线的干员）',
+    [...enUp.six, ...enUp.five].every((r) => !!r.releaseDate), true);
+
+  const enStats = computeStats({
+    banners: enList, categories, operatorByName: operators, operatorIndex,
+    refDate: meta.generatedAt, relDateOf: enRel,
+  });
+  check('国际服：统计页有卡片池（出率提升）', Object.keys(enStats.map).length > 0, true);
+}
+
+check('干员表带 enName 字段', Object.values(rawOperators).every((o) => 'enName' in o), true);
+check('干员表带 enClassicDate 字段', Object.values(rawOperators).every((o) => 'enClassicDate' in o), true);
+
+/* ---------------- 繁中服（banners_tc.json，由资源仓库的 fetch-data-tc.mjs 从本地表格产出）---------------- */
+
+const tcMeta = meta.servers.find((s) => s.id === 'tc') || {};
+check('metadata：繁中服已启用（available）', tcMeta.available, true);
+check('banners_tc.json 已产出', fs.existsSync(path.join(RES_DIR, 'banners_tc.json')), true);
+
+if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
+  const tcMap = read('banners_tc.json');
+  const tcBanners = Object.entries(tcMap).map(([id, b]) => ({ id, ...b }));
+  const ofType = (t) => tcBanners.filter((b) => b.type === t);
+
+  check('繁中服卡池数 = metadata.tc.bannerCount', tcBanners.length, tcMeta.bannerCount);
+  check('繁中服卡池的开头 = metadata.tc.earliestBanner',
+    tcBanners.map((b) => b.startDate).sort()[0], tcMeta.earliestBanner);
+  check('繁中服 type 都在本站 11 种之内', tcBanners.every((b) => b.type in TYPE_LABEL), true);
+  check('繁中服 ID 的类型段与 type 一致', tcBanners.every((b) => b.id.includes(`_${b.type}_`)), true);
+  check('繁中服 UP 干员都能按中文名对上干员表',
+    tcBanners.every((b) => b.upOperators.every((o) => operators[o.name])), true);
+  /* 「繁中服还没上线的干员自动排除」的落地检查：卡池里出现的干员都必须有繁中服实装日 */
+  check('繁中服卡池里的干员都有繁中服实装日',
+    tcBanners.every((b) => b.upOperators.every((o) => operators[o.name]?.tcReleaseDate)), true);
+  check('繁中服「双五寻访」恰好 3 个（凝电之钻 / 雾漫荒林 / 流沙涡旋）', ofType('five').length, 3);
+  /* 6 个联动卡池整行被跳过（J 列写「联动」），所以这些干员一个都不该出现。
+     ⚠️ 别用「名字是不是纯英文」来判断 —— 国服本来就有 W 这种英文名干员。 */
+  const COLLAB_OPS = ['Ash', 'Frost', 'Blitz', 'Ela', 'Iana', 'Doc', '麒麟R夜刀', '火龙S黑角',
+    '玛露西尔', '莱欧斯', '齐尔查克', '丰川祥子', '三角初华', '若叶睦'];
+  check('繁中服没有联动干员（6 个联动卡池整行被跳过）',
+    tcBanners.every((b) => b.upOperators.every((o) => !COLLAB_OPS.includes(o.name))), true);
+  check('繁中服卡池按 (开始日, id) 升序', (() => {
+    const ks = Object.keys(tcMap);
+    for (let i = 1; i < ks.length; i++) {
+      const a = tcMap[ks[i - 1]];
+      const b = tcMap[ks[i]];
+      const d = a.startDate.localeCompare(b.startDate);
+      if (d > 0 || (d === 0 && ks[i - 1].localeCompare(ks[i]) > 0)) return false;
+    }
+    return true;
+  })(), true);
+
+  /* 名字字段：繁中服与国服同名，英文名从国际服反查 */
+  check('繁中服：卡池都有 name / scName / enName（且 name === scName）', tcBanners.every(nameFieldsOk), true);
+  check('繁中服：带序号的池子没有英文名（enName 为 null）',
+    tcBanners.filter((b) => !nameGroupOf(b.type)).every((b) => b.enName === null), true);
+  check('繁中服：限定·单六·双五的英文名命中率 > 90%', enNameRate(tcBanners) > 0.9, true);
+
+  /* 序号类：编号从 1 起、连续、且与时间顺序一致（表格没写序号，脚本按时间发号） */
+  for (const t of ['double', 'classic', 'clafes', 'joint', 'stdfes', 'mainfes']) {
+    const list = ofType(t).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
+    check(`繁中服 ${t} 的编号按时间从 1 连续编排`,
+      list.length > 0 && list.every((b, i) => b.name === `${TYPE_LABEL[t]}${i + 1}`), true);
+  }
+
+  /* 各类池子的干员构成（表格的列结构本身就是这么定的） */
+  const cnt = (b, r) => b.upOperators.filter((o) => o.rarity === r).length;
+  check('繁中服常驻标准 / 中坚寻访每池 2 六星 + 3 五星',
+    [...ofType('double'), ...ofType('classic')].every((b) => cnt(b, 6) === 2 && cnt(b, 5) === 3), true);
+  check('繁中服中坚甄选每期 12 六星 + 24 五星',
+    ofType('clafes').every((b) => cnt(b, 6) === 12 && cnt(b, 5) === 24), true);
+  check('繁中服限定寻访每池 2 六星 + 1 五星',
+    tcBanners.filter((b) => /^lim/.test(b.type)).every((b) => cnt(b, 6) === 2 && cnt(b, 5) === 1), true);
+  check('繁中服联合行动每池 4 六星 + 6 五星',
+    ofType('joint').every((b) => cnt(b, 6) === 4 && cnt(b, 5) === 6), true);
+  check('繁中服前路回响每池 3 六星 + 3 五星',
+    ofType('mainfes').every((b) => cnt(b, 6) === 3 && cnt(b, 5) === 3), true);
+  check('繁中服定向甄选每池 6 六星 + 6 五星',
+    ofType('stdfes').every((b) => cnt(b, 6) === 6 && cnt(b, 5) === 6), true);
+  /* 只有常驻标准 / 中坚寻访有「进店」概念（与国服 / 国际服一致） */
+  check('繁中服只有常驻标准/中坚寻访带进店标记',
+    tcBanners.every((b) => ['double', 'classic'].includes(b.type) || !b.upOperators.some((o) => o.isShop)), true);
+
+  /* 三个页面在繁中服下都要能算出东西（实装日按服务器取 tcReleaseDate） */
+  const tcRel = (op) => (op ? op.tcReleaseDate || null : null);
+  const tcShop = computeFirstShop({
+    banners: tcBanners, operatorByName: operators, relDateOf: tcRel, from: '', to: '', axis: 'firstShop', metric: 'gap',
+  });
+  check('繁中服：首次进店序列（六星 / 五星）都非空', tcShop.six.length > 0 && tcShop.five.length > 0, true);
+
+  const tcUp = computeUpHistory({
+    banners: tcBanners, categories, operatorByName: operators, relDateOf: tcRel, types: null, shopOnly: false, sort: 'release-asc',
+  });
+  check('繁中服：UP 历史六星行数 > 0', tcUp.six.length > 0, true);
+  check('繁中服：UP 历史每行都有实装日（说明没混进未上线的干员）',
+    [...tcUp.six, ...tcUp.five].every((r) => !!r.releaseDate), true);
+
+  const tcStats = computeStats({
+    banners: tcBanners, categories, operatorByName: operators, operatorIndex, refDate: meta.generatedAt, relDateOf: tcRel,
+  });
+  check('繁中服：统计页有卡片池（出率提升）', Object.keys(tcStats.map).length > 0, true);
+}
+
+check('干员表带 tcReleaseDate 字段', Object.values(rawOperators).every((o) => 'tcReleaseDate' in o), true);
+check('干员表带 tcClassicDate 字段', Object.values(rawOperators).every((o) => 'tcClassicDate' in o), true);
+/* 三个服务器各有自己的「数据更新日」（左栏展示用） */
+check('metadata：三个服务器都有数据更新日',
+  !!meta.generatedAt && !!meta.enGeneratedAt && !!meta.tcGeneratedAt, true);
+
 // ---- 卡池类型：限定寻访已拆成 庆典 / 春节 / 夏季 ----
 const typeCount = {};
 for (const b of banners) typeCount[b.type] = (typeCount[b.type] || 0) + 1;
@@ -212,8 +407,21 @@ const upShop = computeUpHistory({
 });
 check('UP 历史：只看进店时全部标记都是进店',
   upShop.all.every((r) => r.marks.every((m) => m.isShop)), true);
-check('UP 历史：只看进店的干员数', upShop.all.length, 160);
-check('UP 历史：只看进店的标记数', upShop.all.reduce((a, r) => a + r.count, 0), 536);
+/* ⚠️ 下面两条原来写死 160 / 536 —— 数据一更新（新增卡池）就红。
+   改成**独立算一遍**：直接扫原始卡池数据，数出「非限定、5★ 及以上、isShop」的干员与记录数，
+   既与数据无关，也顺带核对 computeUpHistory 的进店筛选没漏没重。 */
+const shopOps = new Set();
+let shopMarks = 0;
+for (const b of banners) {
+  for (const o of b.upOperators) {
+    if (!o.isShop || o.isLimited || (o.rarity || 0) < 5) continue;
+    shopOps.add(o.name);
+    shopMarks += 1;
+  }
+}
+check('UP 历史：只看进店的干员数 = 有进店记录的干员数', upShop.all.length, shopOps.size);
+check('UP 历史：只看进店的标记数 = 各卡池进店干员数之和',
+  upShop.all.reduce((a, r) => a + r.count, 0), shopMarks);
 
 const upStd = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, types: ['double'],

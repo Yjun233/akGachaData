@@ -3,11 +3,26 @@
  * 左抽屉：页面导航 + 服务器选择 + 数据元信息。
  * 服务器下拉只渲染 metadata.servers 里 available 的项 —— 未来接入新服务器时前端无需改动。
  */
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 
+/**
+ * 卡池数据的来源**按服务器不同**：
+ *   国服来自 PRTS Wiki；国际服来自 arknights.wiki.gg；
+ *   繁中服没有可用的数据站，来自本地人工维护的卡池记录表（没有链接，所以 url 为 null）。
+ * （干员头像一律来自 ArknightsGameResource，见 ../akGachaResource/docs/资源仓库说明.md。）
+ */
+const BANNER_SOURCES = {
+  sc: { label: 'PRTS Wiki', url: 'https://prts.wiki' },
+  en: { label: 'Arknights Wiki（wiki.gg）', url: 'https://arknights.wiki.gg' },
+  tc: { label: '本地卡池记录表', url: null },
+};
 const site = useSiteStore();
+
+/** 当前服务器的卡池数据来源（署名用） */
+const bannerSource = computed(() => BANNER_SOURCES[site.server] ?? BANNER_SOURCES.sc);
 const route = useRoute();
 const router = useRouter();
 const { navShow, toggleNav, closeDrawers, isDocked } = useLayout();
@@ -71,8 +86,10 @@ function onServerChange(e) {
 
     <div class="drawer-note">
       干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.serverMeta.bannerCount ?? 0 }}</b> 个<br />
-      数据更新 <b>{{ site.snapshotDate }}</b><br />
-      卡池信息来源 <a href="https://prts.wiki" target="_blank" rel="noreferrer">PRTS Wiki</a><br /><br />
+      国服数据更新 <b>{{ site.updateDates.sc }}</b><br />
+      国际服数据更新 <b>{{ site.updateDates.en }}</b><br />
+      繁中服数据更新 <b>{{ site.updateDates.tc }}</b><br />
+      卡池信息来源 <a v-if="bannerSource.url" :href="bannerSource.url" target="_blank" rel="noreferrer">{{ bannerSource.label }}</a><span v-else>{{ bannerSource.label }}</span><br /><br />
       网站内使用的游戏图片、文本原文等，仅用于更好地辅助数据查询，其版权属于鹰角网络。本网站与鹰角网络无关。
     </div>
   </aside>

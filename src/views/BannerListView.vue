@@ -2,7 +2,8 @@
 /**
  * 首页：卡池列表。
  * 展示**全部**卡池（不受参考日期影响），只受右栏筛选影响。
- * 宽屏用固定列宽的表格，`(max-width:640px)` 改用卡片。
+ * 宽屏用**铺满容器**的表格（`width:100%` + `min-width:1225px` 兜底，再窄就横向滚动），
+ * `(max-width:640px)` 改用卡片。
  */
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';

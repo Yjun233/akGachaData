@@ -1,6 +1,6 @@
 /**
- * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把两个页面真正渲染出来，
- * 再检查结构 / 数据是否与原型一致。
+ * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**四个页面**（卡池列表 / 出率提升记录 /
+ * 首次进店间隔 / UP 历史一览）真正渲染出来，再检查结构 / 数据是否与原型一致。
  *
  * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 README「本地环境」），
  * 而 SSR 渲染同样会执行组件、store、数据层，足以验证「迁移没有走样」。
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 /* 纯函数工具可以直接 import（无 import.meta.env / .vue 依赖），不必绕 vite */
-import { shiftYears } from '../src/lib/date.js';
+import { shiftYears, localToday } from '../src/lib/date.js';
 /* 配色常量（纯模块，可直接 import）—— 断言的期望值直接引用它，避免抄错色值 */
 import { CAT_COLOR, SHOP } from '../src/lib/constants.js';
 /* 框架包用 Node 原生 import（Vite SSR 会把它们外部化，与组件里用的是同一份实例）；
@@ -43,8 +43,9 @@ globalThis.window = {
 };
 
 /* ---------- fetch stub：直接读磁盘，不发网络请求 ----------
-   站点默认所有环境都走 jsDelivr CDN（见 src/lib/resource.js），所以这里收到的 URL 可能是
-   `https://fastly.jsdelivr.net/gh/…@main/data/operators.json` 这种绝对地址。
+   站点在 **dev 读本地**（`public/{data,avatars}` 目录联接）、**build 才走 CDN**（见 src/lib/resource.js）。
+   SSR 走的是 Vite 的 `import.meta.env.DEV` 分支，所以这里收到的多半是相对路径（如 `/data/operators.json`）；
+   但为稳妥起见，绝对地址（`https://cdn.jsdelivr.net/gh/…@main/data/operators.json`）也一并兼容。
    把 `data/` 或 `avatars/` 之后的路径截出来，直接到**资源仓库的真身**里读，
    这样核对脚本既不依赖网络、也不依赖 public/ 下的目录联接。 */
 const RES_ROOT = path.resolve(ROOT, '..', 'akGachaResource');
@@ -113,12 +114,15 @@ try {
   const META = banners.store.meta;
   const BANNER_N = META.servers.find((x) => x.id === 'sc').bannerCount;
   const SNAP = META.generatedAt;
+  /* 参考日期的初始值 = 打开页面的**真实当天**（2026-10-01 口径调整；以前取数据快照日 SNAP）。
+     三个服务器的「数据更新日」只用于左栏展示，不再参与计算。 */
+  const TODAY = localToday();
 
   check('数据层加载成功', banners.store.error, '');
   check('卡池总数 = metadata.bannerCount', banners.store.banners.length, BANNER_N);
   check('干员总数', banners.store.operatorCount, 230);
   check('默认服务器', banners.store.server, 'sc');
-  check('参考日期初始值 = 数据快照日', banners.store.refDate, SNAP);
+  check('参考日期初始值 = 打开页面的当天', banners.store.refDate, TODAY);
 
   check('卡池列表页渲染出卡片/表格', count(bh, /class="grid floating"/g) >= 1, true);
   check('卡池数据行数 = 卡池总数',
@@ -193,8 +197,13 @@ try {
 
   /* 抽样：与原型逐格核对过的干员应出现在统计页 */
   check('统计页：包含「推进之王」', sh.includes('推进之王'), true);
-  check('统计页：结果提示含参考日期', new RegExp(`参考日期 ${SNAP}`).test(sh), true);
-  check('统计页：可见卡池数', new RegExp(`可见卡池 ${BANNER_N} 个`).test(sh), true);
+  check('统计页：结果提示含参考日期，且等于当天', new RegExp(`参考日期 ${TODAY}`).test(sh), true);
+  /* 「可见卡池」= 开始日不晚于参考日期的卡池数。参考日期现在是**当天**，
+     所以如果有已公布、但还没到开始日的卡池（繁中服就有，国服将来也可能有），
+     这个数会小于卡池总数 —— 别再拿 bannerCount 直接比。 */
+  const visibleOf = (store) => store.banners.filter((b) => b.startDate <= TODAY).length;
+  check('统计页：可见卡池数 = 开始日不晚于当天的卡池数',
+    new RegExp(`可见卡池 ${visibleOf(banners.store)} 个`).test(sh), true);
   /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值 */
   check('统计页：参与统计干员 204 位', /参与统计干员 204 位/.test(sh), true);
 
@@ -218,8 +227,13 @@ try {
   check('首次进店间隔页：两个分节', count(ph, /class="grp-sep"/g), 2);
   check('首次进店间隔页：六星 / 五星分节标题',
     ph.includes('六星干员 · 首次进店间隔') && ph.includes('五星干员 · 首次进店间隔'), true);
-  check('首次进店间隔页：命中数（六星 69 / 五星 91）',
-    /六星 69 位 · 五星 91 位/.test(ph), true);
+  /* ⚠️ 命中数与日期上下限都**会随数据更新变**（新增进店记录就变），不能写死 ——
+     期望值一律从 store 的 firstShop 派生（它算的就是同一份数据）。 */
+  const FS = shop.store.firstShop;
+  check('首次进店间隔页：命中数 = firstShop 的六星 / 五星行数',
+    ph.includes(`六星 ${FS.six.length} 位 · 五星 ${FS.five.length} 位`), true);
+  check('首次进店间隔页：日期输入带上下限（= firstShop.bounds）',
+    ph.includes(`min="${FS.bounds.min}"`) && ph.includes(`max="${FS.bounds.max}"`), true);
   check('首次进店间隔页：两个图表容器', count(ph, /class="echart"/g), 2);
   check('首次进店间隔页：图表外层可横向滚动', count(ph, /class="chart-scroll"/g), 2);
   check('首次进店间隔页：SSR 下不初始化 echarts（无 canvas）', count(ph, /<canvas/g), 0);
@@ -274,16 +288,14 @@ try {
     count(sinceShop.html, /class="tk"[^>]*>0</g), 0);
   check('首次进店间隔页：顶栏标题已切换', /首次进店间隔/.test(ph) && !/出率提升记录<\/span>/.test(ph.slice(0, ph.indexOf('<main'))), true);
 
-  /* 右栏随页面切换：三个页面各自的筛选面板 */
-  check('左栏导航三项',
-    ['卡池列表', '出率提升记录', '首次进店间隔'].every((t) => ph.includes(t)), true);
+  /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四项，卡池列表页不显示进店那块） */
+  check('左栏导航四项',
+    ['卡池列表', '出率提升记录', '首次进店间隔', 'UP 历史一览'].every((t) => ph.includes(t)), true);
   check('首次进店间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
   check('首次进店间隔页：右栏两个日期输入',
     ph.includes('id="shop-from"') && ph.includes('id="shop-to"'), true);
-  check('首次进店间隔页：日期输入带上下限',
-    ph.includes('min="2019-04-30"') && ph.includes('max="2026-09-10"'), true);
-  check('首次进店间隔页：右栏命中提示',
-    /命中 六星 69 位 \/ 五星 91 位/.test(ph), true);
+  check('首次进店间隔页：右栏命中提示（= firstShop 六星 / 五星行数）',
+    new RegExp(`命中 六星 ${FS.six.length} 位 / 五星 ${FS.five.length} 位`).test(ph), true);
   check('首次进店间隔页：不显示卡池筛选表单', !ph.includes('id="f-type"'), true);
   check('统计页右栏不再显示进店筛选', !sh.includes('id="shop-from"'), true);
 
@@ -313,10 +325,12 @@ try {
   check('图片模式：卡池列表换成头像', count(imgBanners.html, /class="av"/g) > 400, true);
   check('图片模式：头像带「限」「兑」角标', count(imgBanners.html, /class="corners"/g) > 0, true);
   check('图片模式：不再渲染名字标签', count(imgBanners.html, /class="tag r/g), 0);
-  /* 头像是真的远程素材了：src 应指向 jsDelivr 上固定 sha 的 avatars/，
-     不再是内联占位图（占位图只在素材缺失时兜底）。 */
-  check('图片模式：头像指向 jsDelivr 上固定 sha 的 avatars/（不是内联占位图）',
-    /src="https:\/\/cdn\.jsdelivr\.net\/gh\/Yjun233\/akGachaResource@[0-9a-f]{40}\/avatars\//.test(imgBanners.html)
+  /* 头像是真的素材了（不是内联占位图 —— 占位图只在素材缺失时兜底）。
+     ⚠️ 来源随环境变：**dev 走本地**（`/avatars/...`，方便直接看本地新素材），
+     构建产物才固定指向 jsDelivr 上某个 sha。所以这里只断言「是 avatars/ 下的真素材」，
+     主机名由针对 resource.js 源码的断言守住。 */
+  check('图片模式：头像用真实素材（不是内联占位图）',
+    /src="(?:https:\/\/cdn\.jsdelivr\.net\/gh\/Yjun233\/akGachaResource@[0-9a-f]{40}\/|\/)avatars\/char_[A-Za-z0-9_]+\.png"/.test(imgBanners.html)
     && !/src="data:image\/svg\+xml/.test(imgBanners.html), true);
 
   const imgStats = await renderRoute('/operators', (s) => s.setAvatarMode('image'));
@@ -344,8 +358,10 @@ try {
   check('UP 历史页：默认显示六星（分节 id = uh6）',
     uh.includes('id="uh6"') && !uh.includes('id="uh5"'), true);
   /* 曾经这里匹配的是右栏的「命中 六星 118 位」—— 于是卡片头把「六星」写成数字 6
-     也照样通过。改成针对卡片头，并额外禁止数字写法。 */
-  check('UP 历史页：卡片头统计（六星 92 位 · …）', /六星 92 位 ·/.test(uhPlain), true);
+     也照样通过。改成针对卡片头，并额外禁止数字写法。
+     ⚠️ 位数会随数据更新变（新增六星就变）→ 从 store 的 upHistory 派生，别写死。 */
+  check('UP 历史页：卡片头统计（六星 N 位 · …）',
+    new RegExp(`六星 ${up.store.upHistory.six.length} 位 ·`).test(uhPlain), true);
   check('UP 历史页：星级一律写汉字（不出现 6星 / 5星）', /[五六]?[0-9]星/.test(uhPlain), false);
   check('UP 历史页：分节标题「六星干员」', /六星干员/.test(uhPlain), true);
   /* 顶部固定刻度条 + 左侧固定名字列 + 主体画布 = 两个图表容器 */
@@ -412,7 +428,8 @@ try {
     ttypeTags(upShop.html).length === 11 && ttypeTags(upShop.html).every((s) => /disabled/.test(s)),
     true);
   check('只看进店：标签提示已禁用', /只看进店（类型筛选已禁用）/.test(upShop.html), true);
-  check('只看进店：命中数变为 六星 69 位', /六星 69 位/.test(upShop.html), true);
+  check('只看进店：命中数变为 六星 N 位（N = upHistory 六星行数）',
+    new RegExp(`六星 ${upShop.store.upHistory.six.length} 位`).test(upShop.html), true);
 
   const upTypes = await renderRoute('/up-history', (s) => {
     s.setUpShopOnly(true);
@@ -593,9 +610,13 @@ try {
   check('资源模块：指向 Yjun233/akGachaResource', /Yjun233\/akGachaResource/.test(resSrc), true);
   check('资源模块：头像版本可用 commit sha 固定（AVATARS_SHA）',
     /AVATARS_SHA/.test(resSrc), true);
-  check('资源模块：dev 与 build 一律走 CDN（保持一致），可用 VITE_RESOURCE=local 回退本地',
-    /VITE_RESOURCE/.test(resSrc) && /jsdelivr\.net/.test(resSrc)
-    && !/import\.meta\.env\?\.DEV/.test(resSrc), true);
+  /* ⚠️ 标签必须跟着 resource.js 的真实行为走：**dev 默认读本地**
+     （public/{data,avatars} 是指向 ../akGachaResource 的目录联接），
+     `VITE_RESOURCE=cdn` 才让 dev 走 CDN（看线上数据）；**build 一律走 CDN**。 */
+  check('资源模块：dev 默认读本地、可用 VITE_RESOURCE=cdn 切 CDN、build 走 CDN',
+    /env\.VITE_RESOURCE === 'local'/.test(resSrc)
+    && /env\.DEV && env\.VITE_RESOURCE !== 'cdn'/.test(resSrc)
+    && /jsdelivr\.net/.test(resSrc), true);
   /* ⚠️ 实测：fastly 端点对本仓库的 PNG 恒 301 跳回 raw（国内裂图），JSON 却正常。
      所以必须用 cdn.jsdelivr.net —— 这条断言防止有人"顺手"改回 fastly。 */
   check('资源模块：CDN 主机是 cdn.jsdelivr.net（不是会 301 的 fastly）',
@@ -653,6 +674,89 @@ try {
   check('纵轴排序：按钮填满分段容器（不留不参变色的空白）',
     /\.seg\.mini\{flex:0 0 auto\}/.test(cssAll)
     && /\.seg\.mini button\{[^}]*width:60px/.test(cssAll), true);
+
+  /* ---------------- 国际服：切服务器后各页面要能正常渲染 ----------------
+     期望值一律从 metadata 派生（卡池数会随数据更新变）。 */
+  const EN = banners.store.meta.servers.find((x) => x.id === 'en');
+  check('国际服：metadata 里已启用（available）', EN?.available, true);
+  if (EN?.available) {
+    const enHome = await renderRoute('/', (s) => s.setServer('en'));
+    check('国际服：当前服务器切到 en', enHome.store.server, 'en');
+    check('国际服：卡池行数 = metadata.en.bannerCount',
+      count(enHome.html.slice(enHome.html.indexOf('<tbody>'), enHome.html.indexOf('</tbody>')), /<tr>/g),
+      EN.bannerCount);
+    /* ⚠️ 国际服卡池的 `name` 现在也是**国服中文名**（英文名挪到 `enName`、本站暂不展示），
+       所以这里不能再断言「渲染出英文卡池名」。 */
+    check('国际服：卡池名已是国服中文名（name === scName）',
+      enHome.store.banners.every((b) => b.name === b.scName), true);
+    check('国际服：卡池列表渲染出卡池名',
+      enHome.store.banners.slice(0, 8).every((b) => enHome.html.includes(b.name)), true);
+    check('国际服：英文名仍在数据里（enName 非空的都是纯 ASCII）',
+      enHome.store.banners.filter((b) => b.enName).every((b) => /^[\x20-\x7e]+$/.test(b.enName)), true);
+
+    const enStats = await renderRoute('/operators', (s) => s.setServer('en'));
+    check('国际服：统计页四张表', count(enStats.html, /class="grid floating stat-tbl"/g), 4);
+    check('国际服：统计页可见卡池数 = 开始日不晚于当天的卡池数',
+      new RegExp(`可见卡池 ${visibleOf(enStats.store)} 个`).test(enStats.html), true);
+
+    const enUp = await renderRoute('/up-history', (s) => s.setServer('en'));
+    check('国际服：UP 历史页有画布容器', count(enUp.html, /class="tl-scroll"/g), 1);
+
+    const enShop = await renderRoute('/shop-interval', (s) => s.setServer('en'));
+    check('国际服：首次进店间隔页两个刻度条 + 两个滚动区',
+      count(enShop.html, /ybar-l/g) + count(enShop.html, /chart-scroll/g), 4);
+  }
+
+  /* ---------------- 左栏：三个服务器各自的「数据更新日」（纯展示） ----------------
+     国服 = generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt（= 本地表格修改日）。
+     参考日期**不再**取这几个日期，它一律是打开页面的当天。 */
+  const UPD = {
+    sc: META.generatedAt || '—',
+    en: META.enGeneratedAt || '—',
+    tc: META.tcGeneratedAt || '—',
+  };
+  check('左栏：国服数据更新日 = metadata.generatedAt',
+    bh.includes(`国服数据更新 <b>${UPD.sc}</b>`), true);
+  check('左栏：国际服数据更新日 = metadata.enGeneratedAt',
+    bh.includes(`国际服数据更新 <b>${UPD.en}</b>`), true);
+  check('左栏：繁中服数据更新日 = metadata.tcGeneratedAt',
+    bh.includes(`繁中服数据更新 <b>${UPD.tc}</b>`), true);
+
+  /* ---------------- 繁中服：切服务器后各页面要能正常渲染 ----------------
+     数据来自本地人工表格（fetch-data-tc.mjs），期望值同样全部从 metadata 派生。 */
+  const TC = banners.store.meta.servers.find((x) => x.id === 'tc');
+  check('繁中服：metadata 里已启用（available）', TC?.available, true);
+  if (TC?.available) {
+    const tcHome = await renderRoute('/', (s) => s.setServer('tc'));
+    const tcNames = tcHome.store.banners.map((b) => b.name);
+    check('繁中服：当前服务器切到 tc', tcHome.store.server, 'tc');
+    check('繁中服：卡池行数 = metadata.tc.bannerCount',
+      count(tcHome.html.slice(tcHome.html.indexOf('<tbody>'), tcHome.html.indexOf('</tbody>')), /<tr>/g),
+      TC.bannerCount);
+    check('繁中服：序号类卡池名（常驻标准寻访 / 常驻中坚寻访 / 中坚甄选 / 联合行动…）',
+      tcNames.some((n) => /^常驻标准寻访\d+$/.test(n))
+      && tcNames.some((n) => /^常驻中坚寻访\d+$/.test(n))
+      && tcNames.some((n) => /^中坚甄选\d+$/.test(n))
+      && tcNames.some((n) => /^联合行动\d+$/.test(n)), true);
+    check('繁中服：限定 / 单六 的池名取自国服（「复刻」也带过来）',
+      tcNames.some((n) => /复刻|返场/.test(n)), true);
+    check('繁中服：左栏署名是「本地卡池记录表」且不带外链',
+      tcHome.html.includes('本地卡池记录表') && !/本地卡池记录表<\/a>/.test(tcHome.html), true);
+
+    const tcStats = await renderRoute('/operators', (s) => s.setServer('tc'));
+    check('繁中服：统计页四张表', count(tcStats.html, /class="grid floating stat-tbl"/g), 4);
+    /* 繁中服表格里有 2 个「已公布但还没开始」的池子（最新到 10-22），
+       所以可见卡池数会比 bannerCount 小 —— 按当天过滤后比。 */
+    check('繁中服：统计页可见卡池数 = 开始日不晚于当天的卡池数',
+      new RegExp(`可见卡池 ${visibleOf(tcStats.store)} 个`).test(tcStats.html), true);
+
+    const tcUp = await renderRoute('/up-history', (s) => s.setServer('tc'));
+    check('繁中服：UP 历史页有画布容器', count(tcUp.html, /class="tl-scroll"/g), 1);
+
+    const tcShop = await renderRoute('/shop-interval', (s) => s.setServer('tc'));
+    check('繁中服：首次进店间隔页两个刻度条 + 两个滚动区',
+      count(tcShop.html, /ybar-l/g) + count(tcShop.html, /chart-scroll/g), 4);
+  }
 } finally {
   await vite.close();
 }

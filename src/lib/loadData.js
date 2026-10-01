@@ -2,16 +2,16 @@
  * 运行时加载静态 JSON（卡池 / 干员数据）。
  *
  * 数据的**真身在独立资源仓库** `../akGachaResource/data`（远程 github.com/Yjun233/akGachaResource），
- * 本仓库里没有副本。默认**开发与构建都从 jsDelivr CDN 读**；`VITE_RESOURCE=local` 时
- * 才读 `public/data`（指向资源仓库的目录联接）。切换逻辑见 `resource.js`。
+ * 本仓库里没有副本。**dev 默认读本地**（`public/data`，指向资源仓库的目录联接）；
+ * `VITE_RESOURCE=cdn` 才让 dev 走 CDN；**build 一律走 CDN**。切换逻辑见 `resource.js`。
  *   metadata.json          站点元信息 + 服务器列表
  *   operators.json         干员表（各服共用，靠 *ReleaseDate 区分实装日）
  *   卡池类型 → 大类：见 `constants.js` 的 `BANNER_CATEGORIES`（不再用 JSON 数据文件）
  *   banners_<server>.json  各服卡池表
  *
  * 卡池文件按服务器拆开：metadata.servers 里 available:true 的服务器才会被加载，
- * 缺文件时自动降级（标记不可用）而不是整站失败 —— 未来接国际服 / 繁中服时，
- * 产出 banners_en.json 并把 available 改成 true 即可，前端无需改动。
+ * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
+ * banners_<id>.json 并把 available 改成 true 即可，前端无需改动。
  */
 import { dataUrl } from './resource.js';
 import { BANNER_CATEGORIES } from './constants.js';

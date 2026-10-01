@@ -16,8 +16,19 @@ const META = JSON.parse(fs.readFileSync(path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), '..', '..',
   'akGachaResource', 'data', 'metadata.json',
 ), 'utf8'));
+const RES_DATA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'akGachaResource', 'data');
 const BANNER_N = META.servers.find((s) => s.id === 'sc').bannerCount;
 const SNAP = META.generatedAt;
+/* 可用 / 不可用的服务器也从 metadata 派生（2026-10-01 起国际服已接入，
+   以前写死「只有国服可用」的断言会随着数据变化而失效）。 */
+const AVAILABLE = META.servers.filter((s) => s.available).map((s) => s.id);
+const UNAVAILABLE = META.servers.filter((s) => !s.available).map((s) => s.id);
+const OPS_BY_NAME_SMOKE = (() => {
+  const raw = JSON.parse(fs.readFileSync(path.join(RES_DATA, 'operators.json'), 'utf8'));
+  const m = {};
+  for (const o of Object.values(raw)) m[o.name] = o;
+  return m;
+})();
 
 const epilogue = `
   const ref = state.refDate;
@@ -53,6 +64,7 @@ const epilogue = `
   const cellDanger = endCells({ live:false, days:400, end:'2026-01-01' });
   const relSc = relDateOf(OP_BY_NAME['温蒂']);
   const relEn = (() => { const s = state.server; state.server = 'en'; const v = relDateOf(OP_BY_NAME['温蒂']); state.server = s; return v; })();
+  const relTc = (() => { const s = state.server; state.server = 'tc'; const v = relDateOf(OP_BY_NAME['温蒂']); state.server = s; return v; })();
   return {
     stats: document.getElementById('view-stats').innerHTML,
     banners: document.getElementById('view-banners').innerHTML,
@@ -78,7 +90,7 @@ const epilogue = `
     today: TODAY,
     refDateInit: state.refDate,
     cellNormal, cellWarn, cellDanger,
-    relSc, relEn,
+    relSc, relEn, relTc,
     bannerFileKey: Object.keys(BANNERS_BY_SERVER).join(','),
   };
 `;
@@ -317,13 +329,17 @@ const checks = [
 
   // ---- 服务器（多服扩展预留） ----
   ['服务器：metadata 里定义了三个服务器', wide.serverCount, 3],
-  ['服务器：当前只有国服可用', wide.servers.join(','), 'sc'],
+  ['服务器：可用服务器 = metadata 里 available 的项', wide.servers.join(','), AVAILABLE.join(',')],
   ['服务器：当前服务器 = defaultServer', wide.server, wide.defaultServer],
   ['服务器：下拉框预渲染出「国服」选项',
     count(html, /<option value="sc" selected>国服<\/option>/g), 1],
+  /* 未实现（available:false）的服务器不该出现在下拉框里 —— 按 metadata 派生。
+     ⚠️ 三个服务器现在都已 available，所以这条**当前是 0 === 0 的空跑**；
+     留着是为了将来真接入第四个服务器（或临时下线某个服）时它还能挡住。 */
   ['服务器：未实现的服务不出现在下拉框里',
-    count(html, /<option value="en"|<option value="tc"/g), 0],
-  ['服务器：前端已按服务器取卡池数据（bannersByServer.sc）', wide.bannerFileKey, 'sc'],
+    UNAVAILABLE.reduce((n, id) => n + count(html, new RegExp(`<option value="${id}"`, 'g')), 0), 0],
+  ['服务器：前端已按服务器取卡池数据（bannersByServer 的键 = 可用服务器）',
+    wide.bannerFileKey, AVAILABLE.join(',')],
   ['服务器：切换服务器会重算卡池集合',
     /function setServer\(id\)\{[\s\S]{0,300}BANNER_LIST = Object\.keys\(BANNERS\)/.test(html), true],
 
@@ -331,7 +347,11 @@ const checks = [
   ['字段：干员表含 scReleaseDate', html.includes('"scReleaseDate"'), true],
   ['字段：干员表含 enReleaseDate / tcReleaseDate', html.includes('"enReleaseDate"') && html.includes('"tcReleaseDate"'), true],
   ['字段：国服实装日按服务器字段取值（温蒂）', wide.relSc, '2020-05-01'],
-  ['字段：未实装服务器（en）取值为 null', wide.relEn, null],
+  /* 实装日按服务器取：sc 用 scReleaseDate、en 用 enReleaseDate、tc 用 tcReleaseDate。
+     三个服务器都已接入，所以都拿 operators.json 的真实值来比。 */
+  ['字段：实装日按服务器取（国服 = scReleaseDate）', wide.relSc, OPS_BY_NAME_SMOKE['温蒂'].scReleaseDate],
+  ['字段：实装日按服务器取（国际服 = enReleaseDate）', wide.relEn, OPS_BY_NAME_SMOKE['温蒂'].enReleaseDate],
+  ['字段：实装日按服务器取（繁中服 = tcReleaseDate）', wide.relTc, OPS_BY_NAME_SMOKE['温蒂'].tcReleaseDate],
 
   // ---- 距今天数阈值：180 标黄 / 365 标红 ----
   ['阈值：100 天不着色', /class="(warn|hot)"/.test(wide.cellNormal), false],

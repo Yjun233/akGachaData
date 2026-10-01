@@ -15,8 +15,11 @@
  *    两边要对齐 → grid 的 top/height/left/right 全部写死像素，刻度文本位置按同一个公式算。
  * 2. 刻度步长随纵轴口径与**筛选后的数据**变化：`gap` 以 **14 天（两周）为基准**、随跨度放大或缩到 7 天，
  *    且**下界也可能为负**（按实装日期排序时，后实装却更早进店的干员会算出负间隔）；
- *    `sinceRelease` 固定从 0 起，跨度到 800+ 天，用「整齐」步长（1/2/2.5/5 × 10ⁿ）。
- * 3. 图片模式下点变成**圆形头像**（用 data item 的 symbol 覆盖），此时不显示名字标签。
+ *    `sinceRelease` 的**起点取筛选后数据的下界**（不是 0 —— 例如筛到近 2 年时，能在近两年
+ *    进店的干员都是等了好几年的老干员，从 0 画起会把折线压成一条直线），
+ *    步长用「整齐」步长（1/2/2.5/5 × 10ⁿ）。
+ * 3. 图片模式下点变成**圆形头像**（用 **custom 系列手绘 + zrender 的 `clipPath` 裁圆** ——
+ *    `symbol:'image://…'` 不能裁剪，方形素材会直接显示成方块），此时不显示名字标签。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
@@ -32,7 +35,7 @@ const GRID = { top: 30, height: 300, left: 56, right: 56, bottom: 96 };
 const CHART_H = GRID.top + GRID.height + GRID.bottom; // 426
 const TICK_STEP = 14;   // 纵轴 = 距上个首次进店时的刻度步长（天）
 const POINT_W = 52;     // 每个点占的宽度（要放得下干员名标签 / 头像）
-const AVATAR_PT = 24;   // 图片模式下点的直径
+const AVATAR_PT = 30;   // 图片模式下点的直径
 
 const BLUE = '#2563b0';
 const BLUE_DARK = '#1b4f9c';
@@ -207,7 +210,7 @@ function buildOption(rows, rarity, ax) {
           const row = rows[params.dataIndex];
           if (!row || row.value === null) return null;
           const p = api.coord([api.value(0), api.value(1)]);
-          const d = AVATAR_PT * 1.5;
+          const d = AVATAR_PT;
           return {
             type: 'group',
             clipPath: { type: 'circle', shape: { cx: p[0], cy: p[1], r: d / 2 } },

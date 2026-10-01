@@ -36,8 +36,8 @@ const [operators, meta] = await Promise.all([
 const { BANNER_CATEGORIES: categories } = await import('../src/lib/constants.js');
 
 /* 卡池按服务器分文件：只读 metadata.servers 里 available 的服务器。
-   将来接入国际服 / 繁中服时，产出 banners_en.json / banners_tc.json 并把
-   metadata 里对应项改成 available:true，这里会自动把它一起打包。 */
+   **新增服务器时**产出 banners_<id>.json 并把 metadata 里对应项改成 available:true，
+   这里会自动把它一起打包。 */
 const availableServers = (meta.servers || []).filter((s) => s.available);
 const bannersByServer = {};
 for (const s of availableServers) {
