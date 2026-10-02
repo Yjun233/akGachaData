@@ -60,6 +60,16 @@ export const TL = {
   labelGap: 6,        // 标签锚点距离竖线上端的间距
   labelRotate: 60,    // 标签倾斜角度（度）
   lineColor: '#e8f0fa', // 竖线颜色（刻度条与表体共用，保证视觉连续）
+  /* 相邻两次 UP 的间隔文案，两道筛：
+     · `gapMinDays` = **天数下限**，当前 **0**（不设下限 → 每一对相邻 UP 都是候选）；
+     · `gapMinPx`   = **屏幕距离下限**，41px。横轴是「1 天 = 1px」的固定比例，
+       所以它实际等价于「两标记至少隔着 41px」，挤在一起（文字会压到标记圆上）就不写。
+     想「只标明显的大空档」就把 `gapMinDays` 调大（例：调到 60 = 只标 ≥60 天的空档）。 */
+  gapMinDays: 0,
+  gapMinPx: 41,       // 两个标记中心至少隔这么多像素（≈ 让开两个 20px 圆 + 文字宽度）
+  dotR: 3.5,          // 进店小圆点
+  diamondR: 4,          // 中坚甄选小菱形的半径（外接圆半径）
+  dotInset: 2,        // 小圆点距标记圆**左边缘**的内缩（挪到左边，见 renderItem）
 };
 
 /* ---------------- 月序号 ↔ 日期 ---------------- */
@@ -116,9 +126,12 @@ export const minInnerWidth = (xMin, xMax) => {
  * @param {Array}  ctx.rows             当前星级、当前筛选下的干员行
  * @param {{from?:string,to?:string}} [ctx.xRange] 右栏时间范围（'YYYY-MM-DD'）
  * @param {boolean} [ctx.isImage]       图片模式
+ * @param {boolean} [ctx.showGaps]      在两次 UP 之间写日期差（右栏可关）
  * @param {object} [ctx.operatorByName] 干员名 → 干员（取 charId 找头像）
  */
-export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorByName = {} }) {
+export function buildUpTimeline({
+  rows, xRange = {}, isImage = false, showGaps = true, operatorByName = {},
+}) {
   const startOf = (r) => (Number.isFinite(monthIndexOf(r.releaseDate))
     ? monthIndexOf(r.releaseDate)
     : monthIndexOf(r.firstDate));
@@ -154,6 +167,28 @@ export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorBy
       markRefs.push({ row: r, mark: m, idx: i, mi });
     }
   });
+
+  /* 3) 相邻两次 UP 的**间隔天数文案**（右栏可关）：
+        先按 `gapMinDays` 过一遍天数，落笔时再由 `gapMinPx` 按屏幕距离二次筛选；
+        位置取两个标记**圆心的中点**、纵向压在横条上（为什么要按圆心算，见 renderItem 里的说明）。 */
+  const gapRefs = [];
+  if (showGaps) {
+    rows.forEach((r, i) => {
+      for (let k = 0; k + 1 < r.marks.length; k++) {
+        const a = r.marks[k];
+        const b = r.marks[k + 1];
+        const days = diffDays(b.date, a.date);
+        if (!(days >= TL.gapMinDays)) continue;
+        gapRefs.push({
+          idx: i,
+          days,
+          mid: (monthIndexOf(a.date) + monthIndexOf(b.date)) / 2,
+          left: monthIndexOf(a.date),
+          right: monthIndexOf(b.date),
+        });
+      }
+    });
+  }
 
   /* 顶部刻度条：**不用 echarts 的坐标轴**，改成自己画。
      原因（实测出来的）：给 `xAxis.axisLabel` 设了 `rotate` 之后，echarts 会把**绘图区往里缩**
@@ -317,7 +352,7 @@ export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorBy
       /* 2) 标记：每次 UP 一个（圆**左边缘**对齐卡池开始日）
             两种模式用**同一套配色**：浅色圆底 + 大类色外圈，区别只是里面放
             头像（图片模式）还是干员名首字（简洁模式）。
-            进店一律用**绿色小圆点标在右上角**。 */
+            进店 = **左上角**绿点（圆）、中坚甄选 = **左上角**蓝菱形（同位，两者互斥，见 renderItem 里的注释）。 */
       {
         type: 'custom',
         data: markRefs.map((ref) => [ref.mi, ref.idx]),
@@ -388,27 +423,90 @@ export function buildUpTimeline({ rows, xRange = {}, isImage = false, operatorBy
             style: { fill: 'none', stroke: ring, lineWidth: 2 },
           });
 
-          /* 进店 = 右上角的绿色小圆点（两种模式一致） */
+          /* 进店 = **左上角**的绿色小圆点（两种模式一致）。
+             ⚠️ 与下面的「中坚甄选」蓝菱形**同一个位置**：两者互斥、不会重叠，形状不同照样分得清。
+             （互斥这件事**已在数据上核实**：全服只有 `double` / `classic` 带进店标记
+             —— 535 / 191 个池子 —— `clafes` 一个都没有。若将来中坚甄选出进店位，
+             这两个标记就会叠在一起，得重新安排位置。）
+             原来两者都在右侧，图片模式下头像占满圆环、两个点紧贴右边缘，容易看混。 */
           if (mark.isShop) {
             children.push({
               type: 'circle',
-              shape: { cx: cx + d - 2, cy: cy - d / 2 + 2, r: 3.5 },
-              style: { fill: SHOP.color, stroke: '#fff', lineWidth: 1.2 },
+              shape: { cx: cx + TL.dotInset, cy: cy - d / 2 + TL.dotInset, r: TL.dotR },
+              style: { fill: SHOP.color, stroke: '#fff', lineWidth: 1 },
             });
           }
 
-          /* 中坚甄选 = 右下角的蓝色小圆点（两种模式一致） */
+          /* 中坚甄选 = **左上角**的蓝色小菱形（与进店绿圆点同位：两者互斥不会重叠，
+             形状又不同，一看就能区分）。⚠️ zrender **没有 `type:'diamond'`** 这种图形 ——
+             写了它整个标记 group 会渲染失败（头像、外圈、圆点全消失，实测踩过）。
+             菱形要用 polygon 手拼四个顶点。 */
           if (mark.type === 'clafes') {
+            const dx = cx + TL.dotInset;
+            const dy = cy - d / 2 + TL.dotInset;
             children.push({
-              type: 'circle',
-              shape: { cx: cx + d - 2, cy: cy + d / 2 - 2, r: 3.5 },
-              style: { fill: CAT_COLOR[BANNER_CATEGORIES[mark.type]], stroke: '#fff', lineWidth: 1.2 },
+              type: 'polygon',
+              shape: {
+                points: [
+                  [dx, dy - TL.diamondR],
+                  [dx + TL.diamondR, dy],
+                  [dx, dy + TL.diamondR],
+                  [dx - TL.diamondR, dy],
+                ],
+              },
+              style: { fill: '#fff', stroke: CAT_COLOR[BANNER_CATEGORIES[mark.type]], lineWidth: 2 },
+              // style: { fill: CAT_COLOR[BANNER_CATEGORIES[mark.type]], stroke: '#fff', lineWidth: 1 },
             });
           }
 
           return { type: 'group', children };
         },
       },
+      /* 3) 两次 UP 的间隔天数：夹在两个标记**圆心**的正中间，压在横条上 */
+      ...(gapRefs.length ? [{
+        type: 'custom',
+        silent: true,
+        z: 6,
+        /* data 的 x 仍取两个“日期”的中点（只用来定位纵横坐标 / 判视野） */
+        data: gapRefs.map((g) => [g.mid, g.idx]),
+        renderItem(params, api) {
+          const g = gapRefs[params.dataIndex];
+          if (!g) return null;
+          const cs = params.coordSys;
+          const mid = api.coord([g.mid, g.idx]);
+          if (!mid) return null;
+          /* ⚠️ 文字要落在两个**圆**的正中间，所以取「圆心」而不是「日期」：
+             标记是**左边缘**对齐日期的，圆心在日期右侧半个圆（`TL.mark / 2`）处；
+             顶到绘图区右边界时整圆还会往左让（与标记系列同一套算法）。
+             直接取两个日期的中点会**整体偏左半个圆**（10px），看起来就是“往左偏了”。 */
+          const centerOf = (x) => {
+            const px = api.coord([x, g.idx])[0];
+            if (!Number.isFinite(px)) return NaN;
+            return Math.min(px, cs.x + cs.width - TL.markRight - TL.mark) + TL.mark / 2;
+          };
+          const l = centerOf(g.left);
+          const r = centerOf(g.right);
+          if (!Number.isFinite(l) || !Number.isFinite(r)) return null;
+          /* 兜底：两标记在屏幕上挨得太近就不写（否则文字与头像圆叠在一起） */
+          if (r - l < TL.gapMinPx) return null;
+          const x = (l + r) / 2;
+          /* 中点不在视野里就不画 */
+          if (x < cs.x || x > cs.x + cs.width) return null;
+          return {
+            type: 'text',
+            style: {
+              text: `${g.days}`,
+              x,
+              y: mid[1],
+              fill: '#7b8794',
+              fontSize: 10,
+              fontFamily: 'system-ui, "Microsoft YaHei", sans-serif',
+              align: 'center',
+              verticalAlign: 'middle',
+            },
+          };
+        },
+      }] : []),
     ],
   };
 

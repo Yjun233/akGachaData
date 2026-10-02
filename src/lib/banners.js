@@ -4,21 +4,25 @@
  */
 import { TYPE_LABEL } from './constants.js';
 
-/** 空筛选条件 */
-export const emptyFilters = () => ({ type: '', cat: '', from: '', to: '', op: '' });
+/**
+ * 空筛选条件。
+ * ⚠️ `types` 是**数组**（多选，与 UP 历史右栏的类型按钮组同一套语义）：
+ *   空数组 = 全部类型；大类不再单独存，由「该大类下的类型是否全被选中」体现。
+ */
+export const emptyFilters = () => ({ types: [], from: '', to: '', op: '' });
 
 /**
  * 按筛选条件过滤 + 排序。
  * @param {Array}  banners    当前服务器卡池（含 id）
- * @param {object} filters    { type, cat, from, to, op }
- * @param {object} categories type → 大类
+ * @param {object} filters    { types, from, to, op }
+ * @param {object} categories type → 大类（未用；保留形参以免调用方大改）
  * @param {object} sort       { key, dir }
  */
 export function bannerRows(banners, filters, categories, sort) {
   const f = filters;
+  const typeSet = f.types && f.types.length ? new Set(f.types) : null;
   const rows = banners.filter((b) => {
-    if (f.type && b.type !== f.type) return false;
-    if (f.cat && categories[b.type] !== f.cat) return false;
+    if (typeSet && !typeSet.has(b.type)) return false;
     if (f.from && b.startDate < f.from) return false;
     if (f.to && b.startDate > f.to) return false;
     if (f.op) {

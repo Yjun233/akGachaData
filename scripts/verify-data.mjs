@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { computeStats, endInfo, sortStatRows } from '../src/lib/stats.js';
+import { computeStats, endInfo, sortStatRows, daysSortValue } from '../src/lib/stats.js';
 import { computeFirstShop } from '../src/lib/firstShop.js';
 import { computeUpHistory } from '../src/lib/upHistory.js';
 import {
@@ -439,6 +439,103 @@ check('UP 历史：最近 UP 降序',
 check('UP 历史：没有标记的干员不占行（只看进店时排除了未进店的）',
   upShop.all.every((r) => r.marks.length > 0), true);
 
+/* ---------------- UP 历史：右栏「隐藏在结束日期已属中坚的干员」 ----------------
+   判据 = 当前服务器「进入中坚寻访」的日期 ≤ 判据时点（右栏结束日期，未设则按今天）。
+   ⚠️ 关键在**判据时点用什么**：设得越晚，被判成「已属中坚」的干员越多。
+   这里用两个时点对比，既验功能也验「时点取自 range.to」这件事。 */
+const CLASSIC_FIELD = { sc: 'classicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
+const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
+const upAllNoCut = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true,
+});
+const upCutEarly = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true, today: '2024-01-01',
+});
+const upCutLate = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true, today: '2026-10-01',
+});
+check('UP 历史：不勾选时不受「已属中坚」影响',
+  upAllNoCut.all.length, upAll.all.length);
+check('UP 历史：勾选后行数变少', upCutEarly.all.length < upAll.all.length, true);
+check('UP 历史：判据时点越晚，被隐藏的越多',
+  upCutLate.all.length < upCutEarly.all.length, true);
+check('UP 历史：勾选后留下的干员，判据时点都还没进中坚',
+  upCutLate.all.every((r) => {
+    const mid = classicDateOf(operators[r.name]);
+    return !mid || mid > '2026-10-01';
+  }), true);
+/* range.to 优先于 today —— 这是用户确认的口径（判据时点取右栏的结束日期）。
+   ⚠️ 不能拿总数比：`range` 本身还会过滤「范围内没有标记的干员」。
+   直接看**留下来的行**：判据时点若真取了 range.to，就不可能留下 classicDate ≤ range.to 的干员。 */
+const upCutByRange = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true,
+  today: '2026-10-01', range: { from: '', to: '2024-01-01' },
+});
+check('UP 历史：判据时点取右栏结束日期（优先于今天）',
+  upCutByRange.all.length > 0 && upCutByRange.all.every((r) => {
+    const mid = classicDateOf(operators[r.name]);
+    return !mid || mid > '2024-01-01';
+  }), true);
+
+/* ---------------- 卡池列表：寻访筛选改成多选（空 = 全部） ---------------- */
+const fEmpty = emptyFilters();
+check('卡池筛选：空条件 = 全部卡池', bannerRows(banners, fEmpty, categories, { key: 'startDate', dir: 'desc' }).length, banners.length);
+check('卡池筛选：多选两个类型 = 两类卡池之和',
+  bannerRows(banners, { ...fEmpty, types: ['double', 'classic'] }, categories, { key: 'startDate', dir: 'desc' }).length,
+  banners.filter((b) => b.type === 'double' || b.type === 'classic').length);
+check('卡池筛选：只选一个类型时行数 = 该类型卡池数',
+  bannerRows(banners, { ...fEmpty, types: ['limcel'] }, categories, { key: 'startDate', dir: 'desc' }).length,
+  banners.filter((b) => b.type === 'limcel').length);
+
+/* ---------------- 数据不变量：进店标记只出现在「常驻标准 / 常驻中坚」上 ----------------
+   UP 历史里「进店绿点」与「中坚甄选菱形」画在**同一个位置**（左上角），依据就是两者互斥
+   —— `clafes` 池永远不带进店标记。哪天上游给中坚甄选也加上进店位，两个标记就会叠在一起；
+   这条断言会立刻红，提醒重新安排位置（而不是等用户看图才发现）。 */
+for (const [file, label] of [
+  ['banners_sc.json', '国服'], ['banners_en.json', '国际服'], ['banners_tc.json', '繁中服'],
+]) {
+  if (!fs.existsSync(path.join(RES_DIR, file))) continue;
+  const map = read(file);
+  const shopTypes = new Set();
+  let clafesShop = 0;
+  for (const b of Object.values(map)) {
+    const hasShop = b.upOperators.some((o) => o.isShop);
+    if (hasShop) shopTypes.add(b.type);
+    if (hasShop && b.type === 'clafes') clafesShop += 1;
+  }
+  check(`${label}：带进店标记的卡池类型只有 double / classic`,
+    [...shopTypes].sort().join(','), 'classic,double');
+  check(`${label}：中坚甄选池不带进店标记（两个标记同位的依据）`, clafesShop, 0);
+}
+
+/* ---------------- 卡池结束日期当日 = 已关闭 + 距今天数整体 +1 ----------------
+   挑一个真实卡池，拿它的 endDate 当参考日期：结束日当天必须**不算进行中**，
+   且**看到的是「1 天」**（2026-10-02 口径：把结束日当作第 1 天数）。 */
+const sampleBanner = banners.find((b) => b.startDate < b.endDate);
+check('结束日口径：卡池开始日当天算进行中',
+  endInfo([sampleBanner], sampleBanner.startDate).live, true);
+check('结束日口径：结束日**前一天**仍算进行中',
+  endInfo([sampleBanner], shiftDays(sampleBanner.endDate, -1)).live, true);
+check('结束日口径：结束日当天算已关闭',
+  endInfo([sampleBanner], sampleBanner.endDate).live, false);
+check('距今天数：结束日当天 = 1（整体 +1，用户指定的例子）',
+  endInfo([sampleBanner], sampleBanner.endDate).days, 1);
+check('距今天数：结束日次日 = 2',
+  endInfo([sampleBanner], shiftDays(sampleBanner.endDate, 1)).days, 2);
+check('距今天数：结束日 10 天后 = 11',
+  endInfo([sampleBanner], shiftDays(sampleBanner.endDate, 10)).days, 11);
+check('距今天数：进行中时为 null（界面显示「进行中」，不是 1）',
+  endInfo([sampleBanner], sampleBanner.startDate).days, null);
+
+/* 排序值：「进行中」与「结束日当天（1 天）」必须能分开（否则两类行并列混在一起）。
+   进行中 = 0、无数据 = -1、真实天数从 1 起（结束日当天就是 1）。 */
+check('排序值：进行中 = 0', daysSortValue({ live: true, days: null }), 0);
+check('排序值：无数据 = -1', daysSortValue({ live: false, days: null }), -1);
+check('排序值：结束日当天 = 1', daysSortValue({ live: false, days: 1 }), 1);
+check('排序值：无数据 < 进行中 < 结束日当天（升序时特殊值排在最前）',
+  daysSortValue({ live: false, days: null }) < daysSortValue({ live: true, days: null })
+  && daysSortValue({ live: true, days: null }) < daysSortValue({ live: false, days: 1 }), true);
+
 /* ---------------- UP 历史时间轴的坐标口径（月序号 value 轴） ---------------- */
 check('月序号：1970-01-01 = 0', monthIndexOf('1970-01-01'), 0);
 check('月序号：2026-01-01', monthIndexOf('2026-01-01'), 672);
@@ -455,8 +552,14 @@ check('时间轴：起点就是最早的实装月（2019-04）', monthLabel(tlFu
 check('时间轴：跨度覆盖全部数据（≥ 89 个月）', tlFull.monthCount >= 89, true);
 check('时间轴：范围外的标记被剔除（不超过全部标记数）',
   tlFull.markCount <= upAll.six.reduce((a, r) => a + r.count, 0), true);
-check('时间轴：有横条也有标记（两个 custom 系列）',
-  tlFull.bodyOption.series.length === 2 && tlFull.bodyOption.series.every((s) => s.type === 'custom'), true);
+/* 这里没传 showGaps → 走 buildUpTimeline 自己的默认值（开）。**页面上的默认是「不勾」**
+   由右栏的勾选框决定（store 的 upShowGaps，初值 false），两者不是一回事，别混。 */
+check('时间轴：有横条、标记、间隔文案三个 custom 系列（不传 showGaps 时默认为开）',
+  tlFull.bodyOption.series.length === 3
+  && tlFull.bodyOption.series.every((s) => s.type === 'custom'), true);
+/* 右栏的「显示两次 UP 的间隔天数」勾选框：关掉就只剩横条 + 标记两个系列 */
+const tlNoGap = buildUpTimeline({ rows: upAll.six, showGaps: false, operatorByName: operators });
+check('时间轴：关掉间隔文案后只剩两个系列', tlNoGap.bodyOption.series.length, 2);
 check('时间轴：横轴刻度间隔 = 1 个月（每月 1 号）',
   tlFull.axisOption.xAxis.interval === 1 && tlFull.bodyOption.xAxis.interval === 1, true);
 /* 刻度条不再用 echarts 的坐标轴，改成 custom 自绘（见 upTimeline 的注释：

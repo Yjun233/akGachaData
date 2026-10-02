@@ -13,6 +13,10 @@
  * - `types`：只保留这些卡池类型（`null` / 空数组 = 全部）
  * - `shopOnly`：只保留 `isShop` 的记录（与 `types` 互斥，由右栏保证）
  * - **在某筛选下没有任何记录的干员不占行**（否则勾「只看进店」会出现一排空行）
+ * - `hideMid`（右栏勾选框）：隐藏**在「判据时点」已经属于中坚寻访**的干员 ——
+ *   即该干员在当前服务器的「进入中坚寻访日期」≤ 判据时点。这类干员的常规轮换早就
+ *   转去中坚池了，留在标准寻访的时间轴上只会干扰视线。
+ *   判据时点 = `range.to`（右栏的**结束日期**），没设就按 `today`。
  * - `range`：时间范围。它**同时**决定横轴可视范围与「这位干员占不占行」——
  *   范围内一个标记都没有的干员默认不显示（`null` = 不做这层过滤，
  *   对应右栏的「显示范围内未 UP 干员」勾选框）。
@@ -45,6 +49,9 @@ function sorter(sort) {
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
+ * @param {(op:object)=>string|null} [ctx.classicDateOf] 取当前服务器「进入中坚寻访」的日期
+ * @param {string}  [ctx.today]        真实当天（`range.to` 为空时当判据时点）
+ * @param {boolean} [ctx.hideMid]      隐藏「判据时点已属中坚寻访」的干员
  * @param {{from?:string,to?:string}|null} [ctx.range] 横轴可视范围；给了就**同时**
  *        决定「这位干员占不占行」—— 范围内一个标记都没有的不占行（见下）
  * @param {string}  [ctx.sort]         release-asc / release-desc / lastUp-asc / lastUp-desc
@@ -54,12 +61,17 @@ export function computeUpHistory({
   categories,
   operatorByName,
   relDateOf,
+  classicDateOf = null,
+  today = '',
+  hideMid = false,
   types = null,
   shopOnly = false,
   range = null,
   sort = 'release-asc',
 }) {
   const typeSet = types && types.length ? new Set(types) : null;
+  /* 「已属中坚」的判据时点：优先右栏的结束日期，没设就按今天 */
+  const midCutoff = hideMid ? ((range && range.to) || today || '') : '';
 
   /* 1) 收集每位干员的全部 UP 记录 */
   const byOp = {};
@@ -85,8 +97,16 @@ export function computeUpHistory({
   /* 2) 逐位干员应用筛选、算起止日期 */
   const rows = [];
   for (const r of Object.values(byOp)) {
+    const op = operatorByName[r.name];
+
     /* 限定干员整行排除（见文件头的口径说明） */
-    if (operatorByName[r.name]?.isLimited) continue;
+    if (op?.isLimited) continue;
+
+    /* 「判据时点已属中坚寻访」→ 整行隐藏（右栏勾选框） */
+    if (midCutoff && classicDateOf) {
+      const mid = classicDateOf(op);
+      if (mid && mid <= midCutoff) continue;
+    }
 
     r.marks.sort((a, b) => (a.date === b.date
       ? a.bannerId.localeCompare(b.bannerId)
@@ -105,7 +125,6 @@ export function computeUpHistory({
       if (!visible) continue;
     }
 
-    const op = operatorByName[r.name];
     rows.push({
       name: r.name,
       rarity: r.rarity,

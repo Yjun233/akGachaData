@@ -14,7 +14,7 @@
 import { defineStore } from 'pinia';
 import { BANNER_CATEGORIES } from '../lib/constants.js';
 import { loadSiteData, toBannerList } from '../lib/loadData.js';
-import { SERVER_FIELD } from '../lib/constants.js';
+import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
 import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
 import { computeFirstShop } from '../lib/firstShop.js';
@@ -48,6 +48,8 @@ export const useSiteStore = defineStore('site', {
     upRarity: 6,                       // UP 历史：一次只显示一个星级（默认六星）
     upTypes: [],                       // UP 历史：选中的卡池类型（空 = 全部）
     upShopOnly: false,                 // UP 历史：只看进店（与 upTypes 互斥）
+    upHideMid: false,                  // UP 历史：隐藏「在结束日期已属中坚寻访」的干员
+    upShowGaps: false,                 // UP 历史：两次 UP 之间写日期差（**默认关**）
     avatarMode: 'text',                // 干员展示：text 简洁（名字）| image 图片（头像）
     bannerSort: { key: 'startDate', dir: 'desc' },
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
@@ -85,11 +87,25 @@ export const useSiteStore = defineStore('site', {
     /** 干员在当前服务器的实装日；该服尚未实装则为 null */
     relDateOf: (s) => (op) => (op ? op[SERVER_FIELD[s.server]] || null : null),
 
+    /** 干员在当前服务器**进入常驻中坚寻访**的日期；没有则 null（= 一直还在标准寻访） */
+    classicDateOf: (s) => (op) => (op ? op[SERVER_CLASSIC_FIELD[s.server]] || null : null),
+
     /** 当前服务器最早的卡池开始日（「全部」快捷按钮用） */
     earliestDate() {
       let m = null;
       for (const b of this.banners) if (!m || b.startDate < m) m = b.startDate;
       return m;
+    },
+
+    /** 当前服务器卡池的开始 / 结束日边界（右栏日期输入的 min / max 用） */
+    bannerBounds() {
+      let min = null;
+      let max = null;
+      for (const b of this.banners) {
+        if (!min || b.startDate < min) min = b.startDate;
+        if (!max || b.endDate > max) max = b.endDate;
+      }
+      return { min, max };
     },
 
     /** 卡池列表：筛选 + 排序后的行（与参考日期无关） */
@@ -134,6 +150,10 @@ export const useSiteStore = defineStore('site', {
         categories: s.categories,
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
+        classicDateOf: this.classicDateOf,
+        /* 「在结束日期已属中坚」的判据时点 = 右栏结束日期，没设就按真实今天 */
+        today: s.today,
+        hideMid: s.upHideMid,
         types: s.upTypes,
         shopOnly: s.upShopOnly,
         /* 时间范围既决定横轴可视范围，也决定哪些干员占行（范围内没标记的不占行）；
@@ -204,6 +224,11 @@ export const useSiteStore = defineStore('site', {
       this.upTypes = [];
       this.upShopOnly = false;
       this.upShowAll = false;
+      this.upHideMid = false;
+      /* ⚠️ 与 state 的初值、FilterDrawer 的 resetUp 三处**必须一致**：
+         2026-10-02 这三处曾走散（初值 false / 这里 true / 右栏重置 false），
+         表现是「切一下服务器，间隔文案自己又冒出来了」。改默认值要三处一起改。 */
+      this.upShowGaps = false;
       this.statSort = {};
       this.bannerSort = { key: 'startDate', dir: 'desc' };
     },
@@ -235,21 +260,27 @@ export const useSiteStore = defineStore('site', {
 
     /* ---------------- UP 历史一览 ---------------- */
 
-    /** 横轴范围（不影响纵轴的干员集合） */
+    /**
+     * UP 历史的横轴范围（不影响纵轴的干员集合）。
+     * ⚠️ 开始日期会**强制顶到本服第一个卡池的开始日**：比它还早的时间轴上一条记录都没有，
+     * 只会拖出一大段空白。夹在 store 里（而不是只挂在输入框上）是为了把**手输**与
+     * **「近 N 年」快速填入**两条路径一起盖住 —— 输入框的 `min` 只管得住原生选择器。
+     */
     setUpRange(from, to) {
-      this.upRange = { from: from ?? this.upRange.from, to: to ?? this.upRange.to };
+      const min = this.bannerBounds.min;
+      const f = (typeof from === 'string' && from && min && from < min) ? min : from;
+      this.upRange = { from: f ?? this.upRange.from, to: to ?? this.upRange.to };
     },
 
     resetUpRange() {
       this.upRange = { from: '', to: '' };
     },
 
-    /** 「近 N 年」：以真实今天为上界往前推 N 年 */
+    /** 「近 N 年」：以真实今天为上界往前推 N 年（开始日期同样受本服第一个卡池约束） */
     applyUpYears(n) {
       const years = Number(n);
       if (!Number.isFinite(years) || years <= 0) return false;
-      const to = this.today;
-      this.upRange = { from: shiftYears(to, -Math.floor(years)), to };
+      this.setUpRange(shiftYears(this.today, -Math.floor(years)), this.today);
       return true;
     },
 
@@ -300,6 +331,16 @@ export const useSiteStore = defineStore('site', {
       this.upShowAll = !!on;
     },
 
+    /** 是否隐藏「在结束日期已属中坚寻访」的干员（默认不隐藏） */
+    setUpHideMid(on) {
+      this.upHideMid = !!on;
+    },
+
+    /** 是否在两次 UP 之间写日期差（默认**关**；写不写还取决于屏幕距离，见 upTimeline 的 gapMinPx） */
+    setUpShowGaps(on) {
+      this.upShowGaps = !!on;
+    },
+
     /** 干员展示模式：简洁（名字）/ 图片（头像） */
     setAvatarMode(mode) {
       this.avatarMode = mode === 'image' ? 'image' : 'text';
@@ -315,6 +356,31 @@ export const useSiteStore = defineStore('site', {
 
     resetFilters() {
       this.filters = emptyFilters();
+    },
+
+    /* ---------------- 卡池列表：寻访筛选（多选，与 UP 历史同一套按钮组） ---------------- */
+
+    setBannerTypes(list) {
+      this.filters = { ...this.filters, types: Array.isArray(list) ? [...list] : [] };
+    },
+
+    /** 单个寻访类型勾选 / 取消（空数组 = 全部类型） */
+    toggleBannerType(type) {
+      const set = new Set(this.filters.types);
+      if (set.has(type)) set.delete(type);
+      else set.add(type);
+      this.setBannerTypes([...set]);
+    },
+
+    /** 整组（某个大类下的全部类型）勾选 / 取消 */
+    toggleBannerCategory(types) {
+      const set = new Set(this.filters.types);
+      const allOn = types.every((t) => set.has(t));
+      for (const t of types) {
+        if (allOn) set.delete(t);
+        else set.add(t);
+      }
+      this.setBannerTypes([...set]);
     },
 
     toggleBannerSort(key) {

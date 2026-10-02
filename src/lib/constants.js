@@ -37,13 +37,14 @@ export const BANNER_CATEGORIES = {
   limsum: '限定寻访',
 };
 
-/** 筛选用：类型的列举顺序（卡池列表页的下拉、核对脚本都会用） */
+/** 筛选用：类型的列举顺序（右栏的类型按钮组按这个顺序排列，核对脚本也会用） */
 export const TYPE_ORDER = Object.keys(TYPE_LABEL);
 
 /** 大类展示顺序 */
 export const CAT_ORDER = ['标准寻访', '中坚寻访', '限定寻访'];
 
-/** 大类 → 其下的 type（UP 历史右栏的按钮组按这个分组渲染） */export const TYPES_BY_CATEGORY = CAT_ORDER.map((cat) => ({
+/** 大类 → 其下的 type（右栏的类型按钮组按这个分组渲染） */
+export const TYPES_BY_CATEGORY = CAT_ORDER.map((cat) => ({
   cat,
   types: Object.keys(BANNER_CATEGORIES).filter((t) => BANNER_CATEGORIES[t] === cat),
 }));
@@ -105,7 +106,7 @@ export const SHOP = {
  */
 export const UP_SORT_ROWS = [
   { label: '实装日期', asc: 'release-asc', desc: 'release-desc' },
-  { label: 'UP 日期', asc: 'lastUp-asc', desc: 'lastUp-desc' },
+  { label: '最近 UP', asc: 'lastUp-asc', desc: 'lastUp-desc' },
 ];
 
 /** 干员实装日字段：各服一份，靠字段名区分 */
@@ -113,6 +114,18 @@ export const SERVER_FIELD = {
   sc: 'scReleaseDate',
   en: 'enReleaseDate',
   tc: 'tcReleaseDate',
+};
+
+/**
+ * 干员**进入常驻中坚寻访**的日期字段：各服一份。
+ * ⚠️ 国服那个叫 `classicDate`（没有 `sc` 前缀），别想当然写成 `scClassicDate`。
+ * 语义 = 该干员从标准寻访「移出」、开始在中坚寻访轮换的批次日期；
+ * 想知道「某个时间点这位干员是不是中坚干员」就比这个日期。
+ */
+export const SERVER_CLASSIC_FIELD = {
+  sc: 'classicDate',
+  en: 'enClassicDate',
+  tc: 'tcClassicDate',
 };
 
 /** 距今天数着色阈值（出率提升 / 商店兑换共用） */

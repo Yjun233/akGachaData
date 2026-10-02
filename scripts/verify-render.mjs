@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 /* 纯函数工具可以直接 import（无 import.meta.env / .vue 依赖），不必绕 vite */
 import { shiftYears, localToday } from '../src/lib/date.js';
-/* 配色常量（纯模块，可直接 import）—— 断言的期望值直接引用它，避免抄错色值 */
-import { CAT_COLOR, SHOP } from '../src/lib/constants.js';
+/* 配色常量（纯模块，可直接 import）—— 断言的期望值直接引用它，避免抄错色值；
+   同理排序标签也从 `UP_SORT_ROWS` 取，别写死文案 */
+import { CAT_COLOR, SHOP, UP_SORT_ROWS } from '../src/lib/constants.js';
 /* 框架包用 Node 原生 import（Vite SSR 会把它们外部化，与组件里用的是同一份实例）；
    只有 .vue / 业务模块才走 vite.ssrLoadModule。 */
 import { createSSRApp } from 'vue';
@@ -346,6 +347,8 @@ try {
   /* ---------------- UP 历史一览 ---------------- */
   const up = await renderRoute('/up-history');
   const uh = up.html;
+  /* 少数「行为」没法从 SSR 产物看出来（如滚动贴右），只能读源码断言 */
+  const upSrc = fs.readFileSync(path.join(ROOT, 'src/views/UpHistoryView.vue'), 'utf8');
 
   check('UP 历史页：页面内不再重复标题，只有单个分节',
     !/<h2>/.test(uh) && count(uh, /class="grp-sep"/g) === 1, true);
@@ -378,6 +381,11 @@ try {
     /\.tl-scroll\{[\s\S]*?max-height/.test(cssAll), true);
   check('UP 历史页：时间轴有最小宽度（内层 min-width 内联样式）',
     /class="tl-inner" style="min-width:\s*\d{3,}px/.test(uh), true);
+  /* 横向滚动条要一直停在最右：① 切服务器 / 切星级后重新贴右；
+     ② 时间轴宽度变化时（动筛选会让它变窄 / 变宽）若本来就贴着右端就继续保持。 */
+  check('UP 历史页：横向滚动条会重新贴到最右（切服 / 切星级 + 宽度变化）',
+    /watch\(\(\) => \[site\.server, site\.upRarity\], scrollToRight\)/.test(upSrc)
+    && /new ResizeObserver/.test(upSrc) && /pinned/.test(upSrc), true);
   check('UP 历史页：名字列每人一行（92 行）', count(uh, /class="tl-name"/g), 92);
   /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
   check('左栏底部：数据来源 + 版权声明',
@@ -391,9 +399,40 @@ try {
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
-  /* 纵轴排序：两行「左标签 + 升/降序分段按钮」，共 2 个标签 + 4 个按钮 */
+  /* 开始日期不能早于本服第一个卡池的开始日。输入框上的 `min` 只是提示（只管得住原生选择器），
+     真正夹取在 store 的 `setUpRange()` 里（下面单独断言）；这里核对属性确实带了下限。
+     ⚠️ 只取 `#up-from` 那一个标签来判，别用全页 includes —— 其它输入框也有 min。 */
+  const upFromTag = (/<input[^>]*id="up-from"[^>]*>/.exec(uh) || [''])[0];
+  check('UP 历史页：开始日期输入带下限（= 本服第一个卡池的开始日）',
+    upFromTag.includes(`min="${up.store.bannerBounds.min}"`), true);
+  /* 下限真正生效的地方在 store 的 setUpRange()：手输与「近 N 年」两条路径都要被夹住
+     （输入框的 min 属性只管得住原生选择器）。 */
+  {
+    const s = up.store;
+    const min = s.bannerBounds.min;
+    s.setUpRange('1990-01-01', null);
+    check('UP 历史：手输过早的开始日期被夹到本服第一个卡池', s.upRange.from, min);
+    s.applyUpYears(100);
+    check('UP 历史：「近 N 年」算出的过早开始日期同样被夹住', s.upRange.from, min);
+    s.applyUpYears(1);
+    check('UP 历史：「近 N 年」在范围内时不改动（= 今天 − N 年）',
+      s.upRange.from > min && s.upRange.to === s.today, true);
+    s.setUpRange('', null);
+    check('UP 历史：清空开始日期不会被夹（空串表示「清空」而不是过早日期）', s.upRange.from, '');
+  }
+  /* 右栏两个新勾选框：隐藏已属中坚的干员 / 显示两次 UP 的间隔天数。
+     ⚠️ 后者的**默认是「不勾」**（间隔文案默认不显示）——这个默认值在 state 初值、
+     setServer 的切服重置、右栏的「全部重置」三处都有，改的时候要一起改（见 site.js 注释）。 */
+  check('UP 历史页：右栏两个新勾选框',
+    /隐藏在结束日期已属中坚的干员/.test(uhPlain)
+    && /显示两次 UP 的间隔天数/.test(uhPlain), true);
+  check('UP 历史：两个新开关的默认都是「不勾」（间隔文案默认不显示）',
+    up.store.upHideMid === false && up.store.upShowGaps === false, true);
+  /* 纵轴排序：两行「左标签 + 升/降序分段按钮」，共 2 个标签 + 4 个按钮。
+     ⚠️ 标签文案从 `UP_SORT_ROWS` 派生，别写死（「UP 日期」曾被改成「最近 UP」，断言就红了）。 */
+  const sortLabels = UP_SORT_ROWS.map((r) => r.label);
   check('UP 历史页：纵轴排序是两个维度 × 升/降序（共 4 个按钮）',
-    ['实装日期', 'UP 日期'].every((t) => uh.includes(t))
+    sortLabels.every((t) => uh.includes(t))
     && count(uh, /class="sortrow"/g) === 2
     && count(uh, /class="seg mini"/g) === 2
     && count(uh, />升序<\/button>/g) === 2
@@ -574,8 +613,23 @@ try {
     ['#7a5c00', '#00628f', '#5b21b6'].some((c) => svgBody.includes(c)), true);
   check('时间轴 SVG SSR：进店点是绿色（全站统一的商店兑换色）',
     svgBody.includes('#15803d'), true);
-  check('时间轴 SVG SSR：进店点画在标记右上角（cx 偏右、cy 偏上）',
+  /* ⚠️ 进店绿点与中坚甄选菱形都画在标记的**左上角**（同位）—— 依据是两者互斥
+     （进店标记只出现在 double / classic 上，clafes 从来没有；verify-data 有断言）。
+     原来两者都在右侧，图片模式下头像占满圆环、两个点紧贴右边缘，容易看混。 */
+  check('时间轴 SVG SSR：进店点画在标记左上角（图片模式同样有）',
     svgImg.includes('#15803d'), true);
+  /* 菱形是 polygon 手拼的（zrender 没有 diamond 类型）—— 这里确认它真的画出来了：
+     polygon 会以描边色 = 中坚实色、填充白色出现 */
+  const diamondSvg = svgBody.match(/<(polygon|path)[^>]*stroke="#0098DC"[^>]*>/gi) || [];
+  check('时间轴 SVG SSR：中坚甄选是菱形（polygon 描边 = 中坚实色）',
+    diamondSvg.length > 0, true);
+  /* 间隔文案：**只写数字**（不带「天」，用户 2026-10-02 定的）。
+     ⚠️ 刻度标签是 `2026-01` 这种带横杠的，所以「纯数字的 text」只会来自间隔文案。 */
+  const gapTexts = texts(svgBody).filter((t) => /^\d+$/.test(t));
+  check('时间轴 SVG SSR：两次 UP 之间写出了间隔天数（纯数字，数百条）',
+    gapTexts.length > 100, true);
+  check('时间轴 SVG SSR：间隔文案数量不超过候选条数',
+    gapTexts.length <= built6.bodyOption.series[2].data.length, true);
 
   /* 切五星 / 图片模式 */
   check('时间轴 SVG SSR：切五星后仍有图形', shapes(svgFive) >= 112 * 2, true);

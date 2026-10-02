@@ -10,12 +10,11 @@
  */
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import {
-  TYPE_LABEL, TYPE_ORDER, CAT_ORDER, CAT_COLOR, CAT_INK, TYPES_BY_CATEGORY, UP_SORT_ROWS,
-} from '../lib/constants.js';
+import { UP_SORT_ROWS } from '../lib/constants.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
+import TypeButtons from './TypeButtons.vue';
 
 const site = useSiteStore();
 const route = useRoute();
@@ -35,6 +34,9 @@ const filterTitle = computed(() => {
 
 /** 有进店记录的日期边界（首末进店日），用作日期输入的上下限 */
 const shopBounds = computed(() => site.firstShop.bounds);
+
+/** 当前服务器**卡池**的开始 / 结束日边界 —— UP 历史「开始日期」的下限用第一个卡池的开始日 */
+const bannerBounds = computed(() => site.bannerBounds);
 
 const bannerResult = computed(
   () => `命中 ${site.bannerRows.length} / ${site.banners.length} 个卡池`,
@@ -79,14 +81,14 @@ const {
   (n) => site.applyUpYears(n),
 );
 
-/* ---------------- UP 历史：卡池类型（**直接可点的两级按钮组**） ----------------
-   不再用下拉菜单：点类型按钮即刻筛选（变蓝），点大类按钮把该大类下的类型全选 / 全不选。 */
-const typesOf = (cat) => site.typesByCategory[cat] || [];
-const allOn = (cat) => {
-  const list = typesOf(cat);
-  return list.length > 0 && list.every((t) => site.upTypes.includes(t));
-};
-const someOn = (cat) => typesOf(cat).some((t) => site.upTypes.includes(t));
+/* ---------------- 卡池列表：寻访筛选（多选按钮组，见 TypeButtons.vue） ---------------- */
+
+/** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数） */
+const bannerTypesLabel = computed(() => (!site.filters.types.length
+  ? '全部类型'
+  : `已选 ${site.filters.types.length} 种`));
+
+/* ---------------- UP 历史：卡池类型（同一个按钮组） ---------------- */
 
 /** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数） */
 const upTypesLabel = computed(() => {
@@ -101,7 +103,13 @@ function resetUp() {
   site.setUpTypes([]);
   site.setUpShopOnly(false);
   site.setUpShowAll(false);
+  site.setUpHideMid(false);
+  site.setUpShowGaps(false);
 }
+
+/* ⚠️ 日期输入框上的 `min` 只约束**原生选择器**，手打更早的日期照样能提交。
+   真正的下限夹在 store 的 `setUpRange()` 里（顺带把「近 N 年」那条路径一起盖住），
+   所以这里不需要再包一层。 */
 </script>
 
 <template>
@@ -114,18 +122,13 @@ function resetUp() {
     <!-- 卡池列表的筛选（竖排） -->
     <div v-if="isBanners" class="drawer-bd pane pane-banners">
       <div class="fgroup">
-        <label for="f-type">寻访类型</label>
-        <select id="f-type" v-model="site.filters.type">
-          <option value="">全部类型</option>
-          <option v-for="t in TYPE_ORDER" :key="t" :value="t">{{ TYPE_LABEL[t] }}</option>
-        </select>
-      </div>
-      <div class="fgroup">
-        <label for="f-cat">寻访大类</label>
-        <select id="f-cat" v-model="site.filters.cat">
-          <option value="">全部大类</option>
-          <option v-for="c in CAT_ORDER" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <!-- ⚠️ 与 UP 历史右栏用**同一个组件**，两处的操作手感必须一致（多选 + 大类全选） -->
+        <TypeButtons
+          :selected="site.filters.types" :label-text="bannerTypesLabel"
+          @toggle="site.toggleBannerType"
+          @toggle-category="site.toggleBannerCategory"
+          @clear="site.setBannerTypes([])"
+        />
       </div>
       <div class="fgroup">
         <label for="f-from">开始日期 ≥</label>
@@ -266,11 +269,11 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="up-from">开始日期</label>
+        <label for="up-from">开始日期<small>不早于本服第一个卡池</small></label>
         <div class="date-row">
           <input
             id="up-from" v-model="upFrom" type="date" :class="{ dirty: upFromDirty }"
-            @keyup.enter="confirmUpFrom"
+            :min="bannerBounds.min" @keyup.enter="confirmUpFrom"
           />
           <button class="btn sm" type="button" @click="confirmUpFrom">确认</button>
         </div>
@@ -316,44 +319,13 @@ function resetUp() {
       </div>
 
       <div class="fgroup">
-        <label>卡池类型<span class="fcount">{{ upTypesLabel }}</span></label>
-
-        <!-- 两级按钮组：大类按钮 = 该大类全选 / 全不选，类型按钮 = 单独切换（点了立刻生效） -->
-        <div class="typebtns" :class="{ disabled: site.upShopOnly }">
-          <!-- 大类按钮：点击 = 该大类全选 / 取消全选。
-               选中态用大类实色底，字色取 CAT_INK（黄底要深字，白字看不清）。 -->
-          <div v-for="g in TYPES_BY_CATEGORY" :key="g.cat" class="tgroup">
-            <button
-              class="tcat" type="button" :disabled="site.upShopOnly"
-              :class="{ on: allOn(g.cat), half: someOn(g.cat) && !allOn(g.cat) }"
-              :style="allOn(g.cat)
-                ? { background: CAT_COLOR[g.cat], color: CAT_INK[g.cat] }
-                : null"
-              :title="`${g.cat}：点击${allOn(g.cat) ? '取消全选' : '全选'}`"
-              @click="site.toggleUpCategory(typesOf(g.cat))"
-            >
-              <i class="dot" :style="{ background: CAT_COLOR[g.cat] }" />
-              <span>{{ g.cat }}</span>
-              <span class="tcat-act">{{ allOn(g.cat) ? '取消' : '全选' }}</span>
-            </button>
-
-            <div class="trow">
-              <button
-                v-for="t in g.types" :key="t" class="ttype" type="button"
-                :disabled="site.upShopOnly"
-                :class="{ on: site.upTypes.includes(t) }"
-                @click="site.toggleUpType(t)"
-              >{{ TYPE_LABEL[t] }}</button>
-            </div>
-          </div>
-
-          <div class="tfoot">
-            <button
-              class="btn" type="button" :disabled="site.upShopOnly || !site.upTypes.length"
-              @click="site.setUpTypes([])"
-            >清空</button>
-          </div>
-        </div>
+        <!-- 两级按钮组：与卡池列表右栏共用同一个组件 -->
+        <TypeButtons
+          :selected="site.upTypes" :disabled="site.upShopOnly" :label-text="upTypesLabel"
+          @toggle="site.toggleUpType"
+          @toggle-category="site.toggleUpCategory"
+          @clear="site.setUpTypes([])"
+        />
       </div>
 
       <label class="chk">
@@ -362,6 +334,22 @@ function resetUp() {
           @change="site.setUpShopOnly($event.target.checked)"
         />
         <span>只看进店<small>勾选后禁用并清空卡池类型筛选</small></span>
+      </label>
+
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.upHideMid"
+          @change="site.setUpHideMid($event.target.checked)"
+        />
+        <span>隐藏在结束日期已属中坚的干员<small>按<code>结束日期</code>（未设则按今天）判断该干员是否已移入中坚寻访</small></span>
+      </label>
+
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.upShowGaps"
+          @change="site.setUpShowGaps($event.target.checked)"
+        />
+        <span>显示两次 UP 的间隔天数<small>两个标记在屏幕上隔得开（≈ 相隔 ≥ 41 天）时，在中间写日期差</small></span>
       </label>
 
       <div class="btn-row">

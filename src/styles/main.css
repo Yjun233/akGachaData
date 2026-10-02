@@ -265,12 +265,18 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
    .tl-scroll 是**唯一**的滚动容器（横竖都能滚），所以
    - `.tl-head` 的 `position:sticky;top:0` 能钉在它的顶部 → 横轴固定显示
    - `.tl-names` / `.tl-corner` 的 `position:sticky;left:0` 钉在左侧 → 横向滚动时名字不跑
-   为了让 sticky 生效，容器必须有高度上限（否则纵向不会滚动，钉住也就无从谈起）。 */
+   为了让 sticky 生效，容器必须有高度上限（否则纵向不会滚动，钉住也就无从谈起）。
+
+   ⚠️ **滚动条实际由标准属性决定，不是下面那几行 `::-webkit-scrollbar`**：
+   现代 Chromium（实测 154）里，只要元素上设了 `scrollbar-width` / `scrollbar-color`，
+   `::-webkit-scrollbar` 的规则就**整段被忽略** —— 实测注入 `height:40px` 毫无变化，
+   把 `scrollbar-width` 改成 `auto` 才从 10px 变回 15px。所以真正生效的是
+   `scrollbar-width:thin`（≈10px），下面几行只留给**老 Chromium 兜底**，两边数值不必一致。 */
 .tl-scroll{
   margin:0 16px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;
   overflow:auto;overscroll-behavior:contain;
   max-height:max(320px, calc(100dvh - var(--top-h) - 150px));
-  scrollbar-color:#9db4cf #eef3f9;
+  scrollbar-color:#9db4cf #eef3f9;scrollbar-width: thin;
 }
 .tl-scroll::-webkit-scrollbar{width:13px;height:13px}
 .tl-scroll::-webkit-scrollbar-track{background:#eef3f9}
@@ -621,7 +627,7 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 /* ---------------- 图表（首次进店间隔） ----------------
    每个干员一个点、点上要写干员名，横轴还要写完整的首次进店日期 ——
    一屏塞不下 60~90 个点时点会挤成一团，所以绘图区按「点数 × 每点宽度」铺开，
-   外层容器横向滚动；滚动条样式与表格保持一致（细条在浅色底上看不见）。
+   外层容器横向滚动；滚动条做细（滚动条实际由哪个属性决定，见 `.tl-scroll` 上面那段说明）。
 
    横向滚动带来一个新问题：echarts 自己画的 y 轴会跟着滚出视野。
    所以纵轴刻度**抽出来做成两侧的 .ybar 刻度条**（position:sticky 固定在左右边缘），
@@ -629,7 +635,7 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
    刻度条的宽度/位置由组件内联样式给出（要与 grid 的 left/right 严格一致，不在这里写死）。 */
 .chart-scroll{
   overflow-x:auto;overflow-y:hidden;padding:6px 0 12px;
-  scrollbar-color:#9db4cf #eef3f9;overscroll-behavior-x:contain;
+  scrollbar-color:#9db4cf #eef3f9;overscroll-behavior-x:contain;scrollbar-width: thin;
 }
 .chart-scroll::-webkit-scrollbar{height:13px}
 .chart-scroll::-webkit-scrollbar-track{background:#eef3f9}

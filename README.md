@@ -21,7 +21,7 @@
 ```bash
 pnpm install        # 没装 pnpm 可用 npx --yes pnpm@9 install
 pnpm dev            # http://127.0.0.1:5173
-pnpm build          # 构建到 dist/（纯静态，约 757 KB）
+pnpm build          # 构建到 dist/（纯静态，约 761 KB）
 ```
 
 > **开发默认读本地**：`public/data`、`public/avatars` 是指向同级 `akGachaResource` 仓库的目录联接，

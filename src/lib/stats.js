@@ -24,15 +24,32 @@ export function latest(arr) {
 /**
  * 「最后一次出现」的信息：结束时间 + 是否进行中 + 距今天数。
  * 进行中时 days 为 null（界面显示「进行中」）。
+ *
+ * ⚠️ **结束日期当日算「已关闭」**（2026-10-01 口径）：卡池的最后一天（`endDate`）当天
+ * 就已经下架了，所以判据是 `startDate <= refDate && refDate < endDate`。
+ *
+ * ⚠️ **距今天数整体 +1**（2026-10-02 口径）：**结束日当天看到的是「1 天」**，不是 0。
+ * 即 `days = 参考日期 − 结束日期 + 1` —— 把结束日当作第 1 天来数。
+ * 于是「0」腾出来给「进行中」、「-1」给「无数据」，三者互不混淆
+ * （排序值见下面的 `daysSortValue`）。
  */
 export function endInfo(arr, refDate) {
   const b = latest(arr);
   if (!b) return { end: null, live: false, days: null };
-  const live = b.startDate <= refDate && refDate <= b.endDate;
-  return { end: b.endDate, live, days: live ? null : diffDays(refDate, b.endDate) };
+  const live = b.startDate <= refDate && refDate < b.endDate;
+  return { end: b.endDate, live, days: live ? null : diffDays(refDate, b.endDate) + 1 };
 }
 
-/** 排序用的「距今天数」：进行中视为 0，无数据视为 -1 */
+/**
+ * 排序用的「距今天数」（**只用于排序，不影响显示**）：
+ * - **进行中 = 0**（显示「进行中」）
+ * - **无数据 = -1**（显示「—」，即该干员根本没有这类记录）
+ * - 其余是真实天数：**结束日当天 = 1**、之后 2、3……（不会出现 0）
+ *
+ * ⚠️ 为什么要区分：2026-10-01 起「结束日当天算已关闭」，若「进行中」也按 0 算，
+ * 两类行会**并列混在一起**，按距今天数排序时看不出谁是谁。把两个特殊值取成
+ * 0 / -1（比最小的真实天数 1 还小），就能与真实天数彻底分开。
+ */
 export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
 
 /**

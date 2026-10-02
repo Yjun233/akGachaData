@@ -22,7 +22,8 @@ const site = useSiteStore();
 
 const totalWidth = computed(() => BANNER_COLS.reduce((a, b) => a + b, 0));
 
-const isLive = (b) => b.startDate <= site.today && site.today <= b.endDate;
+/** 进行中 = 参考日期落在 [开始日, 结束日) —— **结束日当天算已关闭**（2026-10-01 口径） */
+const isLive = (b) => b.startDate <= site.today && site.today < b.endDate;
 
 /** 某星级的 UP 干员 */
 const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);

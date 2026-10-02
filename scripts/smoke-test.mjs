@@ -367,8 +367,10 @@ const checks = [
   ['日期：TODAY 为真实日期格式', /^\d{4}-\d{2}-\d{2}$/.test(wide.today), true],
   ['日期：SNAPSHOT_DATE = 数据的 generatedAt', wide.snapshotDate, SNAP],
   ['日期：参考日期初始值取数据快照日', wide.refDateInit, wide.snapshotDate],
+  /* ⚠️ 原型同样遵守「结束日期当日算已关闭」的口径 —— 这里只是确认那行代码还在
+     （断言写的是原型里的**一行源码**，所以口径改了要同步改这一行，不是改断言风格） */
   ['日期：卡池列表「进行中」按真实日期判断（用 TODAY）',
-    /const isLive = b => b\.startDate <= TODAY && TODAY <= b\.endDate;/.test(html), true],
+    /const isLive = b => b\.startDate <= TODAY && TODAY < b\.endDate;/.test(html), true],
 
   // ---- 同星级「标准 / 中坚」两表自适应并排 ----
   ['并排：两个星级分组各有一个配对容器', statChunks.length, 2],
