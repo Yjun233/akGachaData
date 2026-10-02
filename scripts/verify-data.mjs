@@ -162,7 +162,7 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_en.json'))) {
 check('干员表带 enName 字段', Object.values(rawOperators).every((o) => 'enName' in o), true);
 check('干员表带 enClassicDate 字段', Object.values(rawOperators).every((o) => 'enClassicDate' in o), true);
 
-/* ---------------- 繁中服（banners_tc.json，由资源仓库的 fetch-data-tc.mjs 从本地表格产出）---------------- */
+/* ---------------- 繁中服（banners_tc.json，由资源仓库的 fetch-data-tc.mjs 从金山在线表格读出）---------------- */
 
 const tcMeta = meta.servers.find((s) => s.id === 'tc') || {};
 check('metadata：繁中服已启用（available）', tcMeta.available, true);

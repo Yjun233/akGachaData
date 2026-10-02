@@ -762,7 +762,7 @@ try {
   }
 
   /* ---------------- 左栏：三个服务器各自的「数据更新日」（纯展示） ----------------
-     国服 = generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt（= 本地表格修改日）。
+     国服 = generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt（= banners_tc.json 的修改日）。
      参考日期**不再**取这几个日期，它一律是打开页面的当天。 */
   const UPD = {
     sc: META.generatedAt || '—',
