@@ -21,7 +21,7 @@ const props = defineProps({
 
 const site = useSiteStore();
 
-/** 图片模式：干员列显示正方形头像（统计页没有 isShop/限定标记，只给头像） */
+/** 图片模式：干员列显示头像；统计页用**长方形蒙版**（宽是高的 2 倍），见 main.css 的 .avt-rect */
 const isImage = computed(() => site.avatarMode === 'image');
 const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'square');
 
@@ -45,12 +45,18 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
 
 <template>
   <div class="tbl-scroll plain">
-    <table class="grid floating stat-tbl">
+    <!-- img-mode：图片模式的样式钩子（长方形蒙版头像 + 干员格的占位行框，见 main.css） -->
+    <table class="grid floating stat-tbl" :class="{ 'img-mode': isImage }">
       <!-- 只给前两列定宽：它们要 sticky 冻结，第 2 列的 left 偏移必须等于第 1 列的实际宽度，
-           不能让它随内容变。最宽的干员名「凯尔希·思衡托」约 91px + 左右内边距 22px → 116px。 -->
+           不能让它随内容变。
+           78px = 日期（`2026-10-01`，13px 常规字重 66px）+ 左右内边距 12px，
+             与「结束时间」各列内容同类，所以取一样的宽度（用户要求「也收到一样窄」）。
+           103px = **7 个汉字**（13px 下 91px）+ 左右内边距 12px（用户指定的口径）。
+             最长干员名正好 7 个字（`凯尔希·思衡托`，中间是半角 `·`）≈ 81.5px，有富余。
+           ⚠️ 改动这两个值要**同时**改 main.css 里对应的 width/min/max 与第 2 列的 left。 -->
       <colgroup>
-        <col style="width: 100px" />
-        <col style="width: 116px" />
+        <col style="width: 78px" />
+        <col style="width: 103px" />
       </colgroup>
       <thead>
         <tr>
@@ -111,7 +117,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-if="!r.releaseDate" class="dash">—</span><template v-else>{{ r.releaseDate }}</template>
           </td>
           <td class="wrapcell">
-            <img v-if="isImage" class="avt-sq" :src="avatarOf(r.name)" :alt="r.name" :title="r.name" />
+            <img v-if="isImage" class="avt-rect" :src="avatarOf(r.name)" :alt="r.name" :title="r.name" />
             <b v-else>{{ r.name }}</b>
           </td>
           <!-- 出率提升 -->

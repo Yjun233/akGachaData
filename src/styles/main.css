@@ -424,7 +424,7 @@ table.grid.stat-tbl{
 }
 table.grid.stat-tbl th,
 table.grid.stat-tbl td{
-  overflow:visible;padding:8px 11px;
+  overflow:visible;padding:4px 6px;
   box-shadow:inset -1px 0 0 var(--border);
 }
 /* 最后一列不要右边线（表格外侧不出线） */
@@ -449,6 +449,15 @@ table.grid.stat-tbl td.wrapcell{
   white-space:nowrap;overflow-wrap:normal;word-break:normal;
   padding-top:8px;padding-bottom:8px;
 }
+/* ⚠️ 图片模式下干员格要**补回一个文本行框的高度**，否则整行会矮 8px：
+   简洁模式的 37.8px 行高其实是**干员格**撑出来的 —— 格子里是名字（行框 20.8px）
+   + 上下 padding 8×2 + 底边线 1；而数字格只有 4px padding，本身只有 29.8px。
+   头像改成绝对定位后格子里没有行流内容了，行高就掉到 29.8px（与简洁模式对不上）。
+   `::before` 是个高度 1lh（= line-height 20.8px）的空块，把格子内容高度顶回行框高度：
+   20.8 + 16 + 1 = **37.8px**，与简洁模式逐像素一致。
+   ⚠️ 不能在 `td` 上写 `height:1lh` —— 全局 `*{box-sizing:border-box}`，
+   td 的 height 是**外高**，20.8 反而比原来的 29.8 更矮。 */
+table.grid.stat-tbl.img-mode td.wrapcell::before{content:'';display:block;height:20.8px;height:1lh}
 
 /* ---------------- 统计表：冻结「实装时间」「干员」两列 ----------------
    横向滚动时这两列钉在左边（配合 StatTable 里的 colgroup 定宽；第 2 列的 left
@@ -457,16 +466,34 @@ table.grid.stat-tbl td.wrapcell{
    ⚠️ 冻结单元格必须**不透明**，否则横向滚动时后面的内容会透出来。这里用
    `background:inherit` —— 所以下面同时把 tbody tr 的背景显式写出来（否则奇数行
    tr 没有背景，inherit 拿到的是透明，滚动时就会穿帮）。 */
-table.grid.stat-tbl th:nth-child(1),
-table.grid.stat-tbl td:nth-child(1){
-  width:100px;min-width:100px;max-width:100px;left:0;
+/* ⚠️ 「表头」必须限定到 `tr:first-child` —— 踩过的坑（2026-10-03）：
+   表头有**两行**，第二行有 6 个（中坚表 10 个）th，它的第 1、2 个是「出率提升」组的
+   「结束时间 / 距今天数」。原本写 `th:nth-child(1)` / `th:nth-child(2)` 不限定行，
+   这两列就被误当成「实装时间 / 干员」钉成 100px / 116px 并 `left:0 / 100px` 粘住左边，
+   于是同一张表里「出率提升」与「商店兑换」两组**同名子列宽度不一样**（100/116 vs 78/74）。
+   数据行不用限定：tbody 每行的第 1、2 个 td 本来就是「实装时间 / 干员」。
+
+   定宽取值（13px 字体、单元格左右内边距各 6px）：
+   - 实装时间 **78px** = 日期 `2026-10-01` 66px + 12px 内边距
+     —— 与「结束时间」各列内容完全同类，所以取一样的宽度（用户 2026-10-03 要求「也收到一样窄」）。
+     表格本身是 `width:auto`，这几列都不铺满，统一窄一点能让两组数字列贴得更近。
+   - 干员 **103px** = **7 个汉字** 91px + 12px 内边距（用户 2026-10-03 指定按 7 个汉字算）。
+     最长干员名正是 7 个字（`凯尔希·思衡托` / `维娜·维多利亚`，中间是半角 `·` U+00B7）≈ 81.5px，
+     91px 有富余，不会挤到相邻列。
+     ⚠️ 旧注释写「约 91px + 左右内边距 22px → 116px」是**过时**的：22px 来自更早的
+     `padding:8px 10px`，后来 stat-tbl 覆盖成 `4px 6px` 却没顺手收窄宽度 → 白白多出 10px。
+   - 改这两个值时必须**同时**改 StatTable.vue 里 colgroup 的两条 `<col>` 与第 2 列的 `left`
+     （`left` 必须恒等于第 1 列宽度），`verify-render` 有断言盯着这三处一致。 */
+table.grid.stat-tbl thead tr:first-child th:nth-child(1),
+table.grid.stat-tbl tbody td:nth-child(1){
+  width:78px;min-width:78px;max-width:78px;left:0;
 }
-table.grid.stat-tbl th:nth-child(2),
-table.grid.stat-tbl td:nth-child(2){
-  width:116px;min-width:116px;max-width:116px;left:100px;
+table.grid.stat-tbl thead tr:first-child th:nth-child(2),
+table.grid.stat-tbl tbody td:nth-child(2){
+  width:103px;min-width:103px;max-width:103px;left:78px;
 }
-table.grid.stat-tbl th:nth-child(-n+2),
-table.grid.stat-tbl td:nth-child(-n+2){position:sticky}
+table.grid.stat-tbl thead tr:first-child th:nth-child(-n+2),
+table.grid.stat-tbl tbody td:nth-child(-n+2){position:sticky}
 table.grid.stat-tbl tbody tr{background:#fff}
 table.grid.stat-tbl tbody tr:nth-child(even){background:#fcfdff}
 table.grid.stat-tbl tbody tr:hover{background:#f7fbff}
@@ -510,6 +537,43 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 .avt .av,.avt-sq{
   width:26px;height:26px;border-radius:7px;display:block;object-fit:cover;
   background:var(--blue-100);margin: 0 auto;
+}
+/* ---------------- 统计页图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
+   出率提升记录的干员列宽 103px（按 7 个汉字定的），26px 的方头像丢在里面显得又小又空，
+   所以改成**宽是高 2 倍**的长方形蒙版：**68×34**（都是用户手调的尺寸，
+   取景 `object-position:50% 70%`，圆角与底色也由他去掉 —— 渐隐后都不需要了）。
+
+   实现要点（五个约束一起满足）：
+   1. **绝对定位**（脱离文档流）→ 头像**不参与行高计算**。行高于是完全由数字列的行框决定，
+      与简洁模式**逐像素一致**（实测两种模式都是 37.8px = 20.8 行框 + 上下 padding 16 + 边线 1）。
+      ⚠️ 若改用 `display:block` 让头像参与布局，会把干员格撑高、整行跟着变高。
+   2. **垂直居中**：34px 的头像放在 37.8px 的行里，上下各留约 1.9px，不溢出到相邻行。
+      定位的包含块是 `td` —— 前两列是 `position:sticky`，本身就是定位元素，无需再加 relative。
+   3. **`object-fit:cover`** → 素材（96×96 方形半身像）**不被拉伸**，按 2:1 裁掉上下各约 1/4；
+      `object-position:50% 70%` 决定取景框落在哪里（往下取一点，多露脸、少露头顶留白）。
+      ⚠️ 只作用于统计页：卡池列表仍是 26×26 方头像（那边的列窄，长方形会串味）。
+   4. **四边渐隐**（用户 2026-10-03 追加、并连续微调过）：用**两层 `mask-image`** 让
+      **头像本身**的 alpha 在四边渐入 —— 左右各 10px、上下各 2px，
+      于是长方形的四条硬边消失，和行背景自然衔接。
+      · 两层渐变必须用 `mask-composite: intersect` **取交集**（WebKit 旧关键字是
+        `-webkit-mask-composite: source-in`，名字不一样，⚠️ 别照抄标准那个词）；
+        默认的 `add` 会把两个蒙版**并集**起来 = 四边都不渐隐，等于白写。
+      · ⚠️ 必须用 `mask-image` 而不是「叠一层同色遮罩」：行的底色有白 / `#fcfdff`(偶数行) /
+        `#f7fbff`(hover) 三种，叠遮罩得跟着换色、hover 时还会穿帮；mask 是真正的透明度，与底色无关。
+      · ⚠️ `transparent` 在 mask 里即 alpha=0（mask 默认按 alpha 通道取用），黑/白都没关系。
+      · ⚠️ 保留 `-webkit-` 前缀给旧 Safari 兜底；两者同时写时**后者生效**，值要一致。 */
+table.grid.stat-tbl td.wrapcell img.avt-rect{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:68px;height:34px;object-fit:cover;object-position:50% 70%;
+  -webkit-mask-image:
+   linear-gradient(to right,  transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%),
+   linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
+  -webkit-mask-composite: source-in;
+
+  mask-image:
+   linear-gradient(to right,  transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%),
+   linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
+  mask-composite: intersect;
 }
 .avt .corners{position:absolute;top:-6px;right:-5px;display:flex;gap:2px;pointer-events:none}
 .avt .corners .mk{

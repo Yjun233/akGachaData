@@ -382,9 +382,14 @@ try {
     && !/src="data:image\/svg\+xml/.test(imgBanners.html), true);
 
   const imgStats = await renderRoute('/operators', (s) => s.setAvatarMode('image'));
-  check('图片模式：统计表每人一个正方形头像', count(imgStats.html, /class="avt-sq"/g), 204);
+  /* 统计页用**长方形蒙版**（.avt-rect，宽是高 2 倍），与卡池列表的方形头像 .avt-sq 区分开 */
+  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect"/g), 204);
   check('图片模式：统计表不再渲染干员名', !/<b>推进之王<\/b>/.test(imgStats.html), true);
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
+  /* ⚠️ 行高一致性靠 `img-mode` 那句钩子 + `.avt-rect` 的绝对定位：
+     没有它，干员格失去行流内容 → 行高从 37.8px 掉到 29.8px（实测），与简洁模式对不上。 */
+  check('图片模式：统计表带 img-mode 钩子（补回干员格的行框高度）',
+    /<table class="img-mode grid floating stat-tbl">/.test(imgStats.html), true);
 
   const imgFup = await renderRoute('/first-up', (s) => s.setAvatarMode('image'));
   /* 页内说明块已移除；图片模式的关键行为（点用头像）在数据层与 upTimeline 断言里守 */
@@ -806,15 +811,89 @@ try {
     ['favicon.ico', 'favicon.png', 'apple-touch-icon.png']
       .every((f) => fs.existsSync(path.join(ROOT, 'src', 'assets', f))), true);
 
-  /* ---------------- 统计表冻结前两列 ---------------- */
+  /* ---------------- 统计表冻结前两列 ----------------
+     冻结列的宽度有**三处**必须一致，少改一处就会错位：
+     ① StatTable.vue 的 `<colgroup>`（定宽的真源）、② main.css 里 th/td:nth-child(n) 的
+     width/min/max、③ 第 2 列的 `left`（必须恒等于第 1 列宽度）。所以这里从
+     colgroup 抽出数值，再拿去和 CSS 对账，而不是各自硬编码。 */
   const statSrc = fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8');
+  const colWidths = Array.from(statSrc.matchAll(/<col style="width: (\d+)px"/g)).map((m) => Number(m[1]));
+  const [colDate, colName] = colWidths;
+  const cssNum = (re) => { const m = cssAll.match(re); return m ? Number(m[1]) : null; };
+  const cssDateW = cssNum(/stat-tbl tbody td:nth-child\(1\)\{[\s\S]{0,60}?width:(\d+)px/);
+  const cssNameW = cssNum(/stat-tbl tbody td:nth-child\(2\)\{[\s\S]{0,60}?width:(\d+)px/);
+  const cssLeft = cssNum(/stat-tbl tbody td:nth-child\(2\)[\s\S]{0,140}?left:(\d+)px/);
   check('统计表：前两列定宽（sticky 的 left 偏移必须等于第 1 列宽度）',
-    /<colgroup>/.test(statSrc) && count(statSrc, /<col style="width: \d+px"/g) === 2, true);
-  check('统计表：冻结「实装时间」「干员」两列（CSS sticky + 第 2 列 left=100px）',
-    /stat-tbl th:nth-child\(-n\+2\)[\s\S]{0,80}position:sticky/.test(cssAll)
-    && /stat-tbl td:nth-child\(2\)[\s\S]{0,120}left:100px/.test(cssAll), true);
+    /<colgroup>/.test(statSrc) && colWidths.length === 2, true);
+  check('统计表：冻结列宽度三处一致（colgroup / CSS 定宽 / 第 2 列 left 偏移）',
+    [colDate, colName, cssDateW, cssNameW, cssLeft].every((v) => typeof v === 'number' && v > 0)
+    && colDate === cssDateW && colName === cssNameW && cssLeft === colDate, true);
+  /* 用户 2026-10-03 指定的口径（设计常量，不随数据变）：
+     · 干员列 = **7 个汉字** 13×7=91px + 左右内边距 12px（`padding:4px 6px`）= **103px**
+       —— 最长干员名正好 7 个字（`凯尔希·思衡托`，中间半角 `·`）≈ 81.5px，91px 有富余；
+     · 实装时间列 = 10 位日期 66px + 12px = **78px**，与内容同类的「结束时间」各列取一样宽。 */
+  check('统计表：干员列宽 = 7 个汉字 + 内边距（103px），实装时间列 = 78px',
+    colName === 103 && colDate === 78, true);
+  check('统计表：冻结「实装时间」「干员」两列（CSS sticky + 第 2 列 left 跟着第 1 列走）',
+    /stat-tbl thead tr:first-child th:nth-child\(-n\+2\),[\s\S]{0,80}tbody td:nth-child\(-n\+2\)\{position:sticky\}/.test(cssAll)
+    && cssLeft === colDate, true);
+  /* ⚠️ 坑（2026-10-03）：统计表是**两行表头**，第二行的第 1、2 个 th 是「出率提升」组的
+     「结束时间 / 距今天数」。定宽 / sticky 选择器若只写 `th:nth-child(1)` 而不限定
+     `tr:first-child`，这两列会被误钉成前两列的宽度 → 同一张表里「出率提升」与
+     「商店兑换」的同名子列宽度就不一样（曾出现 100/116 vs 78/74）。
+     排查手法：量 `getBoundingClientRect().width`，**与前两列的钉死宽度撞号**就是它。 */
+  check('统计表：前两列定宽只作用于表头第一行（不误伤第二行的子表头）',
+    !/stat-tbl (?:th|td):nth-child\(/.test(cssAll)
+    && /stat-tbl thead tr:first-child th:nth-child\(1\),[\s\S]{0,80}tbody td:nth-child\(1\)\{/.test(cssAll), true);
   check('统计表：冻结列用 background:inherit 保证不透明（依赖 tbody tr 有背景色）',
     /stat-tbl tbody tr\{background:#fff\}/.test(cssAll), true);
+  /* ---------------- 统计页图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
+     五条硬约束都在 CSS 里守着，改坏了会立刻红：
+     ① 宽 = 高 × 2（具体像素是用户手调的，别写死 → 只守比例契约）；
+     ② **四边渐隐**：两层 `mask-image`（左右一层 + 上下二层）靠 `mask-composite: intersect`
+        取交集，让头像**自身的 alpha** 在四条边渐入 → 硬边消失，且与行底色无关
+        （行有白 / #fcfdff / #f7fbff 三种底，所以不能叠同色遮罩）；
+     ③ `object-fit:cover` → 96×96 方形素材**不拉伸**（按 2:1 裁上下）；
+     ④ **绝对定位** → 头像不参与行高计算，行高仍由干员格里的占位行框决定；
+     ⑤ 配套的 `img-mode` 那句给干员格补回 1lh 的行框高度（否则行高会掉 8px）。 */
+  const rectCss = (cssAll.match(/stat-tbl td\.wrapcell img\.avt-rect\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
+  /* ⚠️ 尺寸是用户手调的（2026-10-03 由 52×26 改到 68×34），所以**不写死像素**，
+     只断言「宽 = 高 × 2」这条比例契约 —— 以后他再调尺寸也不会被误判成回归。 */
+  const rectW = Number((rectCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
+  const rectH = Number((rectCss.match(/[;{]height:(\d+(?:\.\d+)?)px/) || [])[1]);
+  check('统计页图片模式：长方形蒙版 = 宽是高 2 倍（当前 68 × 34）',
+    Number.isFinite(rectW) && rectH > 0 && rectW === rectH * 2, true);
+  /* 蒙版：四边渐隐 = 左右 + 上下两层 linear-gradient 取交集。
+     ⚠️ 同样**不写死像素**（用户连续微调过 5px → 左右 10px / 上下 2px）——只守结构契约：
+     两层、方向分别是 `to right` / `to bottom`、四个停点是 `transparent 0 → #000 A → #000 calc(100% - A) → transparent 100%`
+     （**两端偏移必须对称**）、且 `-webkit-` 值必须与标准值逐字符一致。
+     mask 默认按 alpha 通道取用，`#000` 只是「不透明」的写法。 */
+  const maskStd = (rectCss.match(/[^-]mask-image:([^;]+)/) || [])[1] || '';
+  const maskWebkit = (rectCss.match(/-webkit-mask-image:([^;]+)/) || [])[1] || '';
+  const grads = maskStd.match(/linear-gradient\([^()]*(?:\([^()]*\)[^()]*)*\)/g) || [];
+  const parseGrad = (g) => { const [dir, ...stops] = g.slice('linear-gradient('.length, -1).split(','); return { dir, stops }; };
+  /* 渐变里只允许出现「四停点、两端 transparent、不透明段左右对称」这一种形状，返回单侧偏移 */
+  const fadeOffset = (g) => {
+    if (!g || g.stops.length !== 4) return null;
+    const [a, b, c, d] = g.stops;
+    const m1 = b.match(/^#000(\d+(?:\.\d+)?)px$/);
+    const m2 = c.match(/^#000calc\(100%-(\d+(?:\.\d+)?)px\)$/);
+    return (a === 'transparent0' && d === 'transparent100%' && m1 && m2 && m1[1] === m2[1])
+      ? Number(m1[1]) : null;
+  };
+  const gx = grads[0] ? parseGrad(grads[0]) : null;
+  const gy = grads[1] ? parseGrad(grads[1]) : null;
+  check('统计页图片模式：头像四边渐隐（左右 + 上下两层渐变，两端透明且偏移左右对称）',
+    grads.length === 2 && gx && gy && gx.dir === 'toright' && gy.dir === 'tobottom'
+    && fadeOffset(gx) > 0 && fadeOffset(gy) > 0, true);
+  check('统计页图片模式：两层渐变用 mask-composite 取交集（兼容写法 source-in）+ 两前缀蒙版同值',
+    maskStd !== '' && maskStd === maskWebkit
+    && /mask-composite:intersect/.test(rectCss)
+    && /-webkit-mask-composite:source-in/.test(rectCss), true);
+  check('统计页图片模式：头像不被拉伸（object-fit:cover）+ 绝对定位（不影响行高）',
+    /object-fit:cover/.test(rectCss) && /position:absolute/.test(rectCss), true);
+  check('统计页图片模式：干员格补回一个行框高度的占位块（height:1lh）',
+    /stat-tbl\.img-mode\s+td\.wrapcell::before\{[^}]*height:1lh\}/.test(cssAll), true);
   /* ⚠️ 冻结列表头的 z-index 必须**高于**分组表头，否则 DOM 靠后的「出率提升」会盖住「干员」。
      而全局 `table.grid.floating thead tr:first-child th`（特异性 0,3,4）会压过
      只写到 `.stat-tbl` 的规则 —— 所以选择器必须带上 .floating 与 tr。 */
