@@ -16,6 +16,9 @@
  * **鼠标可按住拖拽平移**（这个容器横竖都能滚，所以还能斜向拖）——
  * 见 `composables/useDragPan.js`；触摸一概不接管，手机上仍是原生滑动。
  *
+ * 手机竖屏下浮窗的贴边范围由 `tipBand` 交给图表（`lib/chartTooltip.js`）：
+ * 上不压 sticky 的横轴刻度条、下不出滚动区。
+ *
  * 已排除限定干员；一次只显示一个星级（右栏切换，默认六星）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -23,6 +26,7 @@ import { useSiteStore } from '../stores/site.js';
 import { buildUpTimeline, chartHeight, minInnerWidth, TL } from '../lib/upTimeline.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
+import { TIP_GAP } from '../lib/chartTooltip.js';
 
 const site = useSiteStore();
 const data = computed(() => site.upHistory);
@@ -55,6 +59,20 @@ const innerEl = ref(null);
 
 /* 鼠标按住拖拽平移（只认鼠标 —— 触摸交给浏览器的原生滑动，见 composables/useDragPan.js） */
 const { dragging, onPointerDown, onPointerMove, onPointerUp } = useDragPan();
+
+/* 浮窗可用带（手机竖屏贴边用，见 lib/chartTooltip.js）：
+   上沿 = **sticky 横轴刻度条的下沿**（`.tl-head`，它是钉在滚动区顶部的），
+   下沿 = 滚动区下沿。于是浮窗贴着滚动区放，**上方不压横轴、下方不出滚动区**
+   —— 用户 2026-10-03 报「太靠边缘，尤其上方挡了横轴」。
+   ⚠️ 每次调用都要重新量：滚动 / 改筛选 / 转屏后 rect 都会变。 */
+function tipBand() {
+  const sc = scrollEl.value;
+  if (!sc) return null;
+  const r = sc.getBoundingClientRect();
+  const head = sc.querySelector('.tl-head');
+  const headBottom = head ? head.getBoundingClientRect().bottom : r.top;
+  return { top: headBottom + TIP_GAP, bottom: r.bottom - TIP_GAP };
+}
 
 /** 是不是正贴着右端看（容差 2px，浏览器取整会让它差个零点几） */
 const atRight = () => {
@@ -138,7 +156,7 @@ const filterText = computed(() => {
             >{{ r.name }}</div>
           </div>
           <div class="tl-body">
-            <EChart :option="built.bodyOption" :height="bodyH" />
+            <EChart :option="built.bodyOption" :height="bodyH" :tip-band="tipBand" />
           </div>
         </div>
       </div>

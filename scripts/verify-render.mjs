@@ -354,6 +354,77 @@ try {
   check('首次UP间隔页：浮窗的「所在卡池」放在「首次日期」之后（同一场卡池的两条信息相邻）',
     /`\$\{firstLabel\.value\}：\$\{r\.firstDate\}`,[\s\S]{0,200}?`所在卡池：/.test(fupSrc), true);
 
+  /* ---------------- 图表浮窗：挂到全屏固定图层 + 手机竖屏放进「可用带」+ 互斥 ----------------
+     （用户 2026-10-03 提：手机竖屏下浮窗经常被遮挡；随后要求「上方不压横轴」「统一放图表标题
+      高度」「点一处另一处要消失」）
+     浮窗是 echarts 在客户端建的 DOM，SSR 出的 HTML 里什么都没有 → 只能查源码把关键
+     契约钉住。这里刻意**不写死像素**（TIP_GAP / z-index 都可能调），只断言「结构」：
+     挂载点、坐标口径、可用带（band）的 flip/bottom 判据、互斥、以及两个图表页各自的带子。 */
+  const ttSrc = fs.readFileSync(path.join(ROOT, 'src/lib/chartTooltip.js'), 'utf8');
+  const chartCmp = fs.readFileSync(path.join(ROOT, 'src/components/EChart.vue'), 'utf8');
+  const tlSrc = fs.readFileSync(path.join(ROOT, 'src/lib/upTimeline.js'), 'utf8');
+
+  check('浮窗：挂载点是 position:fixed 的全屏图层（图层坐标系 = 视口坐标系）',
+    /position:fixed;inset:0/.test(ttSrc), true);
+  check('浮窗：图层 z-index 压过固定顶栏（顶栏 70）与抽屉（75）',
+    Number((ttSrc.match(/LAYER_Z\s*=\s*(\d+)/) || [])[1]) > 75, true);
+  check('浮窗：补丁关掉 confine（它夹的是「图表范围」，而图表比屏幕宽 → 等于放任浮窗出屏）',
+    /confine:\s*false/.test(ttSrc), true);
+  check('浮窗：只有贴边模式才接管 position，否则交回 echarts 默认的「贴光标」',
+    /if \(isPin\(\)\) return pinAt\(/.test(ttSrc)
+    && /return typeof base === 'function' \? base\(point, params, el, rect, size\) : base/.test(ttSrc), true);
+  /* 贴边「可用带」（band）：视图给一条「不能压」的竖直区间，浮窗落进去 */
+  check('浮窗贴边：`flip` 模式点在屏幕下半 → 贴带子上沿；在上半 → 贴带子下沿',
+    /screenY > vh \/ 2 \? lo : maxY/.test(ttSrc), true);
+  check('浮窗贴边：`bottom` 模式恒定贴带子下沿（首次UP间隔用：统一落在图表标题那一带）',
+    /band\.mode === 'bottom'\) y = maxY/.test(ttSrc), true);
+  check('浮窗贴边：带子上下沿缺项时用「顶栏下方 / 屏幕下方」兜底',
+    /Number\.isFinite\(band\.top\) \? band\.top : topbarHeight\(\) \+ TIP_GAP/.test(ttSrc)
+    && /Number\.isFinite\(band\.bottom\) \? band\.bottom : vh - TIP_GAP/.test(ttSrc), true);
+  check('浮窗贴边：把 y 夹回带子内（带子比浮窗矮时以上沿为准，别顶出屏幕）',
+    /y = clamp\(y, minY, maxY\)/.test(ttSrc), true);
+  check('浮窗贴边：横向以点位居中并夹在屏幕内（图表比屏幕宽，不夹就会被推出屏幕）',
+    /clamp\(hostRect\.left \+ px - tw \/ 2, TIP_GAP, Math\.max\(TIP_GAP, vw - tw - TIP_GAP\)\)/.test(ttSrc), true);
+  check('浮窗贴边：返回的是**图表内**坐标（要减掉图表容器的 rect，echarts 再换算到图层）',
+    /return \[x - hostRect\.left, y - hostRect\.top\]/.test(ttSrc), true);
+  check('浮窗：窄屏把浮窗收一档（否则塞不进「图表标题那一带」，见 NARROW_CSS）',
+    /const NARROW_CSS/.test(ttSrc) && /\(pinned \? NARROW_CSS : ''\)/.test(ttSrc), true);
+  check('浮窗：图层挂 body（免得将来有祖先带 transform，又把 fixed 抓回去被 overflow 裁）',
+    /document\.body\.appendChild\(layer\)/.test(ttSrc), true);
+  check('浮窗：EChart.vue 首次、每次 setOption、断点变化都重打补丁（共 3 处）',
+    count(chartCmp, /setOption\(patchOption\(/g), 3);
+  check('浮窗：贴边与否读的是响应式断点、可用带透传视图（传函数，转屏后立刻跟着变）',
+    /isPin: \(\) => isNarrow\.value/.test(chartCmp)
+    && /band: props\.tipBand/.test(chartCmp), true);
+  check('浮窗：EChart.vue 卸载时把图层摘掉',
+    /disposeTooltipLayer\(el\.value\)/.test(chartCmp), true);
+  check('浮窗：滚动时把浮窗收起来（固定图层不会跟着滚，不收就与已滚走的那根条脱节）',
+    /dispatchAction\(\{ type: 'hideTip' \}\)/.test(chartCmp)
+    && count(chartCmp, /addEventListener\('scroll', onAnyScroll, true\)/g) === 1
+    && count(chartCmp, /removeEventListener\('scroll', onAnyScroll, true\)/g) === 1, true);
+  check('浮窗互斥：某图的浮窗一显示就把别的图收起来（手机上点完六星再点五星不留两个）',
+    /chart\.on\('showTip'/.test(ttSrc)
+    && /c\.dispatchAction\(\{ type: 'hideTip' \}\)/.test(ttSrc), true);
+  check('浮窗：EChart.vue 注册 / 注销图表（互斥名单跟着组件生命周期走）',
+    /\bregisterChart\(chart\)/.test(chartCmp) && /\bunregisterChart\(chart\)/.test(chartCmp), true);
+  check('浮窗：两个图表页的 tooltip 都不再自带 confine（统一交给补丁）',
+    !/confine:\s*true/.test(fupSrc) && !/confine:\s*true/.test(tlSrc), true);
+
+  /* 两个图表页各自的「可用带」契约 */
+  const upViewSrc = fs.readFileSync(path.join(ROOT, 'src/views/UpHistoryView.vue'), 'utf8');
+  check('UP历史页：浮窗带子上沿 = sticky 横轴刻度条（.tl-head）下沿（上方不压横轴）',
+    /querySelector\('\.tl-head'\)/.test(upViewSrc)
+    && /top: headBottom \+ TIP_GAP/.test(upViewSrc), true);
+  check('UP历史页：浮窗带子下沿 = 滚动区下沿（下方不出滚动区）',
+    /bottom: r\.bottom - TIP_GAP/.test(upViewSrc), true);
+  check('UP历史页：浮窗带子传给图表',
+    /<EChart[^>]*:tip-band="tipBand"/.test(upViewSrc), true);
+  check('首次UP间隔页：浮窗带子下沿 = 绘图区顶（图表标题那一带），模式 bottom',
+    /host\.getBoundingClientRect\(\)\.top \+ GRID\.top/.test(fupSrc)
+    && /mode: 'bottom'/.test(fupSrc), true);
+  check('首次UP间隔页：两张图（六星 / 五星）都带上浮窗带子',
+    count(fupSrc, /:tip-band="tipBand"/g), 2);
+
   /* 切换模式**不动**已设的时间范围（用户指定）；范围按新的「首次日期」重新筛 */
   const rotKeep = await renderRoute('/first-up', (s) => {
     s.setFirstUpRange('2024-01-01', '2026-01-01');
@@ -619,7 +690,7 @@ try {
      SSR 渲染页面时 echarts 不会初始化，DOM 断言看不出「图是空的」这类问题
      （曾因为 custom 系列的 data 没带 x 值，整个图画不出来）。
      所以这里直接拿 option 跑一次 echarts 的 **SVG SSR**，检查产出的图形。 */
-  const { buildUpTimeline, minInnerWidth, monthLabel } = await vite.ssrLoadModule('/src/lib/upTimeline.js');
+  const { buildUpTimeline, minInnerWidth, monthLabel, TL } = await vite.ssrLoadModule('/src/lib/upTimeline.js');
   /* ⚠️ 必须用**应用自己的** echarts 入口（src/lib/charts.js）来渲染。
      曾经这里自己 `use([CustomChart])`、而 charts.js 没注册 CustomChart ——
      测试全绿，但页面上的 custom 系列被静默跳过，只剩坐标轴（用户看到的"图是空的"）。
@@ -734,6 +805,57 @@ try {
   const diamondSvg = svgBody.match(/<(polygon|path)[^>]*stroke="#0098DC"[^>]*>/gi) || [];
   check('时间轴 SVG SSR：中坚甄选是菱形（polygon 描边 = 中坚实色）',
     diamondSvg.length > 0, true);
+  /* ---------------- 选中标记的「黑色外发光」+ 首字层级 ----------------
+     需求（用户 2026-10-03）：UP 历史一览里被选中（悬停 / 点了弹浮窗）的那个标记，
+     背后要有**黑色外发光**；并且**简洁模式下首字不能消失**。
+
+     ⚠️ 这两件事都栽在 zrender 的 **hover layer 分流**上，所以断言要守住两个不变量：
+       · 元素太多时（本图 4500 个 displayable > echarts 默认 `hoverLayerThreshold: 3000`）
+         zrender 会另开一张画布画 emphasis 元素 → 元素自身 `style` 不变、发光被搬到别的画布，
+         还会**盖住首字**。所以必须把阈值设成 Infinity（单画布 = 按 children 顺序画）。
+       · 发光只能是**环**（`fill:'none'`），不能是实心圆 —— 实心黑圆在图片模式会把半透明
+         头像压黑（没有浅色圆底挡着）。 */
+  check('时间轴：关掉 zrender 的 hover layer（否则发光被搬到另一张画布、还会盖住首字）',
+    built6.bodyOption.hoverLayerThreshold, Infinity);
+
+  /* 直接调 renderItem，检查手绘出来的 children 结构（SSR 渲染不到未选中的发光：
+     它平时 `opacity:0`，zrender 的 shouldBePainted 会直接跳过不画） */
+  const markSeries = built6.bodyOption.series[1];
+  check('时间轴：标记系列是 custom（手绘 children）', markSeries.type, 'custom');
+  const fakeApi = (cx, cy) => ({ value: (i) => [0, i], coord: () => [cx, cy] });
+  const fakeParams = { coordSys: { x: 0, width: 4000 } };
+  const item0 = markSeries.renderItem({ ...fakeParams, dataIndex: 0 }, fakeApi(100, 50));
+  check('时间轴：标记是一个 group（外面再套状态就无效了）', item0.type, 'group');
+  const first = item0.children[0];
+  check('时间轴：标记**第一个**子元素就是外发光（在最底下 → 只在背后晕开）',
+    first.type, 'circle');
+  check('时间轴：外发光画成环而不是实心圆（实心黑圆会把图片模式的半透明头像压黑）',
+    first.style.fill, 'none');
+  check('时间轴：外发光用纯黑描边', first.style.stroke, '#000');
+  check('时间轴：外发光有模糊半径（否则只是硬边黑箍，不是「发光」）',
+    first.style.shadowBlur > 0, true);
+  check('时间轴：外发光平时完全透明（未选中看不见）', first.style.opacity, 0);
+  check('时间轴：外发光只在 emphasis 状态亮起来（这就是「被选中」的唯一反馈）',
+    first.emphasis.style.opacity > 0, true);
+  check('时间轴：外发光在 emphasis 里把 stroke / fill 写死（否则会被 echarts 提亮改色）',
+    first.emphasis.style.stroke === '#000' && first.emphasis.style.fill === 'none', true);
+  /* 环的内缘落在标记圆周上 → 环不会压到里面的头像 / 首字，只往外晕 */
+  check('时间轴：外发光环的内缘正好贴在标记圆周上（不往里吃掉头像 / 首字）',
+    first.shape.r - first.style.lineWidth / 2, TL.mark / 2);
+  /* 首字必须是**最后一个**画的：外发光、大类色圆环、进店点 / 中坚甄选菱形都在它前面，
+     所以谁都盖不住它（用户报的「简洁模式字消失」就是这么修掉的）。 */
+  const last = item0.children[item0.children.length - 1];
+  check('时间轴：简洁模式的首字是**最后**一个子元素（保证不被任何标记盖住）',
+    last.type === 'text' && typeof last.style.text === 'string' && last.style.text.length === 1, true);
+  check('时间轴：首字之外没有别的 text（name 只在 DOM 列里）',
+    item0.children.filter((c) => c.type === 'text').length, 1);
+  const itemImg = builtImg.bodyOption.series[1]
+    .renderItem({ ...fakeParams, dataIndex: 0 }, fakeApi(100, 50));
+  check('时间轴：图片模式也有外发光（同样在最底下）',
+    itemImg.children[0].style.fill === 'none' && itemImg.children[0].style.shadowBlur > 0, true);
+  check('时间轴：图片模式没有首字 text（里面是头像图片）',
+    itemImg.children.filter((c) => c.type === 'text').length, 0);
+
   /* 间隔文案：**只写数字**（不带「天」，用户 2026-10-02 定的）。
      ⚠️ 刻度标签是 `2026-01` 这种带横杠的，所以「纯数字的 text」只会来自间隔文案。 */
   const gapTexts = texts(svgBody).filter((t) => /^\d+$/.test(t));

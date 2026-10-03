@@ -70,6 +70,13 @@ export const TL = {
   dotR: 3.5,          // 进店小圆点
   diamondR: 4,          // 中坚甄选小菱形的半径（外接圆半径）
   dotInset: 2,        // 小圆点距标记圆**左边缘**的内缩（挪到左边，见 renderItem）
+  /* 选中（悬停 / 点了弹浮窗）那个标记的**黑色外发光**（见 renderItem 的 children[0]）。
+     平时完全透明，只有 `emphasis` 状态才亮起来 —— 于是「哪个标记被选中了」一眼可见
+     （此前实测选中前后**一个像素都不差**，页面上完全没有选中反馈）。 */
+  glowSpread: 1.5,       // 光环厚度（px）；环的内缘正好落在标记圆周上（见 renderItem）
+  glowBlur: 7,         // 模糊半径 —— 有它才是「发光」，否则就是一圈硬边黑箍
+  glowAlpha: 0.9,     // 选中时的不透明度
+  glowColor: '#000',   // 纯黑
 };
 
 /* ---------------- 月序号 ↔ 日期 ---------------- */
@@ -266,6 +273,17 @@ export function buildUpTimeline({
   /* ---- 主体 ---- */
   const bodyOption = {
     animation: false,
+    /* ⚠️ **必须关掉 zrender 的 hover layer**（把它设为 `Infinity`，即永不启用）。
+       背景：本图元素很多（实测 4500 个 displayable），超过 echarts 默认阈值
+       `hoverLayerThreshold: 3000`，于是 zrender 会另开**一张画布**（独立的 hover layer）
+       来画 `emphasis` 状态的元素。后果有两个，都很难查：
+         · 选中（悬停 / 点一下）时，「外发光」被搬到那张画布上画，元素自身的 `style` 不变
+           —— 只盯主画布或只看 `el.style` 会以为「没生效」；
+         · 更糟的是**简洁模式的首字会消失**：那张画布上的发光圆（r = 标记半径 + glowSpread）
+           会盖住主画布上的首字，而且压在这个顺序上没法调。
+       设为 `Infinity` 后一切都画在同一张画布上，顺序就是 `children` 的顺序
+       （发光在最底、首字在最上），两个问题一起消失。 */
+    hoverLayerThreshold: Infinity,
     grid: {
       left: TL.padLeft,
       right: TL.padRight,
@@ -274,7 +292,8 @@ export function buildUpTimeline({
     },
     tooltip: {
       trigger: 'item',
-      confine: true,
+      /* 挂载点（全屏固定图层）与手机竖屏的贴边定位由 EChart.vue 统一打补丁，
+         见 lib/chartTooltip.js —— 所以这里不写 confine / appendTo / position */
       formatter: (p) => {
         const ref = markRefs[p.dataIndex];
         if (!ref) return '';
@@ -372,6 +391,41 @@ export function buildUpTimeline({
 
           const children = [];
 
+          /* 0) **选中外发光**（必须放在**第一个** —— zrender 按 children 顺序绘制，
+                第一个在最底下，所以它只会在头像「**背后**」晕开，不会盖住头像 / 首字）。
+             平时 `opacity:0` 完全不可见；只有该标记被选中（`emphasis` 状态）时才亮起来。
+             ⚠️ `emphasis` 要写在**这个子元素**上，不能写在 group 上 ——
+                echarts 的 CustomView 对 group 直接跳过状态（`el.isGroup ? null : el`），
+                写在外层 group 上会静默无效。
+             ⚠️ 画成**描边的环**（`fill:'none'` + `stroke` + `lineWidth`），**不能画成实心圆**：
+                实心黑圆在**简洁模式**没问题（后面的浅色圆底会盖住它的内部），但**图片模式**
+                没有那层浅色圆底、头像素材本身又是半透明的（左右还有渐变蒙版），黑圆的内部
+                会透出来把整个头像压暗 —— 实测选中后头像几乎全黑。改成环之后，
+                环的内缘正好落在标记圆周（`r = d/2 + spread/2`，`lineWidth = spread`），
+                头像一个像素都不会被它压到，只留外面一圈光晕。
+             ⚠️ `emphasis.style` 里的 `fill` / `stroke` 要**跟着写死**：echarts 会给 emphasis 状态
+                做一次「颜色提亮」（`createEmphasisDefaultState` → `liftColor`），不写死就会被改色。
+             ⚠️ 元素**太多**时会走 zrender 的 **hover layer** 分流，见下面 bodyOption 里的
+                `hoverLayerThreshold` —— 那会让「哪张画布画了什么」变得反直觉。 */
+          children.push({
+            type: 'circle',
+            shape: { cx: center, cy, r: d / 2 + TL.glowSpread / 2 },
+            style: {
+              fill: 'none',
+              stroke: TL.glowColor,
+              lineWidth: TL.glowSpread,
+              opacity: 0,
+              shadowBlur: TL.glowBlur,
+              shadowColor: TL.glowColor,
+            },
+            emphasis: { style: { opacity: TL.glowAlpha, fill: 'none', stroke: TL.glowColor } },
+            silent: true,
+          });
+
+          /* 干员名首字（简洁模式）挂在 children 末尾 —— 见下面 `textChar` 的说明：
+             要**最后**画，才不会被外发光 / 大类色圆环 / 左上角标记盖掉。 */
+          let textChar = null;
+
           if (isImage) {
             /* 素材是**方形**半身像 → 用 clipPath 裁成圆。
                ⚠️ 只裁图片本身：大类色圆环和右上角的进店点要留在裁剪之外，
@@ -399,7 +453,12 @@ export function buildUpTimeline({
               shape: { cx: center, cy, r: d / 2 },
               style: { fill: CAT_TINT[mark.cat] || '#f3f4f6' },
             });
-            children.push({
+            /* ⚠️ 首字**不在**这里画，攒到 children 末尾统一 push（见下面 `textChar`）——
+               必须画在**最后**：外发光、大类色圆环、左上角的进店点 / 中坚甄选菱形
+               都在它前面画，所以谁都盖不住它。
+               （用户 2026-10-03 提：「简洁模式不再让字消失」—— 那三个标记都压在圆的左上角，
+                 与居中首字有重叠，先画就可能把字的左上角吃掉一截。） */
+            textChar = {
               type: 'text',
               style: {
                 text: firstChar(row.name),
@@ -413,7 +472,7 @@ export function buildUpTimeline({
                 align: 'center',
                 verticalAlign: 'middle',
               },
-            });
+            };
           }
 
           /* 外圈颜色 = 卡池大类（两种模式一致） */
@@ -458,6 +517,9 @@ export function buildUpTimeline({
               // style: { fill: CAT_COLOR[BANNER_CATEGORIES[mark.type]], stroke: '#fff', lineWidth: 1 },
             });
           }
+
+          /* 首字**最后**画（简洁模式）—— 上面那些元素谁都盖不住它，见 `textChar` 处的说明 */
+          if (textChar) children.push(textChar);
 
           return { type: 'group', children };
         },

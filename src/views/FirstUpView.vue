@@ -31,11 +31,16 @@
  * ⚠️ 另外，下面 tooltip 的 `formatter` 是 **echarts 在客户端**调用的 → **SSR 出的 HTML 里不含浮窗内容**，
  * 所以 `verify-render` 里验浮窗文案只能 `fs.readFileSync` 读本文件源码（别去 HTML 里找，永远找不到）。
  * 浮窗显示的字段：干员 / 实装日 / 首次日期 / **所在卡池**（`r.firstBanner`）/ 间隔天数 / 累计次数。
+ *
+ * 手机竖屏下浮窗的位置由 `tipBand` 决定（见 lib/chartTooltip.js）：绘图区几乎占满整张图，
+ * 所以**统一钉在该图表标题那一带**（绘图区上方），恒定不变、不压折线。
+ * 另外同一时刻只允许一张图有浮窗（点完六星再点五星，六星那张要消失）——由 `EChart.vue` 统一管。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl } from '../lib/avatars.js';
 import { modeFirstLabel, modeWord } from '../lib/firstUp.js';
+import { TIP_GAP } from '../lib/chartTooltip.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
 
@@ -130,6 +135,21 @@ const tickTop = (v, ax) => GRID.top + ((ax.yMax - v) / ((ax.yMax - ax.yMin) || 1
 const chartW = (rows) => rows.length * POINT_W + 40;
 const rowW = (rows) => chartW(rows) + GRID.left + GRID.right;
 
+/**
+ * 浮窗可用带（手机竖屏用，见 lib/chartTooltip.js）。
+ *
+ * 「绘图区」几乎占满整张图，浮窗放哪都会压到折线；所以统一把它放在**该图表标题那一带**
+ * （绘图区上方、分节标题附近），`mode:'bottom'` = **恒定贴这条带子的下沿**，
+ * 不管点在上半还是下半、位置都不变（用户 2026-10-03 指定「统一放在所在图表标题的高度」）。
+ *
+ * 下沿取「绘图区顶 − 间距」：绘图区顶 = 图表容器顶 + `GRID.top`；
+ * 再往上留一档间距，免得压住最上面那条刻度的文字（刻度文本是骑在网格线上的）。
+ */
+function tipBand(host) {
+  const plotTop = host.getBoundingClientRect().top + GRID.top;
+  return { bottom: plotTop - TIP_GAP, mode: 'bottom' };
+}
+
 const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'circle');
 
 function buildOption(rows, rarity, ax) {
@@ -146,7 +166,8 @@ function buildOption(rows, rarity, ax) {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line', lineStyle: { color: '#c9dcf3' } },
-      confine: true,
+      /* 挂载点（全屏固定图层）与手机竖屏的贴边定位由 EChart.vue 统一打补丁，
+         见 lib/chartTooltip.js —— 所以这里不写 confine / appendTo / position */
       formatter(params) {
         const r = rows[params[0]?.dataIndex];
         if (!r) return '';
@@ -315,7 +336,7 @@ const metricText = computed(
           <span class="unit">天</span>
           <span v-for="t in axis6.ticks" :key="t" class="tk" :style="{ top: `${tickTop(t, axis6)}px` }">{{ t }}</span>
         </div>
-        <EChart :option="option6" :width="chartW(data.six)" :height="CHART_H" />
+        <EChart :option="option6" :width="chartW(data.six)" :height="CHART_H" :tip-band="tipBand" />
         <div class="ybar ybar-r" :style="{ width: `${GRID.right}px`, flex: `0 0 ${GRID.right}px`, height: `${CHART_H}px` }">
           <span class="unit">天</span>
           <span v-for="t in axis6.ticks" :key="t" class="tk" :style="{ top: `${tickTop(t, axis6)}px` }">{{ t }}</span>
@@ -335,7 +356,7 @@ const metricText = computed(
           <span class="unit">天</span>
           <span v-for="t in axis5.ticks" :key="t" class="tk" :style="{ top: `${tickTop(t, axis5)}px` }">{{ t }}</span>
         </div>
-        <EChart :option="option5" :width="chartW(data.five)" :height="CHART_H" />
+        <EChart :option="option5" :width="chartW(data.five)" :height="CHART_H" :tip-band="tipBand" />
         <div class="ybar ybar-r" :style="{ width: `${GRID.right}px`, flex: `0 0 ${GRID.right}px`, height: `${CHART_H}px` }">
           <span class="unit">天</span>
           <span v-for="t in axis5.ticks" :key="t" class="tk" :style="{ top: `${tickTop(t, axis5)}px` }">{{ t }}</span>
