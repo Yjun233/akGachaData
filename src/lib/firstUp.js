@@ -49,6 +49,15 @@ export function metricLabel(mode, metric) {
     : '距该干员实装日（天）';
 }
 
+/** 横轴口径的短中文名（卡片头一行里用）：`按实装日期` / `按首次进店日期` */
+export const axisLabel = (mode, axis) =>
+  (axis === 'release' ? '按实装日期' : `按${modeFirstLabel(mode)}日期`);
+
+/** 纵轴口径的短中文名（卡片头一行里用）：`距实装日` / `距上个首次进店`
+ *  （长名见上面的 `metricLabel` —— 那个带「（天）」后缀，给图表说明与 tooltip） */
+export const metricShort = (mode, metric) =>
+  (metric === 'sinceRelease' ? '距实装日' : `距上个${modeFirstLabel(mode)}`);
+
 /**
  * @param {object} ctx
  * @param {Array}  ctx.banners         当前服务器全部卡池（含 id）

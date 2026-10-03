@@ -39,7 +39,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl } from '../lib/avatars.js';
-import { modeFirstLabel, modeWord } from '../lib/firstUp.js';
+import { modeFirstLabel, modeWord, axisLabel, metricShort } from '../lib/firstUp.js';
 import { TIP_GAP } from '../lib/chartTooltip.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
@@ -306,13 +306,11 @@ const rangeText = computed(() => {
   return `${from || '…'} ~ ${to || '…'}`;
 });
 
-/* 口径文案：横轴 / 纵轴的「首次XX」都跟着统计模式变（用户指定：分节标题也跟随） */
-const axisText = computed(
-  () => (site.firstUpAxis === 'release' ? '按实装日期' : `按${firstLabel.value}日期`),
-);
-const metricText = computed(
-  () => (site.firstUpMetric === 'sinceRelease' ? '距实装日' : `距上个${firstLabel.value}`),
-);
+/* 口径文案：横轴 / 纵轴的「首次XX」都跟着统计模式变（用户指定：分节标题也跟随）。
+   ⚠️ 措辞统一放在 lib/firstUp.js —— **表格版（FirstUpTableView.vue）用的是同一对函数**，
+   两页的卡片头文案因此不会各写一份、各走各的。 */
+const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis));
+const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric));
 </script>
 
 <template>

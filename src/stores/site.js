@@ -392,6 +392,22 @@ export const useSiteStore = defineStore('site', {
       this.setBannerTypes([...set]);
     },
 
+    /**
+     * UP 干员多选。存的是**精确干员名**（模糊 / 拼音匹配在右栏搜索框里完成，
+     * 见 lib/opSearch.js），空数组 = 不按干员筛。
+     */
+    setBannerOps(list) {
+      this.filters = { ...this.filters, ops: Array.isArray(list) ? [...list] : [] };
+    },
+
+    /** 单个干员勾选 / 取消（右栏点候选加入、点 chip 移除，走的是同一个动作） */
+    toggleBannerOp(name) {
+      const set = new Set(this.filters.ops);
+      if (set.has(name)) set.delete(name);
+      else set.add(name);
+      this.setBannerOps([...set]);
+    },
+
     toggleBannerSort(key) {
       this.bannerSort = nextBannerSort(this.bannerSort, key);
     },

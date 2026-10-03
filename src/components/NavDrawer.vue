@@ -2,6 +2,10 @@
 /**
  * 左抽屉：页面导航 + 服务器选择 + 数据元信息。
  * 服务器下拉只渲染 metadata.servers 里 available 的项 —— 未来接入新服务器时前端无需改动。
+ *
+ * 导航条目与路由一一对应；**「首次UP间隔」带一个二级菜单**（图表版 / 表格版）——
+ * 同一份 `firstUp` 数据的两种呈现，路由是两条并列路由（`/first-up` 与 `/first-up/table`，
+ * 见 router/index.js）。父项在两个子页面都高亮，子项各自高亮当前那个。
  */
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -28,6 +32,9 @@ const route = useRoute();
 const router = useRouter();
 const { navShow, toggleNav, closeDrawers, isDocked } = useLayout();
 
+/** 「首次UP间隔」的两个页面（图表版 / 表格版）—— 父项在**任一**页都要高亮 */
+const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
+
 function go(name) {
   router.push({ name });
   // 浮层形态下点导航后收起抽屉；停靠形态下保持展开（操作内容区不该关掉侧栏）
@@ -53,9 +60,21 @@ function onServerChange(e) {
       <button class="navitem" type="button" :class="{ active: route.name === 'stats' }" @click="go('stats')">
         <span class="ic" />出率提升记录
       </button>
-      <button class="navitem" type="button" :class="{ active: route.name === 'firstUp' }" @click="go('firstUp')">
+      <button class="navitem" type="button" :class="{ active: isFirstUp }" @click="go('firstUp')">
         <span class="ic" />首次UP间隔
       </button>
+      <!-- 二级菜单：同一份数据的两种呈现。⚠️ 父项点了进「图表版」（原来的默认页），
+           子项才是显式切换；父项在任一子页面都保持高亮（见 isFirstUp） -->
+      <div class="navsub">
+        <button
+          class="navsubitem" type="button" :class="{ active: route.name === 'firstUp' }"
+          @click="go('firstUp')"
+        >图表版</button>
+        <button
+          class="navsubitem" type="button" :class="{ active: route.name === 'firstUpTable' }"
+          @click="go('firstUpTable')"
+        >表格版</button>
+      </div>
       <button class="navitem" type="button" :class="{ active: route.name === 'upHistory' }" @click="go('upHistory')">
         <span class="ic" />UP 历史一览
       </button>

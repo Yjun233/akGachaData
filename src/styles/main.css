@@ -3,11 +3,11 @@
    与原型唯一的差别：原型的「纯 CSS 页签 / 抽屉开合」（隐藏 radio + :checked）
    在 Vue 阶段改为路由 + 类驱动，见文件内相关注释。
    改动样式时请保持以下既有约定（都踩过坑，详见 README）：
-   - 卡池表 table-layout:fixed + colgroup；统计表 table-layout:auto（内容自适应）
+   - 卡池表 table-layout:fixed + colgroup；统计表 / 首次UP间隔表格版 table-layout:auto（内容自适应）
    - .tbl-scroll 限高 + width:fit-content（横滚条留在视野、纵滚条贴表格右侧）
    - 统计表用 border-collapse:separate + inset box-shadow 画线（sticky 表头不丢边框）
    - 两行 sticky 表头：thead th 固定 line-height:18px，第一行下边线走 box-shadow
-   - 同星级两表 .pair 用 flex-basis:auto 按自然宽度并排 */
+   - 两表并排（.pair，统计页与首次UP间隔表格版共用）用 flex-basis:auto 按自然宽度排 */
 
 :root{
   --blue-900:#123863;
@@ -144,6 +144,23 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .navitem.active .ic{
   background:var(--blue-500);border-color:var(--blue-500);
 }
+/* 二级菜单（目前只有「首次UP间隔」有）：缩进 + 左侧引导线，比父项轻一档。
+   实测（390px 竖屏，左栏 10px 内边距）三处对齐正好成一组：
+   · 引导线 x=24 ≈ **父项图标的左边界**（10 + 12 = 22，图标 14px 宽）
+   · 子项药丸（含边框）左边界 x=46 = **父项文字的左边界**（图标右 37 + 间距 9）
+   于是「父项一行、子项一列」看起来是同一个层级里缩进去的一档，而不是随手加的内边距。 */
+.navsub{
+  display:flex;flex-direction:column;gap:2px;
+  margin:-2px 0 2px 14px;padding-left:21px;
+  border-left:1.5px solid var(--blue-200);
+}
+.navsubitem{
+  border:1px solid transparent;background:transparent;border-radius:7px;
+  padding:5px 9px;font-size:12.5px;font-weight:600;color:var(--muted);
+  text-align:left;cursor:pointer;font-family:inherit;
+}
+.navsubitem:hover{background:var(--blue-50);color:var(--blue-600)}
+.navsubitem.active{background:var(--blue-50);color:var(--blue-700);border-color:var(--blue-200)}
 .drawer-note{
   margin:0 10px 12px;font-size:11.5px;color:var(--muted);line-height:1.9;
   border-top:1px solid var(--border);padding-top:10px;
@@ -211,6 +228,33 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .fgroup input.dirty{border-color:var(--danger);background:#fff6f6}
 .fgroup input.dirty:focus{outline-color:#f0c8c2;border-color:var(--danger)}
 .ferr{margin:0;font-size:12px;color:var(--danger);font-weight:600}
+
+/* ---------------- 右栏：UP 干员多选（搜索框 + 候选列表 + 已选 chips） ----------------
+   「名字 / 全拼 / 首字母」三种写法都靠这个搜索框挑人（逻辑在 lib/opSearch.js）；
+   挑中的变成下面的 chips（点一下移除），真正参与筛选的是这串 chips。
+   候选列表做成**文档流里的块**而不是绝对定位的下拉浮层：抽屉本身就是可滚动容器，
+   浮层要么被裁掉、要么得处理一堆定位/遮挡，得不偿失。 */
+.opchips{display:flex;flex-wrap:wrap;gap:4px}
+.opchip{
+  display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;
+  border:1px solid var(--blue-200);background:var(--blue-50);color:var(--blue-700);
+  border-radius:999px;padding:3px 8px;font-size:12px;font-weight:600;
+}
+.opchip:hover{background:var(--blue-100)}
+.opchip > i{font-style:normal;font-size:13px;line-height:1;opacity:.6}
+.opchip:hover > i{opacity:1}
+
+/* 候选：限高 + 自己滚，免得搜「a」把整个抽屉撑长（列表本身已被 searchOperators 截到 30 条） */
+.opsug{max-height:190px;overflow:auto;border:1px solid var(--blue-100);border-radius:9px;background:#fff}
+.opsug-item{
+  display:block;width:100%;text-align:left;cursor:pointer;
+  border:0;border-bottom:1px solid var(--blue-50);background:#fff;padding:6px 9px;
+  font-family:inherit;font-size:12.5px;color:var(--blue-700);font-weight:600;
+}
+.opsug-item:last-child{border-bottom:0}
+.opsug-item:hover{background:var(--blue-50)}
+.opsug-item > small{color:var(--muted);font-size:11px;font-weight:400}
+.opsug-empty{padding:7px 9px;font-size:12px;color:var(--muted)}
 
 /* ---------------- 右栏：卡池类型按钮组（UP 历史） ----------------
    两级：大类按钮（全选 / 取消该大类）+ 其下的类型按钮（点了立刻筛选、选中变蓝）。
@@ -324,7 +368,7 @@ main.content{
 
 .card{
   background:var(--white);border:1px solid var(--border);border-radius:12px;
-  box-shadow:0 1px 2px rgba(27,79,156,.05);margin-bottom:18px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(27,79,156,.05);overflow:hidden;
 }
 .card > .hd{
   padding:12px 16px;border-bottom:1px solid var(--border);
@@ -339,9 +383,9 @@ main.content{
    保证「容器底部 ≤ 视口底部」，任何形态（横屏 / 竖屏 / 触屏）都成立。
    两行同写是为了兼容：不认 dvh 的浏览器会忽略第二行、退回 vh。
    下限取 180px —— 视口极矮时宁可少显示几行，也要保证底部滚动条露出来。
-   余量取值来自实测：卡池表的表格距顶 118px（+130 余量足够）；
-   统计表最坏情况距顶 324px（横屏停靠时内容区变窄、卡片头换行更多），
-   说明行 .toc-hint 删掉后又少了约 34px，故余量由 285 收到 250。 */
+   余量取两个档：卡池表上方内容少，余量 50px 够用；
+   带卡片头的那些表（统计页 / 首次UP间隔表格版，即 `.plain`）上方还压着卡片头与分节标题，
+   横屏停靠时内容区变窄、卡片头还会多折几行（实测最坏情况距顶约 324px），所以余量取 120px。 */
 :root{
   --tbl-max:max(180px, calc(100vh  - var(--top-h) - 50px));
   --tbl-max:max(180px, calc(100dvh - var(--top-h) - 50px));
@@ -538,20 +582,23 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
   width:26px;height:26px;border-radius:7px;display:block;object-fit:cover;
   background:var(--blue-100);margin: 0 auto;
 }
-/* ---------------- 统计页图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
-   出率提升记录的干员列宽 103px（按 7 个汉字定的），26px 的方头像丢在里面显得又小又空，
-   所以改成**宽是高 2 倍**的长方形蒙版：**68×34**（都是用户手调的尺寸，
-   取景 `object-position:50% 70%`，圆角与底色也由他去掉 —— 渐隐后都不需要了）。
+/* ---------------- 图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
+   用在**两处表格**：统计页（出率提升记录）与首次UP间隔 · 表格版 —— 同一个 class、
+   同一条规则（选择器带两段）。出率提升记录的干员列宽 103px（按 7 个汉字定的），
+   26px 的方头像丢在里面显得又小又空，所以改成**宽是高 2 倍**的长方形蒙版：**68×34**
+   （都是用户手调的尺寸，取景 `object-position:50% 70%`，圆角与底色也由他去掉 —— 渐隐后都不需要了）。
 
    实现要点（五个约束一起满足）：
    1. **绝对定位**（脱离文档流）→ 头像**不参与行高计算**。行高于是完全由数字列的行框决定，
       与简洁模式**逐像素一致**（实测两种模式都是 37.8px = 20.8 行框 + 上下 padding 16 + 边线 1）。
       ⚠️ 若改用 `display:block` 让头像参与布局，会把干员格撑高、整行跟着变高。
-   2. **垂直居中**：34px 的头像放在 37.8px 的行里，上下各留约 1.9px，不溢出到相邻行。
-      定位的包含块是 `td` —— 前两列是 `position:sticky`，本身就是定位元素，无需再加 relative。
+   2. **垂直居中**：34px 的头像放在统计表 37.8px / 表格版 33.8px 的行里，都不溢出到相邻行
+      （33.8px 时上下各约 0.1px，可忽略）。定位的包含块必须是 `td`：
+      统计表前两列是 `position:sticky`，本身就是定位元素；**表格版没有冻结列**，
+      得自己给 `td.opcell` 补 `position:relative`（见下面 fup-tbl 那段），否则会相对更外层定位。
    3. **`object-fit:cover`** → 素材（96×96 方形半身像）**不被拉伸**，按 2:1 裁掉上下各约 1/4；
       `object-position:50% 70%` 决定取景框落在哪里（往下取一点，多露脸、少露头顶留白）。
-      ⚠️ 只作用于统计页：卡池列表仍是 26×26 方头像（那边的列窄，长方形会串味）。
+      ⚠️ 只作用于**这两处表格**：卡池列表仍是 26×26 方头像（那边的列窄，长方形会串味）。
    4. **四边渐隐**（用户 2026-10-03 追加、并连续微调过）：用**两层 `mask-image`** 让
       **头像本身**的 alpha 在四边渐入 —— 左右各 10px、上下各 2px，
       于是长方形的四条硬边消失，和行背景自然衔接。
@@ -562,7 +609,8 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
         `#f7fbff`(hover) 三种，叠遮罩得跟着换色、hover 时还会穿帮；mask 是真正的透明度，与底色无关。
       · ⚠️ `transparent` 在 mask 里即 alpha=0（mask 默认按 alpha 通道取用），黑/白都没关系。
       · ⚠️ 保留 `-webkit-` 前缀给旧 Safari 兜底；两者同时写时**后者生效**，值要一致。 */
-table.grid.stat-tbl td.wrapcell img.avt-rect{
+table.grid.stat-tbl td.wrapcell img.avt-rect,
+table.grid.fup-tbl td.opcell img.avt-rect{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:68px;height:34px;object-fit:cover;object-position:50% 70%;
   -webkit-mask-image:
@@ -580,6 +628,65 @@ table.grid.stat-tbl td.wrapcell img.avt-rect{
   margin:0;min-width:13px;height:13px;line-height:13px;font-size:10px;
   padding:0 2px;border:1px solid #fff;
 }
+
+/* ---------------- 首次UP间隔 · 表格版（FirstUpTableView.vue） ----------------
+   与统计表（.stat-tbl）同一套手法：**内容自适应列宽** + inset box-shadow 画竖线
+   + sticky 表头（都用 box-shadow 而不是 border，理由见上面 .stat-tbl 那段长注释）。
+   ⚠️ 不复用 `.stat-tbl`：那套还附带「冻结前两列」的定宽 + left 偏移，这里不需要。 */
+table.grid.fup-tbl{width:auto;table-layout:auto;border-collapse:separate}
+table.grid.fup-tbl th,
+table.grid.fup-tbl td{
+  overflow:visible;padding:6px 10px;
+  box-shadow:inset -1px 0 0 var(--border);
+}
+/* 最后一列不画右边线（表格外侧不出线） */
+table.grid.fup-tbl th:last-child,
+table.grid.fup-tbl td:last-child{box-shadow:none}
+/* 表头只有一行；它的下边线同样用 box-shadow（不占高度、sticky 时跟着单元格走） */
+table.grid.fup-tbl thead th{
+  border-bottom:0;
+  box-shadow:inset -1px 0 0 var(--border),inset 0 -1px 0 var(--blue-200);
+}
+table.grid.fup-tbl thead th:last-child{box-shadow:inset 0 -1px 0 var(--blue-200)}
+/* 文本列左对齐（只有「所在卡池」的**数据格**）；数字列沿用全局 td.num 的右对齐。
+   「干员」列的数据格走全局 td 的默认居中（用户 2026-10-03 要求），不在此列。 */
+table.grid.fup-tbl td.tl{text-align:left}
+/* 表头**一律居中**（用户 2026-10-03）：列头不跟着数据格的对齐走 ——
+   数字列的数据右对齐、卡池名左对齐，若列头也各跟各的，一行表头的文字就会参差。
+   ⚠️ 必须写到 `thead th` 这一级才压得过全局的 `th.num{text-align:right}`（(0,1,1)），
+   同时也别误伤 tbody 里的 th（这表格没有，但选择器语义要对）。 */
+table.grid.fup-tbl thead th{text-align:center}
+/* ⚠️ 当前纵轴口径那一列加底色（右栏「纵轴」切换在本页的唯一反馈）。
+   选择器必须写到 `table.grid.fup-tbl tbody` 这一级：全局
+   `table.grid tbody tr:nth-child(even)` 的特异性是 (0,2,3)，只写
+   `table.grid.fup-tbl td.metric-on` 是 (0,2,1) —— 会被偶数行的底色压过，
+   高亮列会**隔一行断一次**。 */
+table.grid.fup-tbl thead th.metric-on{background:#dbe9fa}
+table.grid.fup-tbl tbody td.metric-on{background:#eef5fd}
+/* 负间隔（按实装日期排序时，后实装却更早首次）—— 标黄，别让它看着像正常值 */
+table.grid.fup-tbl .neg{color:var(--warn);font-weight:600}
+/* ---------------- 首次UP间隔 · 表格版：「干员」列定宽 ----------------
+   干员列**固定 = 7 个汉字的宽度**（用户 2026-10-03 指定，与出率提升记录同一个口径）：
+   13×7 = 91px 文字 + 左右内边距 10×2 = **111px**。
+   ⚠️ 比统计表的 103px 多 8px 是因为两边的 padding 不同（这里 `6px 10px`，
+   统计表是 `4px 6px`），**不是**抄错了 —— 文字部分两边都是 91px。
+   ⚠️ 宽度三件套要一起写：`table-layout:auto` 下光有 width，内容一长列还是会被撑开。
+     · width / min-width —— 图片模式的**前提**：蒙版头像是绝对定位、不占位，
+       不给宽度时这一列会缩到只剩表头「干员」两个字的宽度，68px 的头像就溢到日期列上；
+     · max-width —— 把列钉死，更长的名字会溢出到相邻列（与统计表同款行为；
+       上游最长名正好 7 个字：`凯尔希·思衡托`）。
+   ⚠️ 选择器按 **opcell 类**而不是 `:first-child` —— 认列名比认列位置稳
+   （th 与 td 都挂 opcell，见 FirstUpTableView.vue）。 */
+table.grid.fup-tbl .opcell{
+  width:111px;min-width:111px;max-width:111px;
+}
+/* 图片模式的干员列：长方形蒙版头像 —— 与「出率提升记录」同款，几何 + 四边渐隐全在
+   上面那条 `img.avt-rect` 里（用户 2026-10-03 指定，替换掉原来的 26px 圆形头像）。
+   与统计表的差异——这边没有冻结列，所以要自己补**定位包含块**：
+   td 不是定位元素 → 给 opcell 补 position:relative，否则 img 的 left/top:50%
+   会相对更外层（表格 / 滚动容器）定位。
+   行高不用管：头像脱离文档流后，整行高度由数字列的行框决定，与简洁模式一致。 */
+table.grid.fup-tbl td.opcell{position:relative}
 .badge{
   display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;
   border:1px solid var(--border);background:#f8fafc;color:var(--ink-2);margin-left: auto;
@@ -610,7 +717,6 @@ table.grid.stat-tbl td.wrapcell img.avt-rect{
 .bcard-row{display:flex;gap:8px;align-items:flex-start;border-top:1px dashed var(--border);padding-top:7px}
 .bcard-row .k{flex:0 0 80px;font-size:12px;color:var(--muted);font-weight:600;line-height:1.9}
 .bcard-row .v{flex:1 1 auto;min-width:0;line-height:1.9}
-.scroll-hint{display:none}
 
 /* ---------------- 统计页 ---------------- */
 .sec-title{
@@ -642,15 +748,23 @@ table.grid.stat-tbl thead th.group.grp-shop{background:var(--shop-100);color:var
 table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .grp-sep:first-child{border-top:none}
 
-/* ---------------- 统计页：同星级两表自适应并排 ----------------
-   同一星级的「标准寻访」表与「中坚寻访」表放进 .pair：
+/* ---------------- 两表自适应并排（.pair） ----------------
+   用在两处：
+   · 统计页 —— 同星级的「标准寻访」表与「中坚寻访」表；
+   · 首次UP间隔 · 表格版 —— 六星表与五星表（用户 2026-10-03 要求「放得下就并排」）。
+   规则：
    - 两张表的自然宽度之和 + 16px（间距）≤ 可用宽度时，左右并列；
    - 宽度不够时 flex-wrap 自动换行，两张表恢复上下竖排、各占满整行。
    列用 flex-basis:auto，实际宽度由子元素（即表格）的 max-content 决定，
    所以宽度足够时表格不会被压窄，也不会出现横向滚动条。
    min-width:0 保证换行后单列能收进容器宽度，不会撑破布局。 */
-.pair{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.pair{display:flex;flex-wrap:wrap;align-items:flex-start}
 .pair-col{flex:0 1 auto;min-width:0;max-width:100%}
+/* ⚠️ 并排后分节标题成了 `.pair-col` 的第一个子元素，会被上面 `.grp-sep:first-child`
+   （为单列布局写的）抹掉上边线 —— 这里按更高特异性补回来，两列的分隔感与图表版一致。
+   ⚠️ 用 `.pair > .pair-col >` 而不是只写 `.pair-col >`：后者与 `:first-child` 那条
+   同为 (0,2,0)，谁生效就看源码顺序，太脆。 */
+.pair > .pair-col > .grp-sep{border-top:2px solid var(--blue-200)}
 /* 节标题不再挂提示语（.hint 已删除）：两列标题都是单行，表格顶部天然对齐 */
 
 /* ---------------- 说明 / 页脚 ---------------- */
@@ -659,8 +773,9 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   padding:12px 16px;color:var(--ink-2);font-size:12.5px;
 }
 .note b{color:var(--blue-700)}
-/* 注：页脚（footer.foot）与各页的说明块（.note）已于 2026-09-30 移除，
-   来源与版权声明统一放在左栏底部（见 NavDrawer），样式随之删除。 */
+/* 注：各页的说明块与页脚（footer.foot）已于 2026-09-30 移除，
+   来源与版权声明统一放在左栏底部（见 NavDrawer）。
+   但 `.note` 这个 class 还在用 —— App.vue 的「正在加载数据…」「数据加载失败」两条提示走的就是它。 */
 .empty{padding:26px;text-align:center;color:var(--muted)}
 
 @media (max-width:900px), (orientation:portrait){

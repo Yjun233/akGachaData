@@ -1,9 +1,12 @@
 <script setup>
 /**
  * 右抽屉：只装当前页面用得到的筛选。
- *  - 卡池列表页   → 筛选表单（类型 / 大类 / 开始日期范围 / UP 干员名）
+ *  - 卡池列表页   → 筛选表单（类型 / 大类 / 开始日期范围 / UP 干员多选）
+ *    ⚠️ UP 干员是**多选**：搜索框支持 名字 / 全拼 / 首字母（lib/opSearch.js），
+ *    点候选加进来、点 chip 移除；生效的是 store 里的 `filters.ops`（精确名数组）。
  *  - 统计页       → 参考日期
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
+ *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
  *
  * 两条「时间范围」共用同一套「草稿 + 确认」逻辑，见 composables/useRangeDraft.js。
@@ -16,6 +19,7 @@ import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
 import TypeButtons from './TypeButtons.vue';
+import { ensurePinyin, searchOperators } from '../lib/opSearch.js';
 
 const site = useSiteStore();
 const route = useRoute();
@@ -23,7 +27,9 @@ const { filterShow, toggleFilter } = useLayout();
 
 const isBanners = computed(() => route.name === 'banners');
 const isStats = computed(() => route.name === 'stats');
-const isFirstUp = computed(() => route.name === 'firstUp');
+/* 「首次UP间隔」的两个版本（图表版 / 表格版）共用同一套右栏筛选：
+   同一份 `site.firstUp`、同一套统计模式与口径，所以判断要覆盖两条路由 */
+const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
 const isUp = computed(() => route.name === 'upHistory');
 
 /** 当前统计模式的词：`首次进店` / `首次轮换` */
@@ -95,6 +101,36 @@ const bannerTypesLabel = computed(() => (!site.filters.types.length
   ? '全部类型'
   : `已选 ${site.filters.types.length} 种`));
 
+/* ---------------- 卡池列表：UP 干员多选（名字 / 全拼 / 首字母，见 lib/opSearch.js） ----------------
+   搜索框里打的字**不入 store** —— 它只是「挑干员」的过程，不是筛选条件本身；
+   真正生效的是 `site.filters.ops`（精确干员名数组，命中任意一个即保留）。
+   候选由 searchOperators 算：三种写法都能匹配、已选的自动排除、按命中质量排序。 */
+
+/** 搜索框里正在打的字 */
+const opQuery = ref('');
+
+/* 拼音字典（pinyin-pro，320KB）**懒加载**：输入框一获得焦点才开始拉，
+   免得每个页面的首屏都背上它（见 lib/opSearch.js）。到位后置真 → 候选重算一次。 */
+const pinyinReady = ref(false);
+let dictAsked = false;
+function askPinyin() {
+  if (dictAsked) return;
+  dictAsked = true;
+  ensurePinyin().then(() => { pinyinReady.value = true; });
+}
+
+/** 候选干员名（空关键词 → 空列表，不铺开 200 多个） */
+const opCandidates = computed(() => {
+  void pinyinReady.value; // 依赖它：字典到位后重算（在那之前只按名字匹配）
+  return searchOperators(Object.keys(site.operators), opQuery.value, { exclude: site.filters.ops });
+});
+
+/** 点候选 = 加入已选，并清掉搜索框，好接着挑下一个 */
+function pickOp(name) {
+  site.toggleBannerOp(name);
+  opQuery.value = '';
+}
+
 /* ---------------- UP 历史：卡池类型（同一个按钮组） ---------------- */
 
 /** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数） */
@@ -146,8 +182,34 @@ function resetUp() {
         <input id="f-to" v-model="site.filters.to" type="date" />
       </div>
       <div class="fgroup">
-        <label for="f-op">UP 干员名</label>
-        <input id="f-op" v-model="site.filters.op" type="text" placeholder="如：银灰" />
+        <label for="f-op">
+          UP 干员<span class="fcount">{{ site.filters.ops.length ? `已选 ${site.filters.ops.length} 位` : '可多选' }}</span>
+        </label>
+        <!-- 打字 → 下面出候选；回车取第一个候选、Esc 清空（都得先选进来才算筛选条件） -->
+        <input
+          id="f-op" v-model="opQuery" type="text" autocomplete="off"
+          placeholder="名字 / 全拼 / 首字母，如 银灰 / yinhui / yh"
+          @focus="askPinyin"
+          @keyup.enter="opCandidates.length && pickOp(opCandidates[0])"
+          @keyup.esc="opQuery = ''"
+        />
+        <!-- 已选：点一下移除 -->
+        <div v-if="site.filters.ops.length" class="opchips">
+          <button
+            v-for="n in site.filters.ops" :key="n" class="opchip" type="button"
+            :title="`移除 ${n}`" @click="site.toggleBannerOp(n)"
+          >{{ n }}<i>×</i></button>
+        </div>
+        <!-- 候选：点一下加入已选 -->
+        <div v-if="opQuery.trim()" class="opsug">
+          <div v-if="!opCandidates.length" class="opsug-empty">没有匹配的干员</div>
+          <button
+            v-for="n in opCandidates" :key="n" class="opsug-item" type="button"
+            @click="pickOp(n)"
+          >
+            {{ n }}
+          </button>
+        </div>
       </div>
       <button class="btn" type="button" @click="site.resetFilters()">重置筛选</button>
       <div class="fresult">{{ bannerResult }}</div>

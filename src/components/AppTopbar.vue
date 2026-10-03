@@ -11,11 +11,13 @@ import { useLayout } from '../composables/useLayout.js';
 const route = useRoute();
 const { toggleNav, toggleFilter } = useLayout();
 
-/** 当前页标题（统计页额外显示 1.1 / 1.2 / 2.1 / 2.2 定位按钮） */
+/** 当前页标题（统计页额外显示 1.1 / 1.2 / 2.1 / 2.2 定位按钮）
+ *  「首次UP间隔」有两个版本（左栏二级菜单），标题带上版本名，免得看着一样 */
 const TITLES = {
   banners: '卡池列表',
   stats: '出率提升记录',
-  firstUp: '首次UP间隔',
+  firstUp: '首次UP间隔 · 图表版',
+  firstUpTable: '首次UP间隔 · 表格版',
   upHistory: 'UP 历史一览',
 };
 

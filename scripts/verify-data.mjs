@@ -16,6 +16,7 @@ import {
   buildUpTimeline, monthIndexOf, monthLabel, monthStartDate, minInnerWidth, chartHeight, TL,
 } from '../src/lib/upTimeline.js';
 import { bannerRows, emptyFilters } from '../src/lib/banners.js';
+import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearch.js';
 import { diffDays, shiftYears, shiftDays, enforceRangeOrder } from '../src/lib/date.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 
@@ -568,6 +569,47 @@ check('卡池筛选：多选两个类型 = 两类卡池之和',
 check('卡池筛选：只选一个类型时行数 = 该类型卡池数',
   bannerRows(banners, { ...fEmpty, types: ['limcel'] }, categories, { key: 'startDate', dir: 'desc' }).length,
   banners.filter((b) => b.type === 'limcel').length);
+
+/* ---------------- 卡池列表：UP 干员多选（精确名 OR）+ 拼音搜索 ----------------
+   分两处守：这里管**匹配语义**（纯函数，Node 里就能跑）；右栏那个
+   「搜索框 + chips」控件的结构在 verify-render 里守。 */
+const fSort = { key: 'startDate', dir: 'desc' };
+/* 取一对**同池出现过**的干员：这样「并集」严格小于两者之和 ——
+   哪天把 OR 写成 AND（交集），下面那条会立刻红（交集里这对只可能更少）。 */
+const coBanner = banners.find((b) => new Set(b.upOperators.map((o) => o.name)).size >= 2);
+const [opA, opB] = [...new Set(coBanner.upOperators.map((o) => o.name))];
+const bannersWith = (names) =>
+  banners.filter((b) => b.upOperators.some((o) => names.includes(o.name))).length;
+
+check('卡池筛选：选中一位干员 = 该干员 UP 过的卡池数',
+  bannerRows(banners, { ...fEmpty, ops: [opA] }, categories, fSort).length, bannersWith([opA]));
+const twoOr = bannerRows(banners, { ...fEmpty, ops: [opA, opB] }, categories, fSort).length;
+check('卡池筛选：多选两位 = 并集（OR）而不是交集',
+  twoOr === bannersWith([opA, opB]) && twoOr < bannersWith([opA]) + bannersWith([opB]), true);
+check('卡池筛选：选中没 UP 过的干员 = 0 个卡池',
+  bannerRows(banners, { ...fEmpty, ops: ['这个干员不存在'] }, categories, fSort).length, 0);
+
+/* 拼音匹配：汉字 / 全拼 / 首字母 三种写法等价（银灰 = yinhui = yh）。
+   ⚠️ 拼音字典是懒加载的（入口包不背它）—— 这里先把字典拉进来，否则全拼 / 首字母这两路
+   还没生效，下面几条会红。 */
+await ensurePinyin();
+check('干员搜索：汉字 / 全拼 / 首字母 都能命中（含粘来的 "yin hui"）',
+  ['银', '银灰', 'yin', 'yinhui', 'yin hui', 'YH'].every((q) => matchOperator('银灰', q)), true);
+check('干员搜索：不相关的关键词不命中',
+  ['yhh', '银灰x', 'zzz'].every((q) => !matchOperator('银灰', q)), true);
+check('干员搜索：拉丁名按名字本身匹配、大小写不敏感',
+  matchOperator('Mon3tr', 'mon') && matchOperator('W', 'w') && !matchOperator('W', 'mon'), true);
+
+const OP_POOL = ['银灰', '艾雅法拉', '能天使', 'W', 'Mon3tr'];
+check('干员搜索：全拼 / 首字母 都能把干员排到候选第一位',
+  searchOperators(OP_POOL, 'yinhui')[0] === '银灰'
+  && searchOperators(OP_POOL, 'yh')[0] === '银灰', true);
+check('干员搜索：已选中的从候选里排除',
+  searchOperators(OP_POOL, 'yh', { exclude: ['银灰'] }).length, 0);
+check('干员搜索：空关键词不出候选',
+  searchOperators(OP_POOL, '   ').length, 0);
+check('干员搜索：候选数量有上限',
+  searchOperators(Array.from({ length: 50 }, () => '银灰'), 'yh', { limit: 5 }).length, 5);
 
 /* ---------------- 数据不变量：进店标记只出现在「常驻标准 / 常驻中坚」上 ----------------
    UP 历史里「进店绿点」与「中坚甄选菱形」画在**同一个位置**（左上角），依据就是两者互斥

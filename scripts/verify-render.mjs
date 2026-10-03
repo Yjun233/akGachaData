@@ -1,9 +1,11 @@
 /**
- * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**四个页面**（卡池列表 / 出率提升记录 /
- * 首次UP间隔 / UP 历史一览）真正渲染出来，再检查结构 / 数据是否与原型一致。
+ * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**五个页面**（卡池列表 / 出率提升记录 /
+ * 首次UP间隔·图表版 / 首次UP间隔·表格版 / UP 历史一览）真正渲染出来，
+ * 再检查结构 / 数据是否与原型一致。
  *
- * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 README「本地环境」），
- * 而 SSR 渲染同样会执行组件、store、数据层，足以验证「迁移没有走样」。
+ * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 docs/开发文档.md 的
+ * 「为什么用 SSR 而不是无头浏览器核对」），而 SSR 渲染同样会执行组件、store、数据层，
+ * 足以验证「页面没有走样」。
  *
  * 用法：node scripts/verify-render.mjs
  */
@@ -78,6 +80,25 @@ const check = (label, actual, expected) => {
 };
 const count = (s, re) => (s.match(re) || []).length;
 
+/**
+ * 取「包含某段文本的那个 `<button>`」的 class 值，用于断言导航项高亮。
+ *
+ * ⚠️ 为什么不能直接写 `class="navitem active"`：**Vue SSR 渲染 class 时
+ * 「动态类在前、静态类在后」** —— `class="navitem"` + `:class="{active:…}"` 出来的是
+ * `class="active navitem"`，直接照 HTML 源码里的属性顺序写就会匹配不上（踩过一次）。
+ * 所以这里把 class 值取出来按**词**判，与顺序无关。
+ */
+const btnClass = (html, text) => {
+  const re = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>((?:(?!</button>)[\\s\\S])*?)${text}`);
+  const m = re.exec(html);
+  return m ? m[1] : '';
+};
+/** class 值里是否**同时**含这些类名（按词比，不看顺序） */
+const clsHas = (cls, ...names) => {
+  const list = cls.split(/\s+/);
+  return names.every((n) => list.includes(n));
+};
+
 try {
   const { default: App } = await vite.ssrLoadModule('/src/App.vue');
   const { useSiteStore } = await vite.ssrLoadModule('/src/stores/site.js');
@@ -92,6 +113,7 @@ try {
         { path: '/', name: 'banners', component: (await vite.ssrLoadModule('/src/views/BannerListView.vue')).default },
         { path: '/operators', name: 'stats', component: (await vite.ssrLoadModule('/src/views/StatsView.vue')).default },
         { path: '/first-up', name: 'firstUp', component: (await vite.ssrLoadModule('/src/views/FirstUpView.vue')).default },
+        { path: '/first-up/table', name: 'firstUpTable', component: (await vite.ssrLoadModule('/src/views/FirstUpTableView.vue')).default },
         { path: '/up-history', name: 'upHistory', component: (await vite.ssrLoadModule('/src/views/UpHistoryView.vue')).default },
         /* 与 src/router/index.js 保持一致：老路径的前端跳转（核对脚本也要能走这条） */
         { path: '/shop-interval', redirect: '/first-up' },
@@ -143,6 +165,40 @@ try {
     new RegExp(`命中 ${BANNER_N} / ${BANNER_N} 个卡池`).test(bh), true);
   check('左栏元信息：干员 230 位', /干员 <b>230<\/b> 位/.test(bh), true);
   check('左栏元信息：卡池数', new RegExp(`卡池 <b>${BANNER_N}</b> 个`).test(bh), true);
+
+  /* ---------------- 卡池列表：UP 干员**多选**（名字 / 全拼 / 首字母搜索） ----------------
+     分两层守：① 右栏控件结构（搜索框 + 已选 chip）；② 选中后确实按「精确名 OR」筛。
+     候选列表本身依赖输入框里的字（SSR 里打不了字），它的匹配 / 排序 / 去重在 verify-data 里测。 */
+  const opPool = [...new Set(banners.store.banners.flatMap((b) => b.upOperators.map((o) => o.name)))];
+  const opA = opPool[0];
+  const opB = opPool[1];
+
+  const opSel = await renderRoute('/', (s) => s.toggleBannerOp(opA));
+  check('卡池列表右栏：UP 干员改成搜索式多选（搜索框 + 已选 chips）',
+    /id="f-op"/.test(opSel.html)
+    && count(opSel.html, /class="opchips"/g) === 1
+    && count(opSel.html, /class="opchip"/g) === 1, true);
+  check('卡池列表右栏：搜索框提示写明支持拼音 / 首字母',
+    /名字 \/ 全拼 \/ 首字母/.test(opSel.html), true);
+  check('卡池列表：选中一位干员 = 该干员 UP 过的卡池数',
+    opSel.store.bannerRows.length,
+    opSel.store.banners.filter((b) => b.upOperators.some((o) => o.name === opA)).length);
+
+  const opTwo = await renderRoute('/', (s) => { s.toggleBannerOp(opA); s.toggleBannerOp(opB); });
+  check('卡池列表：多选两位 = 命中任意一位的卡池（OR 并集）',
+    opTwo.store.bannerRows.length,
+    opTwo.store.banners.filter((b) => b.upOperators.some((o) => o.name === opA || o.name === opB)).length);
+  check('卡池列表：多选两位后右栏有两个可移除的 chip',
+    count(opTwo.html, /class="opchip"/g) === 2, true);
+
+  /* 再点一次同一个干员 = 取消（chip 上那个 × 走的就是这个动作），回到全部卡池 */
+  const opOff = await renderRoute('/', (s) => { s.toggleBannerOp(opA); s.toggleBannerOp(opA); });
+  check('卡池列表：再点一次同一个干员即取消（chip 消失、回到全部）',
+    opOff.store.bannerRows.length === BANNER_N && !/class="opchip"/.test(opOff.html), true);
+
+  /* 样式契约：chips 与候选列表都要有配套样式，否则是裸按钮 */
+  check('卡池列表：UP 干员 chips / 候选列表有配套样式',
+    /\.opchip\{/.test(cssAll) && /\.opsug\{/.test(cssAll) && /\.opsug-item\{/.test(cssAll), true);
 
 
   /* ---------------- 统计页 ---------------- */
@@ -292,9 +348,18 @@ try {
     count(sinceFup.html, /class="tk"[^>]*>0</g), 0);
   check('首次UP间隔页：顶栏标题已切换', /首次UP间隔/.test(ph) && !/出率提升记录<\/span>/.test(ph.slice(0, ph.indexOf('<main'))), true);
 
-  /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四项，卡池列表页不显示进店那块） */
-  check('左栏导航四项',
-    ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'].every((t) => ph.includes(t)), true);
+  /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四个**顶级**项，卡池列表页不显示进店那块）。
+     「首次UP间隔」下面还挂了一个**二级菜单**（图表版 / 表格版）—— 同一份数据的两种呈现。 */
+  const NAV_TOP = ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'];
+  const NAV_SUB = ['图表版', '表格版'];
+  check('左栏导航：四个顶级项',
+    NAV_TOP.every((t) => ph.includes(t)), true);
+  check('左栏导航：「首次UP间隔」下有二级菜单（图表版 / 表格版）',
+    NAV_SUB.every((t) => ph.includes(t))
+    && count(ph, /navsubitem/g) === 2 && count(ph, /class="navsub"/g) === 1, true);
+  /* 二级菜单的样式契约：缩进 + 左侧引导线（父子层级要看得出来），子项有自己的高亮态 */
+  check('左栏二级菜单：缩进 + 左侧引导线 + 子项高亮态',
+    /\.navsub\{[^}]*border-left/.test(cssAll) && /\.navsubitem\.active\{/.test(cssAll), true);
   check('首次UP间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
   check('首次UP间隔页：右栏两个日期输入',
     ph.includes('id="fup-from"') && ph.includes('id="fup-to"'), true);
@@ -443,6 +508,116 @@ try {
     /首次UP间隔/.test(legacyFup.html)
     && /六星干员 · 首次进店间隔/.test(legacyFup.html), true);
 
+  /* ---------------- 首次UP间隔 · **表格版**（/first-up/table，左栏二级菜单） ----------------
+     与图表版**同一份数据**（`site.firstUp`）、同一套右栏筛选，只是换成表格呈现。
+     断言只守「结构契约」（分节 / 列头 / 行数 / 首位空间隔 / 无 canvas），
+     不写死会随数据更新的数字 —— 行数一律从 store 派生。 */
+  const ft = await renderRoute('/first-up/table');
+  const ftHtml = ft.html;
+  const ftStore = ft.store.firstUp;
+  const ftRows = ftStore.six.length + ftStore.five.length;
+
+  check('表格版：顶栏标题区分出版本（· 表格版）', /首次UP间隔 · 表格版/.test(ftHtml), true);
+  check('图表版：顶栏标题也带版本名（· 图表版）', /首次UP间隔 · 图表版/.test(ph), true);
+  check('表格版：左栏「表格版」子项高亮',
+    clsHas(btnClass(ftHtml, '表格版'), 'navsubitem', 'active'), true);
+  check('图表版：左栏「图表版」子项高亮',
+    clsHas(btnClass(ph, '图表版'), 'navsubitem', 'active'), true);
+  check('表格版：父项「首次UP间隔」在子页面仍高亮',
+    clsHas(btnClass(ftHtml, '首次UP间隔'), 'navitem', 'active'), true);
+
+  check('表格版：两个分节（与图表版一一对应）', count(ftHtml, /class="grp-sep"/g), 2);
+  check('表格版：分节标题与图表版同款',
+    /六星干员 · 首次进店间隔/.test(ftHtml) && /五星干员 · 首次进店间隔/.test(ftHtml), true);
+  /* ⚠️ 六星 / 五星放进 .pair 后，分节标题成了 `.pair-col` 的第一个子元素，
+     会被 `.grp-sep:first-child{border-top:none}`（为单列布局写的）抹掉上边线 ——
+     必须用更高特异性补回来，否则两列标题会「贴」在卡片头上。 */
+  check('表格版：六星 / 五星放进 .pair（宽够并排、不够自动竖排）+ 标题上边线补回',
+    count(ftHtml, /class="pair"/g) === 1
+    && count(ftHtml, /class="pair-col"/g) === 2
+    && /\.pair\s*>\s*\.pair-col\s*>\s*\.grp-sep\{[^}]*border-top:2px solid/.test(cssAll), true);
+  /* 两列顺序必须还是先六星后五星（.pair 只是并排，不改顺序） */
+  check('表格版：并排顺序仍是六星在左、五星在右',
+    ftHtml.indexOf('六星干员 · 首次进店间隔') < ftHtml.indexOf('五星干员 · 首次进店间隔'), true);
+  check('表格版：两张表（六星 / 五星各一张）且不初始化 echarts（无 canvas）',
+    count(ftHtml, /class="grid floating fup-tbl"/g) === 2 && count(ftHtml, /<canvas/g) === 0, true);
+  check('表格版：七列（干员 / 实装日 / 首次X日 / 所在卡池 / 距上行 / 距实装 / 累计数）',
+    count((/<thead>[\s\S]*?<\/thead>/.exec(ftHtml) || [''])[0], /<th\b/g), 7);
+  /* 列头文案：**只有「首次X日」**跟统计模式换词；「距上行」「累计数」是用户
+     2026-10-03 特意改短的固定文案，别按右栏那套长文案去改它们 */
+  check('表格版：列头文案（除「首次X日」外都是固定短文案）',
+    ['实装日', '首次进店日', '所在卡池', '距上行', '距实装', '累计数']
+      .every((t) => ftHtml.includes(t)), true);
+  check('表格版：行数 = 六星 + 五星位数（数据层派生，不写死）',
+    count(ftHtml, /<td class="opcell">/g), ftRows);
+  check('表格版：每个分节的第一行「距上行」是 —（组内首位没有前序）',
+    count(ftHtml, /class="dash"/g) >= 2, true);
+  check('表格版：卡片头写明行序口径与高亮列（措辞与图表版同一套）',
+    /行序按首次进店日期/.test(ftHtml) && /高亮列距上个首次进店/.test(ftHtml), true);
+  check('表格版：当前纵轴口径那一列加底色（默认纵轴 = gap，即「距上行」列）',
+    count(ftHtml, /metric-on/g) > 3, true);
+  check('表格版：右栏复用图表版那一套筛选（统计模式 / 横轴 / 纵轴 / 日期范围）',
+    ftHtml.includes('id="fup-from"') && ftHtml.includes('id="fup-to"')
+    && ftHtml.includes('按实装日期') && ftHtml.includes('距实装日期'), true);
+  /* 表格样式契约：自己一套 .fup-tbl（内容自适应 + inset 竖线 + sticky 表头），别去蹭 .stat-tbl
+     —— 那套还带「冻结前两列」的定宽与 left 偏移 */
+  check('表格版：表格样式走 .fup-tbl（自适应列宽 + inset 竖线 + sticky 表头）',
+    /table\.grid\.fup-tbl\{[^}]*table-layout:auto/.test(cssAll)
+    && /table\.grid\.fup-tbl thead th\{[^}]*box-shadow/.test(cssAll), true);
+  /* ⚠️ 高亮列的选择器必须写到 tbody 一级 —— 写浅了会被偶数行底色压过（隔一行断一次） */
+  check('表格版：高亮列选择器写到 tbody 一级（否则偶数行底色会把它压过）',
+    /table\.grid\.fup-tbl tbody td\.metric-on\{/.test(cssAll), true);
+
+  /* 行序跟随右栏「横轴」口径 —— 与图表版同一个开关，换成表格后改的是**行顺序** */
+  const ftRel = await renderRoute('/first-up/table', (s) => s.setFirstUpAxis('release'));
+  check('表格版：卡片头行序跟随「横轴」口径',
+    /行序按实装日期/.test(ftRel.html), true);
+  check('表格版：行序确实重排了（首行干员 = 数据层按实装排序后的第一个）',
+    new RegExp(`<td class="opcell">\\s*<b>${ftRel.store.firstUp.six[0].name}</b>`).test(ftRel.html), true);
+
+  /* 统计模式切换：「首次X日」与分节标题跟着换词；「距上行 / 累计数」不跟
+     （卡片头那一行仍走 lib 的 metricShort，出现「距上个首次轮换」是正常的，别一起断言） */
+  const ftRot = await renderRoute('/first-up/table', (s) => s.setFirstUpMode('rotation'));
+  check('表格版：切成「首次轮换」后「首次X日」与分节标题换词、固定列头不变',
+    /首次轮换日/.test(ftRot.html)
+    && /六星干员 · 首次轮换间隔/.test(ftRot.html)
+    && /距上行/.test(ftRot.html) && /累计数/.test(ftRot.html)
+    && !/累计轮换次数/.test(ftRot.html), true);
+
+  /* 图片模式：干员列换成**长方形蒙版头像** —— 与「出率提升记录」同款，共用 img.avt-rect
+     （用户 2026-10-03 指定；此前是 26px 的圆形头像） */
+  const ftImg = await renderRoute('/first-up/table', (s) => s.setAvatarMode('image'));
+  check('表格版：图片模式下行内出现头像图片',
+    count(ftImg.html, /class="avt-rect"/g), ftRows);
+  check('表格版：图片模式下不再渲染干员名（<b> 标签）',
+    count(ftImg.html, /<td class="opcell">\s*<b>/g), 0);
+  /* ⚠️ 这边没有冻结列 / colgroup：定位包含块与列宽都得自己补，否则头像会脱位（相对外层定位）、
+     干员列会塌到只剩表头宽度。详见 main.css「首次UP间隔 · 表格版」那段。 */
+  check('表格版图片模式：干员格是定位包含块（img 绝对定位的参照）',
+    /fup-tbl td\.opcell\{position:relative\}/.test(cssAll), true);
+  /* 干员列**定宽 = 7 个汉字**（用户 2026-10-03 指定，设计常量、不随数据变）：
+     13×7 = 91px 文字 + 左右内边距 10×2 = **111px**。统计表那边 padding 是 4px 6px，
+     所以是 103px —— 文字部分两边都是 91px，别把两个数看成互抄错了。
+     width / min / max **三处必须一致**（真源 = main.css 的 .opcell）。 */
+  const opColCss = (cssAll.match(/fup-tbl \.opcell\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
+  const opColW = Number((opColCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
+  check('表格版：干员列定宽 = 7 个汉字 + 内边距（13×7 + 10×2 = 111px），三处一致',
+    opColW === 111
+    && opColCss.includes(`width:${opColW}px`)
+    && opColCss.includes(`min-width:${opColW}px`)
+    && opColCss.includes(`max-width:${opColW}px`), true);
+  /* 干员列的定宽按**类名**选择：认列名比认列位置稳，也不会被 DOM 顺序变动带偏 */
+  const fupTableSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8');
+  check('表格版：干员列的 th / td 都挂 opcell（按类名定位，不靠 :first-child）',
+    /<th class="opcell">干员<\/th>/.test(fupTableSrc)
+    && /<td class="opcell">/.test(fupTableSrc), true);
+  /* 表头**一律居中**（用户 2026-10-03）：列头不跟着数据格的对齐走，
+     所以规则必须写到 `thead th` 才压得过全局的 `th.num{text-align:right}`；
+     「所在卡池」的表头也不再挂 tl（它的数据格仍是左对齐）。 */
+  check('表格版：表头一律居中（数字列只让数据格右对齐）',
+    /fup-tbl thead th\{text-align:center\}/.test(cssAll)
+    && !/<th class="tl">/.test(fupTableSrc), true);
+
   /* ---------------- 干员展示模式（简洁 / 图片） ---------------- */
   check('左栏底部有干员展示切换', ph.includes('简洁模式') && ph.includes('图片模式'), true);
   check('「干员展示」排在「服务器」上面',
@@ -573,8 +748,8 @@ try {
   check('左栏底部：数据来源 + 版权声明',
     /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
 
-  check('UP 历史页：左栏导航四项',
-    ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'].every((t) => uh.includes(t)), true);
+  check('UP 历史页：左栏导航四个顶级项 + 首次UP间隔的二级菜单都在',
+    NAV_TOP.every((t) => uh.includes(t)) && NAV_SUB.every((t) => uh.includes(t)), true);
   check('UP 历史页：右栏标题', /时间范围与筛选/.test(uh), true);
   check('UP 历史页：星级切换按钮（六星 92 / 五星 112）',
     /六星（92）/.test(uh) && /五星（112）/.test(uh), true);
@@ -979,16 +1154,17 @@ try {
     && /stat-tbl thead tr:first-child th:nth-child\(1\),[\s\S]{0,80}tbody td:nth-child\(1\)\{/.test(cssAll), true);
   check('统计表：冻结列用 background:inherit 保证不透明（依赖 tbody tr 有背景色）',
     /stat-tbl tbody tr\{background:#fff\}/.test(cssAll), true);
-  /* ---------------- 统计页图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
+  /* ---------------- 图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
+     ⚠️ 这条规则**统计页与首次UP间隔 · 表格版共用**（选择器两段），所以正则从 class 本身取。
      五条硬约束都在 CSS 里守着，改坏了会立刻红：
      ① 宽 = 高 × 2（具体像素是用户手调的，别写死 → 只守比例契约）；
      ② **四边渐隐**：两层 `mask-image`（左右一层 + 上下二层）靠 `mask-composite: intersect`
         取交集，让头像**自身的 alpha** 在四条边渐入 → 硬边消失，且与行底色无关
         （行有白 / #fcfdff / #f7fbff 三种底，所以不能叠同色遮罩）；
      ③ `object-fit:cover` → 96×96 方形素材**不拉伸**（按 2:1 裁上下）；
-     ④ **绝对定位** → 头像不参与行高计算，行高仍由干员格里的占位行框决定；
-     ⑤ 配套的 `img-mode` 那句给干员格补回 1lh 的行框高度（否则行高会掉 8px）。 */
-  const rectCss = (cssAll.match(/stat-tbl td\.wrapcell img\.avt-rect\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
+     ④ **绝对定位** → 头像不参与行高计算（统计页行高由干员格的占位行框决定；表格版由数字列决定）；
+     ⑤ 统计页配套的 `img-mode` 那句给干员格补回 1lh 的行框高度（否则行高会掉 8px）。 */
+  const rectCss = (cssAll.match(/img\.avt-rect\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   /* ⚠️ 尺寸是用户手调的（2026-10-03 由 52×26 改到 68×34），所以**不写死像素**，
      只断言「宽 = 高 × 2」这条比例契约 —— 以后他再调尺寸也不会被误判成回归。 */
   const rectW = Number((rectCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);

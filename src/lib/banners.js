@@ -8,27 +8,31 @@ import { TYPE_LABEL } from './constants.js';
  * 空筛选条件。
  * ⚠️ `types` 是**数组**（多选，与 UP 历史右栏的类型按钮组同一套语义）：
  *   空数组 = 全部类型；大类不再单独存，由「该大类下的类型是否全被选中」体现。
+ * ⚠️ `ops` 同样是**数组**（UP 干员多选）：空数组 = 不按干员筛；
+ *   里面存的是**精确干员名**（由右栏那个支持拼音的搜索框挑出来，见 lib/opSearch.js），
+ *   命中任意一个即保留（OR）。以前是单个字符串 `op`（自由文本子串匹配），已废弃。
  */
-export const emptyFilters = () => ({ types: [], from: '', to: '', op: '' });
+export const emptyFilters = () => ({ types: [], from: '', to: '', ops: [] });
 
 /**
  * 按筛选条件过滤 + 排序。
  * @param {Array}  banners    当前服务器卡池（含 id）
- * @param {object} filters    { types, from, to, op }
+ * @param {object} filters    { types, from, to, ops }
  * @param {object} categories type → 大类（未用；保留形参以免调用方大改）
  * @param {object} sort       { key, dir }
  */
 export function bannerRows(banners, filters, categories, sort) {
   const f = filters;
   const typeSet = f.types && f.types.length ? new Set(f.types) : null;
+  const opSet = f.ops && f.ops.length ? new Set(f.ops) : null;
   const rows = banners.filter((b) => {
     if (typeSet && !typeSet.has(b.type)) return false;
     if (f.from && b.startDate < f.from) return false;
     if (f.to && b.startDate > f.to) return false;
-    if (f.op) {
-      const kw = f.op.trim().toLowerCase();
-      if (!b.upOperators.some((o) => o.name.toLowerCase().includes(kw))) return false;
-    }
+    /* 干员多选：卡池的 UP 干员里**有任意一个**被选中就保留（OR）。
+       ⚠️ 这里是**精确名**比对，不是子串 —— 模糊/拼音那一步在右栏搜索框里做完了
+       （lib/opSearch.js），进来的都已经是确定的干员名。 */
+    if (opSet && !b.upOperators.some((o) => opSet.has(o.name))) return false;
     return true;
   });
 
