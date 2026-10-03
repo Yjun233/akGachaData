@@ -59,6 +59,20 @@ export const metricShort = (mode, metric) =>
   (metric === 'sinceRelease' ? '距实装日' : `距上个${modeFirstLabel(mode)}`);
 
 /**
+ * 卡片头「筛选范围」的文案。
+ * ⚠️ 日期框现在**默认就填完整跨度**（否则只显示「年/月/日」），所以「等于完整跨度」
+ *   也要算「全部」—— 不然卡片头会从「全部」变成一串日期。
+ * @param {{from:string,to:string}} range 当前区间
+ * @param {{from:string,to:string}} full  当前模式的完整跨度（store 的 fullFirstUpRange）
+ */
+export const firstUpRangeLabel = (range, full) => {
+  const { from, to } = range;
+  if (!from && !to) return '全部';
+  if (full && from === full.from && to === full.to) return '全部';
+  return `${from || '…'} ~ ${to || '…'}`;
+};
+
+/**
  * @param {object} ctx
  * @param {Array}  ctx.banners         当前服务器全部卡池（含 id）
  * @param {object} ctx.operatorByName  干员名 → 干员

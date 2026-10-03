@@ -275,7 +275,7 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .seg.mini button{flex:0 0 auto;width:60px;padding:5px 0;text-align:center}
 
 .fcount{margin-left:6px;font-weight:500;color:var(--muted)}
-.typebtns{display:flex;flex-direction:column;gap:8px}.typebtns.disabled .tgroup{background:#f6f8fb}
+.typebtns{display:flex;flex-direction:column;gap:8px}
 .tgroup{border:1px solid var(--blue-100);border-radius:9px;overflow:hidden;background:#fff}
 .tcat{
   display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;
@@ -296,6 +296,14 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 }
 .ttype:hover{background:var(--blue-50)}
 .ttype.on{background:var(--blue-600);border-color:var(--blue-600);color:#fff}
+/* 置灰的类型（UP 历史勾「只看进店」时，不可能有进店记录的那些池）：不可点，且要看得出来 ——
+   只靠 cursor 不够（触屏没有 cursor），所以底色 / 边框 / 字色一起弱化。
+   ⚠️ 必须把 `:hover` 一起写进来：`.ttype:hover` 在源码里更靠后、又同为 (0,2,0)，
+   不写的话鼠标一悬停又变回浅蓝，看着像还能点。 */
+.ttype:disabled,.ttype:disabled:hover{
+  background:#f6f8fb;border-color:var(--border);color:var(--muted);opacity:.8;
+}
+.tcat:disabled{opacity:.5}
 .tfoot{display:flex;justify-content:flex-end}
 .tfoot .btn{padding:5px 12px;font-size:12.5px}
 

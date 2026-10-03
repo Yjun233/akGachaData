@@ -3,7 +3,7 @@
  * 首次UP间隔·图表版 / 首次UP间隔·表格版 / UP 历史一览）真正渲染出来，
  * 再检查结构 / 数据是否与原型一致。
  *
- * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 docs/开发文档.md 的
+ * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 akGachaDocs/site/开发文档.md 的
  * 「为什么用 SSR 而不是无头浏览器核对」），而 SSR 渲染同样会执行组件、store、数据层，
  * 足以验证「页面没有走样」。
  *
@@ -79,6 +79,11 @@ const check = (label, actual, expected) => {
   results.push({ ok: String(actual) === String(expected), label, actual, expected });
 };
 const count = (s, re) => (s.match(re) || []).length;
+/** 某个 `<input>` 的 value 属性 —— 日期框「初始有没有填上默认值」只能这样验 */
+const dateVal = (html, id) => {
+  const tag = (new RegExp(`<input[^>]*id="${id}"[^>]*>`).exec(html) || [''])[0];
+  return (tag.match(/value="([^"]*)"/) || [])[1] || '';
+};
 
 /**
  * 取「包含某段文本的那个 `<button>`」的 class 值，用于断言导航项高亮。
@@ -163,6 +168,12 @@ try {
   check('限定标记「限」', count(bh, /mk-lim/g) >= 1, true);
   check('结果提示（命中 N / M）',
     new RegExp(`命中 ${BANNER_N} / ${BANNER_N} 个卡池`).test(bh), true);
+  /* 日期范围框**初始就有值**：值为空时浏览器只画「年/月/日」，看不出可用范围。
+     默认 = 本服卡池的完整跨度，它与「不限」等价 → 所以上面那条命中数仍是全部卡池。 */
+  check('卡池列表右栏：开始 / 结束日期框初始填上本服完整跨度',
+    dateVal(bh, 'f-from') === banners.store.fullBannerRange.from
+    && dateVal(bh, 'f-to') === banners.store.fullBannerRange.to
+    && !!dateVal(bh, 'f-from'), true);
   check('左栏元信息：干员 230 位', /干员 <b>230<\/b> 位/.test(bh), true);
   check('左栏元信息：卡池数', new RegExp(`卡池 <b>${BANNER_N}</b> 个`).test(bh), true);
 
@@ -363,6 +374,29 @@ try {
   check('首次UP间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
   check('首次UP间隔页：右栏两个日期输入',
     ph.includes('id="fup-from"') && ph.includes('id="fup-to"'), true);
+  check('首次UP间隔页：两个日期框初始填上当前模式的完整跨度',
+    dateVal(ph, 'fup-from') === fup.store.fullFirstUpRange.from
+    && dateVal(ph, 'fup-to') === fup.store.fullFirstUpRange.to
+    && !!dateVal(ph, 'fup-to'), true);
+  /* 「全部」按钮走 useRangeDraft 的 reset（客户端点击，SSR 点不到）→ 读源码把它钉住：
+     必须回到调用方给的默认范围，而不是清成空框 */
+  {
+    const filterDrawerSrc = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+    const rangeDraftSrc = fs.readFileSync(path.join(ROOT, 'src/composables/useRangeDraft.js'), 'utf8');
+    check('日期范围「全部」回到默认范围（不是清成空框）',
+      /\(\) => site\.fullFirstUpRange/.test(filterDrawerSrc)
+      && /\(\) => site\.fullBannerRange/.test(filterDrawerSrc)
+      && /const d = defaultRange \? defaultRange\(\) : null;/.test(rangeDraftSrc), true);
+  }
+  /* 重置类动作同样要回到完整跨度（store 侧可验） */
+  const fupReset = await renderRoute('/first-up', (s) => {
+    s.setFirstUpRange('2024-01-01', '2025-01-01');
+    s.resetFirstUpRange();
+  });
+  check('首次UP间隔：「全部」后仍是完整跨度（日期框不回空）',
+    fupReset.store.firstUpRange.from === fupReset.store.fullFirstUpRange.from
+    && fupReset.store.firstUpRange.to === fupReset.store.fullFirstUpRange.to
+    && dateVal(fupReset.html, 'fup-from') === fupReset.store.fullFirstUpRange.from, true);
   check('首次UP间隔页：右栏命中提示（= firstUp 六星 / 五星行数）',
     new RegExp(`命中 六星 ${FS.six.length} 位 / 五星 ${FS.five.length} 位`).test(ph), true);
   check('首次UP间隔页：不显示卡池筛选表单', !ph.includes('id="f-type"'), true);
@@ -385,7 +419,7 @@ try {
 
   /* ---------------- 统计模式切换（首次进店 / 首次轮换，2026-10-02 加） ----------------
      两种模式共用同一套横轴 / 纵轴口径，只是「首次日期」换了来源；
-     口径见 docs/工作指令.md 5.7 与 src/lib/firstUp.js 文件头。 */
+     口径见 akGachaDocs/site/工作指令.md 5.7 与 src/lib/firstUp.js 文件头。 */
   check('首次UP间隔页：右栏有统计模式切换（首次进店 / 首次轮换）',
     ph.includes('统计模式') && ph.includes('>首次进店</button>') && ph.includes('>首次轮换</button>'), true);
   check('首次UP间隔页：默认统计模式 = 首次进店', fup.store.firstUpMode, 'shop');
@@ -756,6 +790,18 @@ try {
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
+  check('UP 历史页：两个日期框初始填上本服完整跨度',
+    dateVal(uh, 'up-from') === up.store.fullBannerRange.from
+    && dateVal(uh, 'up-to') === up.store.fullBannerRange.to
+    && !!dateVal(uh, 'up-from'), true);
+  const upReset = await renderRoute('/up-history', (s) => {
+    s.setUpRange('2024-01-01', '2025-01-01');
+    s.resetUpRange();
+  });
+  check('UP 历史：「全部重置」后仍是完整跨度（日期框不回空）',
+    upReset.store.upRange.from === upReset.store.fullBannerRange.from
+    && upReset.store.upRange.to === upReset.store.fullBannerRange.to
+    && dateVal(upReset.html, 'up-from') === upReset.store.fullBannerRange.from, true);
   /* 开始日期不能早于本服第一个卡池的开始日。输入框上的 `min` 只是提示（只管得住原生选择器），
      真正夹取在 store 的 `setUpRange()` 里（下面单独断言）；这里核对属性确实带了下限。
      ⚠️ 只取 `#up-from` 那一个标签来判，别用全页 includes —— 其它输入框也有 min。 */
@@ -799,6 +845,19 @@ try {
   /* 卡池类型已改为**常驻按钮组**（不再是下拉）：3 个大类按钮 + 11 个类型按钮。
      按整段标签匹配，不要假设 class 与 disabled 的先后顺序。 */
   const ttypeTags = (html) => html.match(/<button[^>]*class="ttype[^"]*"[^>]*>/g) || [];
+  /* 取某类按钮的**开标签**（判置灰用）。
+     ⚠️ class 按**词**匹配：选中的按钮渲染成 `class="on ttype"`（Vue SSR 动态类在前），
+     写成 `class="ttype` 会漏掉所有已选中的按钮。
+     ⚠️ 只能看开标签：大类按钮里嵌着 `<i>` / `<span>`，用 `<button…>文案</button>` 那种写法
+     一个都匹配不上。 */
+  const btnAttrs = (html, cls) => [...html.matchAll(/<button([^>]*)>/g)]
+    .map((m) => m[1])
+    .filter((a) => new RegExp(`class="[^"]*\\b${cls}\\b`).test(a));
+  const isOff = (a) => /\bdisabled\b/.test(a);
+  /* 类型按钮的文案是纯文本 → 可以连文案一起取出来（判「哪几类还能点」用得上） */
+  const typeBtns = (html) => [...html.matchAll(/<button([^>]*)>([^<]*)<\/button>/g)]
+    .filter((m) => /class="[^"]*\bttype\b/.test(m[1]))
+    .map((m) => ({ off: isOff(m[1]), label: m[2] }));
   check('UP 历史页：卡池类型是常驻按钮组（不再有下拉）',
     count(uh, /class="typebtns"/g) === 1
     && !/class="dd-btn"/.test(uh) && !/class="dd-panel"/.test(uh), true);
@@ -814,26 +873,46 @@ try {
   check('UP 历史页：未勾选时 11 个类型按钮都可用',
     ttypeTags(uh).length === 11 && ttypeTags(uh).every((s) => !/disabled/.test(s)), true);
 
-  /* 互斥：勾上「只看进店」→ 类型筛选被禁用并清空 */
+  /* 「只看进店」与卡池类型**正交、可叠加**（2026-10-03 改；以前是「勾了就禁用 + 清空」）：
+     进店记录只落在常驻标准 / 常驻中坚这两类池里 → 这两类保持可选，不可能有进店记录的类型置灰；
+     已选的类型被保留（只剪掉那些置灰的，留着它们等于画空图）。 */
   const upShop = await renderRoute('/up-history', (s) => {
     s.setUpTypes(['double', 'classic']);
     s.setUpShopOnly(true);
   });
-  check('只看进店：勾选后清空已选的卡池类型', upShop.store.upTypes.length, 0);
-  check('只看进店：11 个类型按钮全部被禁用',
-    ttypeTags(upShop.html).length === 11 && ttypeTags(upShop.html).every((s) => /disabled/.test(s)),
-    true);
-  check('只看进店：标签提示已禁用', /只看进店（类型筛选已禁用）/.test(upShop.html), true);
+  check('只看进店：已选类型被保留（这两类本来就有进店记录）',
+    upShop.store.upTypes.join(','), 'double,classic');
+  const shopTypeBtns = typeBtns(upShop.html);
+  const shopTypeOn = shopTypeBtns.filter((b) => !b.off).map((b) => b.label);
+  check('只看进店：只有「有进店记录」的两类还能点，其余置灰',
+    shopTypeBtns.length === 11 && shopTypeOn.length === 2
+    && shopTypeOn.includes('常驻标准寻访') && shopTypeOn.includes('常驻中坚寻访'), true);
+  check('只看进店：整个大类都没进店记录时大类按钮也禁用（只有限定寻访那一个）',
+    btnAttrs(upShop.html, 'tcat').filter(isOff).length, 1);
+  check('只看进店：标签同时报出两个条件',
+    /只看进店 · 已选 2 种/.test(upShop.html), true);
   check('只看进店：命中数变为 六星 N 位（N = upHistory 六星行数）',
     new RegExp(`六星 ${upShop.store.upHistory.six.length} 位`).test(upShop.html), true);
+
+  /* 叠加起来真的生效：只勾进店 + 只留「常驻标准寻访」→ 每个标记必须同时满足两个条件 */
+  const upShopStd = await renderRoute('/up-history', (s) => {
+    s.setUpShopOnly(true);
+    s.setUpTypes(['double']);
+  });
+  check('只看进店 + 只选常驻标准：每个标记都同时满足 isShop 与 type === double',
+    upShopStd.store.upHistory.all.length > 0
+    && upShopStd.store.upHistory.all.every((r) => r.marks.every((m) => m.isShop && m.type === 'double')),
+    true);
+  check('只看进店 + 只选常驻标准：行数不多于只勾进店',
+    upShopStd.store.upHistory.all.length <= upShop.store.upHistory.all.length, true);
 
   const upTypes = await renderRoute('/up-history', (s) => {
     s.setUpShopOnly(true);
     s.setUpShopOnly(false);
     s.setUpTypes(['double', 'classic']);
   });
-  check('取消只看进店后类型按钮恢复可用',
-    ttypeTags(upTypes.html).every((s) => !/disabled/.test(s)), true);
+  check('取消只看进店后类型按钮全部恢复可用',
+    btnAttrs(upTypes.html, 'ttype').every((a) => !isOff(a)), true);
 
   /* 时间范围：**范围内一次 UP 都没有的干员默认不占行**（2026-09-30 口径调整，
      以前时间范围只改横轴、纵轴始终保留全部干员）；可用「显示范围内未 UP 干员」开关关掉这层过滤 */

@@ -39,7 +39,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl } from '../lib/avatars.js';
-import { modeFirstLabel, modeWord, axisLabel, metricShort } from '../lib/firstUp.js';
+import { modeFirstLabel, modeWord, axisLabel, metricShort, firstUpRangeLabel } from '../lib/firstUp.js';
 import { TIP_GAP } from '../lib/chartTooltip.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
@@ -300,11 +300,8 @@ watch(
   () => nextTick(scrollToEnd),
 );
 
-const rangeText = computed(() => {
-  const { from, to } = site.firstUpRange;
-  if (!from && !to) return '全部';
-  return `${from || '…'} ~ ${to || '…'}`;
-});
+/* 「筛选范围」文案：日期框默认填的就是完整跨度，所以那种情况仍显示「全部」 */
+const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullFirstUpRange));
 
 /* 口径文案：横轴 / 纵轴的「首次XX」都跟着统计模式变（用户指定：分节标题也跟随）。
    ⚠️ 措辞统一放在 lib/firstUp.js —— **表格版（FirstUpTableView.vue）用的是同一对函数**，

@@ -10,8 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { computeStats, endInfo, sortStatRows, daysSortValue } from '../src/lib/stats.js';
-import { computeFirstUp, metricLabel } from '../src/lib/firstUp.js';
-import { computeUpHistory } from '../src/lib/upHistory.js';
+import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/firstUp.js';
+import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
   buildUpTimeline, monthIndexOf, monthLabel, monthStartDate, minInnerWidth, chartHeight, TL,
 } from '../src/lib/upTimeline.js';
@@ -42,6 +42,12 @@ const operators = {};
 for (const op of Object.values(rawOperators)) operators[op.name] = op;
 
 const banners = Object.keys(bannerMap).map((id) => ({ id, ...bannerMap[id] }));
+/* 本服卡池的**完整跨度** [最早开始日, 最晚结束日] —— 就是右栏日期框现在的默认值
+   （store 的 fullBannerRange）。下面几处「完整跨度与不限等价」的断言都用它。 */
+const bannerFullRange = {
+  from: banners.reduce((m, b) => (!m || b.startDate < m ? b.startDate : m), ''),
+  to: banners.reduce((m, b) => (!m || b.endDate > m ? b.endDate : m), ''),
+};
 const operatorIndex = {};
 for (const name of Object.keys(operators)) {
   operatorIndex[name] = { rarity: operators[name].rarity, isLimited: operators[name].isLimited };
@@ -303,7 +309,7 @@ check('卡池列表默认按开始日期倒序',
 check('默认筛选命中全部卡池', all.length, banners.length);
 
 /* ---------------- 首次UP间隔（两种统计模式：首次进店 / 首次轮换） ----------------
-   口径见 src/lib/firstUp.js 文件头与 docs/工作指令.md 5.7。 */
+   口径见 src/lib/firstUp.js 文件头与 akGachaDocs/site/工作指令.md 5.7。 */
 
 /** 独立算一遍「首次轮换日」：只看那 4 类轮换卡池，不看进店标记 */
 function expectedFirstRotation(banners_, types) {
@@ -327,6 +333,26 @@ const fupRot = computeFirstUp({ banners, operatorByName: operators, relDateOf, m
 check('默认统计模式 = 首次进店', fupShop.mode, 'shop');
 check('有首次进店记录的干员数', fupShop.rows.length, 160);
 check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '69/91');
+
+/* 同上：首次UP间隔的日期框默认拿 bounds 当值，必须与「不限」等价（两种统计模式各验一遍） */
+for (const [label, base] of [['进店', fupShop], ['轮换', fupRot]]) {
+  const full = computeFirstUp({
+    banners, operatorByName: operators, relDateOf, mode: base.mode,
+    from: base.bounds.min, to: base.bounds.max,
+  });
+  check(`首次UP间隔（${label}）：完整跨度与不限等价（行数 / 六星 / 五星）`,
+    full.rows.length === base.rows.length
+    && full.six.length === base.six.length && full.five.length === base.five.length, true);
+}
+
+/* 卡片头「筛选范围」文案：空区间与「等于完整跨度」（日期框的默认值）都显示「全部」 */
+const fullFupRange = { from: fupShop.bounds.min, to: fupShop.bounds.max };
+check('筛选范围文案：空 / 等于完整跨度 都显示「全部」，其它照实写',
+  firstUpRangeLabel({ from: '', to: '' }, fullFupRange) === '全部'
+  && firstUpRangeLabel(fullFupRange, fullFupRange) === '全部'
+  && firstUpRangeLabel({ from: '2024-01-01', to: '2025-01-01' }, fullFupRange)
+    === '2024-01-01 ~ 2025-01-01'
+  && firstUpRangeLabel({ from: '2024-01-01', to: '' }, fullFupRange) === '2024-01-01 ~ …', true);
 
 check('轮换模式：mode 回传正确', fupRot.mode, 'rotation');
 check('轮换模式：干员数与独立重算一致', fupRot.rows.length, rotExpected.size);
@@ -485,6 +511,13 @@ check('UP 历史：默认按实装日升序',
     || (upAll.all[i - 1].releaseDate || '9999') <= (r.releaseDate || '9999')), true);
 check('UP 历史：条形起点（实装日）都有值', upAll.all.every((r) => !!r.releaseDate), true);
 
+/* UP 历史的日期框默认 = 本服卡池完整跨度（bannerFullRange），同样必须与「不限」等价 ——
+   它同时决定横轴范围与「范围内有没有标记」这层干员过滤，所以按行数比 */
+const upFull = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, range: bannerFullRange,
+});
+check('UP 历史：完整跨度与不限等价（行数一致）', upFull.all.length, upAll.all.length);
+
 const upShop = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, shopOnly: true,
 });
@@ -505,6 +538,29 @@ for (const b of banners) {
 check('UP 历史：只看进店的干员数 = 有进店记录的干员数', upShop.all.length, shopOps.size);
 check('UP 历史：只看进店的标记数 = 各卡池进店干员数之和',
   upShop.all.reduce((a, r) => a + r.count, 0), shopMarks);
+
+/* 「只看进店」× 卡池类型：两者**正交、可叠加**（2026-10-03 改；以前右栏把两者做成互斥、
+   勾了进店就禁用类型筛选）。右栏的置灰判据（typesWithoutShop）必须与实际画出来的标记对得上：
+   被置灰的那批 == 全集中「只看进店时一个标记都没出现过」的类型。 */
+const ALL_BANNER_TYPES = Object.keys(categories);
+const noShopTypes = typesWithoutShop(banners, ALL_BANNER_TYPES);
+const seenShopTypes = new Set(upShop.all.flatMap(
+  (r) => r.marks.filter((m) => m.isShop).map((m) => m.type),
+));
+check('UP 历史：没有进店记录的类型 == 只看进店时没出现过的类型',
+  noShopTypes.slice().sort().join(','),
+  ALL_BANNER_TYPES.filter((t) => !seenShopTypes.has(t)).sort().join(','));
+check('UP 历史：常驻标准 / 常驻中坚 有进店记录（不会被置灰）',
+  !noShopTypes.includes('double') && !noShopTypes.includes('classic'), true);
+
+const upShopStd = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, shopOnly: true, types: ['double'],
+});
+check('UP 历史：只看进店 + 卡池类型是**叠加**的（标记同时满足 isShop 与 type）',
+  upShopStd.all.length > 0
+  && upShopStd.all.every((r) => r.marks.every((m) => m.isShop && m.type === 'double')), true);
+check('UP 历史：叠加后行数 ≤ 只勾进店（两个条件不打架）',
+  upShopStd.all.length <= upShop.all.length, true);
 
 const upStd = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, types: ['double'],
@@ -588,6 +644,10 @@ check('卡池筛选：多选两位 = 并集（OR）而不是交集',
   twoOr === bannersWith([opA, opB]) && twoOr < bannersWith([opA]) + bannersWith([opB]), true);
 check('卡池筛选：选中没 UP 过的干员 = 0 个卡池',
   bannerRows(banners, { ...fEmpty, ops: ['这个干员不存在'] }, categories, fSort).length, 0);
+
+/* 「日期框默认填完整跨度」的前提：**完整跨度与「不限」等价**（否则那个默认值会悄悄筛掉数据） */
+check('卡池筛选：完整跨度与空范围等价（日期框可以拿它当默认值）',
+  bannerRows(banners, { ...fEmpty, ...bannerFullRange }, categories, fSort).length, banners.length);
 
 /* 拼音匹配：汉字 / 全拼 / 首字母 三种写法等价（银灰 = yinhui = yh）。
    ⚠️ 拼音字典是懒加载的（入口包不背它）—— 这里先把字典拉进来，否则全拼 / 首字母这两路

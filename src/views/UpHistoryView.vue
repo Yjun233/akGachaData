@@ -115,10 +115,10 @@ onBeforeUnmount(() => { ro?.disconnect(); ro = null; });
    于是停在半中间，看起来「没贴到最右」。 */
 watch(() => [site.server, site.upRarity], scrollToRight);
 
+/* 卡片头的一行摘要：「只看进店」与卡池类型是**叠加**的两个条件（2026-10-03 改），所以都报出来 */
 const filterText = computed(() => {
-  if (site.upShopOnly) return '只看进店';
-  if (!site.upTypes.length) return '全部卡池类型';
-  return `已选 ${site.upTypes.length} 种类型`;
+  const types = site.upTypes.length ? `已选 ${site.upTypes.length} 种类型` : '全部卡池类型';
+  return site.upShopOnly ? `只看进店 · ${types}` : types;
 });
 </script>
 

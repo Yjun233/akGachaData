@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import BannerListView from '../views/BannerListView.vue';
 
 /**
- * 页面结构（docs/工作指令.md 5.2）：
+ * 页面结构（akGachaDocs/site/工作指令.md 5.2）：
  *   /                首页，卡池列表
  *   /operators       出率提升记录（统计页）
  *   /first-up        首次UP间隔（折线图；两种统计模式：首次进店 / 首次轮换）

@@ -40,7 +40,7 @@
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl } from '../lib/avatars.js';
-import { axisLabel, metricShort, modeFirstLabel, modeWord } from '../lib/firstUp.js';
+import { axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel } from '../lib/firstUp.js';
 
 const site = useSiteStore();
 const data = computed(() => site.firstUp);
@@ -60,11 +60,8 @@ const sections = computed(() => [
   { key: 'five', label: '五星干员', rows: data.value.five },
 ]);
 
-const rangeText = computed(() => {
-  const { from, to } = site.firstUpRange;
-  if (!from && !to) return '全部';
-  return `${from || '…'} ~ ${to || '…'}`;
-});
+/* 「筛选范围」文案：日期框默认填的就是完整跨度，所以那种情况仍显示「全部」 */
+const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullFirstUpRange));
 
 /** 图片模式头像：表格版用**长方形蒙版**（与「出率提升记录」同一套，见 main.css 的 .avt-rect）。
  *  ⚠️ shape 只在素材缺失、回退占位图时才有意义 —— 真素材都是同一张方形 96×96 PNG，

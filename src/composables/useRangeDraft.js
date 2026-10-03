@@ -6,15 +6,18 @@
  * - 两端冲突时用**强制修正**（`enforceRangeOrder`）：以刚确认的一端为准，
  *   把另一端挪到相隔 1 天
  * - 「近 N 年」确认后清空输入框
+ * - 「全部」= 回到调用方给的**默认范围**（`defaultRange`）。⚠️ 默认是「完整跨度」而
+ *   不是空串 —— `type="date"` 在值为空时浏览器只画「年/月/日」，看不出可用范围。
  *
  * @param {() => {from: string, to: string}} getRange 读当前已应用的范围
  * @param {(from: string|null, to: string|null) => void} apply 写回；传 null 表示不动那一端，传 '' 表示清空
  * @param {(n: number) => unknown} applyYears 近 N 年
+ * @param {() => {from: string, to: string}} [defaultRange] 「全部」要回到的范围（不给就退回空串）
  */
 import { computed, ref, watch } from 'vue';
 import { enforceRangeOrder } from '../lib/date.js';
 
-export function useRangeDraft(getRange, apply, applyYears) {
+export function useRangeDraft(getRange, apply, applyYears, defaultRange = null) {
   const draftFrom = ref('');
   const draftTo = ref('');
   const yearsInput = ref('');
@@ -61,10 +64,12 @@ export function useRangeDraft(getRange, apply, applyYears) {
     yearsInput.value = ''; // 确认后清空
   }
 
+  /** 「全部」：回到默认范围（通常 = 完整跨度），而不是清成空框 */
   function reset() {
     error.value = '';
     yearsInput.value = '';
-    apply('', '');
+    const d = defaultRange ? defaultRange() : null;
+    apply(d?.from ?? '', d?.to ?? '');
   }
 
   return {

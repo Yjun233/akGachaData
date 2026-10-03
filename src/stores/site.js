@@ -18,7 +18,7 @@ import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
 import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
-import { computeUpHistory } from '../lib/upHistory.js';
+import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
 
 export const useSiteStore = defineStore('site', {
@@ -48,7 +48,7 @@ export const useSiteStore = defineStore('site', {
     upSort: 'release-asc',             // UP 历史：纵轴排序
     upRarity: 6,                       // UP 历史：一次只显示一个星级（默认六星）
     upTypes: [],                       // UP 历史：选中的卡池类型（空 = 全部）
-    upShopOnly: false,                 // UP 历史：只看进店（与 upTypes 互斥）
+    upShopOnly: false,                 // UP 历史：只看进店（与 upTypes **正交、可叠加**）
     upHideMid: false,                  // UP 历史：隐藏「在结束日期已属中坚寻访」的干员
     upShowGaps: false,                 // UP 历史：两次 UP 之间写日期差（**默认关**）
     avatarMode: 'text',                // 干员展示：text 简洁（名字）| image 图片（头像）
@@ -109,6 +109,24 @@ export const useSiteStore = defineStore('site', {
       return { min, max };
     },
 
+    /**
+     * 卡池日期范围控件的**默认值** = 本服卡池的完整跨度。
+     *
+     * 为什么要有它：`type="date"` 的输入框在值为空时浏览器只画「年/月/日」三个字，
+     * 完全看不出可用范围，所以初始（以及重置 / 切服务器）就把跨度填进去。
+     * ⚠️ 这两个值与「不限」**完全等价**（没有任何卡池落在范围外），所以筛选结果一字不变。
+     */
+    fullBannerRange() {
+      const { min, max } = this.bannerBounds;
+      return { from: min || '', to: max || '' };
+    },
+
+    /** 首次UP间隔的日期范围默认值 = 当前模式下首次日期的完整跨度（同 fullBannerRange） */
+    fullFirstUpRange() {
+      const { min, max } = this.firstUp.bounds;
+      return { from: min || '', to: max || '' };
+    },
+
     /** 卡池列表：筛选 + 排序后的行（与参考日期无关） */
     bannerRows(s) {
       return bannerRows(s.banners, s.filters, s.categories, s.bannerSort);
@@ -165,6 +183,11 @@ export const useSiteStore = defineStore('site', {
       });
     },
 
+    /** 「只看进店」模式下**不可能有记录**的卡池类型（右栏据此把它们置灰，见 lib/upHistory.js） */
+    noShopTypes(s) {
+      return typesWithoutShop(s.banners, Object.keys(s.categories));
+    },
+
     /** 卡池大类 → 该大类下的类型列表（右栏二级菜单用，数据驱动） */
     typesByCategory(s) {
       const out = {};
@@ -206,6 +229,10 @@ export const useSiteStore = defineStore('site', {
         this.server = data.meta.defaultServer;
         /* 参考日期初始值 = 打开页面的真实当天（2026-10-01 口径调整；以前取数据快照日） */
         this.refDate = this.today;
+        /* 日期范围框初始就填上完整跨度（否则只显示「年/月/日」；与「不限」等价，见 fullBannerRange） */
+        this.filters = { ...emptyFilters(), ...this.fullBannerRange };
+        this.firstUpRange = { ...this.fullFirstUpRange };
+        this.upRange = { ...this.fullBannerRange };
         this.ready = true;
       } catch (err) {
         this.error = err?.message || String(err);
@@ -214,14 +241,15 @@ export const useSiteStore = defineStore('site', {
       }
     },
 
-    /** 切换服务器：重置参考日期与全部筛选条件（见 docs/工作指令.md 5.5） */
+    /** 切换服务器：重置参考日期与全部筛选条件（见 akGachaDocs/site/工作指令.md 5.5） */
     setServer(id) {
       if (!id || !this.bannersByServer[id]) return;
       this.server = id;
       this.refDate = this.today;
-      this.filters = emptyFilters();
-      this.firstUpRange = { from: '', to: '' };
-      this.upRange = { from: '', to: '' };
+      /* 日期范围回到新服的**完整跨度**（不是空；空框只显示「年/月/日」，见 fullBannerRange） */
+      this.filters = { ...emptyFilters(), ...this.fullBannerRange };
+      this.firstUpRange = { ...this.fullFirstUpRange };
+      this.upRange = { ...this.fullBannerRange };
       this.upRarity = 6;
       this.upTypes = [];
       this.upShopOnly = false;
@@ -248,8 +276,9 @@ export const useSiteStore = defineStore('site', {
       return true;
     },
 
+    /** 「全部」：回到当前模式首次日期的完整跨度（等价于不限，但日期框里看得到范围） */
     resetFirstUpRange() {
-      this.firstUpRange = { from: '', to: '' };
+      this.firstUpRange = { ...this.fullFirstUpRange };
     },
 
     /* ⚠️ 下面三个「口径」**不随切服务器重置**（setServer 里没有它们）——
@@ -281,8 +310,9 @@ export const useSiteStore = defineStore('site', {
       this.upRange = { from: f ?? this.upRange.from, to: to ?? this.upRange.to };
     },
 
+    /** 回到本服卡池的完整跨度（等价于不限，但日期框里看得到范围） */
     resetUpRange() {
-      this.upRange = { from: '', to: '' };
+      this.upRange = { ...this.fullBannerRange };
     },
 
     /** 「近 N 年」：以真实今天为上界往前推 N 年（开始日期同样受本服第一个卡池约束） */
@@ -327,12 +357,18 @@ export const useSiteStore = defineStore('site', {
     },
 
     /**
-     * 只看进店：勾选时**禁用并清空**卡池类型筛选（两者互斥，见右栏）。
-     * 取消勾选后卡池类型筛选恢复可用（但选择已被清空）。
+     * 只看进店：只保留 `isShop` 的记录。
+     * ⚠️ 与卡池类型筛选**正交、可叠加**（2026-10-03 改）：以前是「勾选就禁用 + 清空类型筛选」，
+     * 但进店记录本身就只落在常驻标准 / 常驻中坚这两类池子里，按类型再收窄才有用。
+     * 这里只把**在本模式下不可能有记录的类型**从已选里剪掉（留着它们等于画空图）；
+     * 那几类由右栏置灰，判据见 getter `noShopTypes`。
      */
     setUpShopOnly(on) {
       this.upShopOnly = !!on;
-      if (this.upShopOnly) this.upTypes = [];
+      if (this.upShopOnly) {
+        const dead = new Set(this.noShopTypes);
+        this.upTypes = this.upTypes.filter((t) => !dead.has(t));
+      }
     },
 
     /** 是否显示「时间范围内没有 UP 过」的干员（默认不显示） */
@@ -363,8 +399,9 @@ export const useSiteStore = defineStore('site', {
       this.refDate = this.today;
     },
 
+    /** 重置卡池筛选：日期范围回到本服完整跨度（不是空框，见 fullBannerRange） */
     resetFilters() {
-      this.filters = emptyFilters();
+      this.filters = { ...emptyFilters(), ...this.fullBannerRange };
     },
 
     /* ---------------- 卡池列表：寻访筛选（多选，与 UP 历史同一套按钮组） ---------------- */

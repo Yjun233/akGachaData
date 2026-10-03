@@ -81,6 +81,8 @@ const {
   () => site.firstUpRange,
   (f, t) => site.setFirstUpRange(f, t),
   (n) => site.applyFirstUpYears(n),
+  /* 「全部」回到完整跨度（空框只显示「年/月/日」，见 store 的 fullFirstUpRange） */
+  () => site.fullFirstUpRange,
 );
 
 const {
@@ -92,6 +94,8 @@ const {
   () => site.upRange,
   (f, t) => site.setUpRange(f, t),
   (n) => site.applyUpYears(n),
+  /* 「全部重置」同理：回到本服卡池的完整跨度 */
+  () => site.fullBannerRange,
 );
 
 /* ---------------- 卡池列表：寻访筛选（多选按钮组，见 TypeButtons.vue） ---------------- */
@@ -133,11 +137,11 @@ function pickOp(name) {
 
 /* ---------------- UP 历史：卡池类型（同一个按钮组） ---------------- */
 
-/** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数） */
+/** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数）。
+ *  「只看进店」与卡池类型是**叠加**的两个条件（2026-10-03 改），所以两个都报出来。 */
 const upTypesLabel = computed(() => {
-  if (site.upShopOnly) return '只看进店（类型筛选已禁用）';
-  if (!site.upTypes.length) return '全部类型';
-  return `已选 ${site.upTypes.length} 种`;
+  const picked = site.upTypes.length ? `已选 ${site.upTypes.length} 种` : '全部类型';
+  return site.upShopOnly ? `只看进店 · ${picked}` : picked;
 });
 
 function resetUp() {
@@ -401,9 +405,11 @@ function resetUp() {
       </div>
 
       <div class="fgroup">
-        <!-- 两级按钮组：与卡池列表右栏共用同一个组件 -->
+        <!-- 两级按钮组：与卡池列表右栏共用同一个组件。
+             「只看进店」时把「不可能有进店记录的类型」置灰（其余照常可选，两个条件叠加）。 -->
         <TypeButtons
-          :selected="site.upTypes" :disabled="site.upShopOnly" :label-text="upTypesLabel"
+          :selected="site.upTypes" :disabled-types="site.upShopOnly ? site.noShopTypes : []"
+          :label-text="upTypesLabel"
           @toggle="site.toggleUpType"
           @toggle-category="site.toggleUpCategory"
           @clear="site.setUpTypes([])"
@@ -415,7 +421,7 @@ function resetUp() {
           type="checkbox" :checked="site.upShopOnly"
           @change="site.setUpShopOnly($event.target.checked)"
         />
-        <span>只看进店<small>勾选后禁用并清空卡池类型筛选</small></span>
+        <span>只看进店<small>上面的卡池类型不可能有进店记录的类型会置灰</small></span>
       </label>
 
       <label class="chk">
