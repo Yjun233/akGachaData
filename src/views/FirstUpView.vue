@@ -27,6 +27,10 @@
  *    步长用「整齐」步长（1/2.5/5 × 10ⁿ 那套）。
  * 3. 图片模式下点变成**圆形头像**（用 **custom 系列手绘 + zrender 的 `clipPath` 裁圆** ——
  *    `symbol:'image://…'` 不能裁剪，方形素材会直接显示成方块），此时不显示名字标签。
+ *
+ * ⚠️ 另外，下面 tooltip 的 `formatter` 是 **echarts 在客户端**调用的 → **SSR 出的 HTML 里不含浮窗内容**，
+ * 所以 `verify-render` 里验浮窗文案只能 `fs.readFileSync` 读本文件源码（别去 HTML 里找，永远找不到）。
+ * 浮窗显示的字段：干员 / 实装日 / 首次日期 / **所在卡池**（`r.firstBanner`）/ 间隔天数 / 累计次数。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
@@ -148,7 +152,10 @@ function buildOption(rows, rarity, ax) {
         if (!r) return '';
         const lines = [`<b>${r.name}</b>（${rarity}★）`,
           `实装：${r.releaseDate || '—'}`,
-          `${firstLabel.value}：${r.firstDate}`];
+          `${firstLabel.value}：${r.firstDate}`,
+          /* 那次「首次」发生在哪个卡池 —— 轮换口径下尤其有用（可能是标准 / 联合 / 定向 / 前路之一），
+             与上一行的日期同源（都由 firstUp.js 里同一次卡池给出） */
+          `所在卡池：${r.firstBanner || '—'}`];
 
         if (data.value.metric === 'gap') {
           lines.push(

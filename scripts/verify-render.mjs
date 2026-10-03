@@ -343,6 +343,16 @@ try {
   check('统计模式=首次轮换：日期输入上下限跟着模式变',
     rotFup.html.includes(`min="${rotFup.store.firstUp.bounds.min}"`)
     && rotFup.html.includes(`max="${rotFup.store.firstUp.bounds.max}"`), true);
+  /* 浮窗多一行「所在卡池」（该次「首次」发生在哪个卡池；用户 2026-10-03 加）。
+     ⚠️ tooltip 的 formatter 由 echarts **在客户端**调用，SSR 出的 HTML 里不含它，
+     所以只能查组件源码把这句话钉住（改坏了会红）。数据字段的「同源」由 verify-data 守。
+     ⚠️ 两种统计模式**共用同一个 formatter** → 进店模式也会显示这一行
+     （都是「那次首次所在的卡池」，两种模式下都成立）。 */
+  const fupSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpView.vue'), 'utf8');
+  check('首次UP间隔页：浮窗里多一行「所在卡池」（取该次首次所在的那个卡池）',
+    /所在卡池：\$\{r\.firstBanner/.test(fupSrc), true);
+  check('首次UP间隔页：浮窗的「所在卡池」放在「首次日期」之后（同一场卡池的两条信息相邻）',
+    /`\$\{firstLabel\.value\}：\$\{r\.firstDate\}`,[\s\S]{0,200}?`所在卡池：/.test(fupSrc), true);
 
   /* 切换模式**不动**已设的时间范围（用户指定）；范围按新的「首次日期」重新筛 */
   const rotKeep = await renderRoute('/first-up', (s) => {

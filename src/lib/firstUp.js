@@ -10,6 +10,9 @@
  * 两种模式共用的规则：
  * - 排除限定干员与 4 星及以下 —— 与统计页保持一致。
  * - 每位干员取其**首次**（最早的那个卡池）。
+ * - `firstDate` 与 `firstBanner` **同源**：都取自那次首次所在的卡池，所以浮窗里
+ *   「首次轮换：2021-01-14」与「所在卡池：联合行动」必然指的是同一场卡池。
+ *   ⚠️ 更新条件用**严格小于**：同一天有多个候选池时保留先遇到的那个，两者一起不动。
  * - **六星与五星各自成序列，星级之间不互相比较**：同一星级内按 axis 排序后，
  *   纵轴取 metric 指定的值；组内第一位（当 metric = gap 时）没有前序，`gap` 为 `null`（图上不画点）。
  * - 时间范围按**首次日期**筛选；筛选后重新排序、重新计算。
@@ -70,7 +73,7 @@ export function computeFirstUp({
   const isRotation = mode === 'rotation';
   const rotationTypes = isRotation ? new Set(ROTATION_TYPES) : null;
 
-  /** name → { name, rarity, firstDate, count } */
+  /** name → { name, rarity, firstDate, firstBanner, count } */
   const first = {};
 
   for (const b of banners) {
@@ -82,10 +85,17 @@ export function computeFirstUp({
       if ((op.rarity || 0) < 5) continue;
       const cur = first[op.name];
       if (!cur) {
-        first[op.name] = { name: op.name, rarity: op.rarity, firstDate: b.startDate, count: 1 };
+        first[op.name] = {
+          name: op.name, rarity: op.rarity, firstDate: b.startDate, firstBanner: b.name, count: 1,
+        };
       } else {
         cur.count += 1;
-        if (b.startDate < cur.firstDate) cur.firstDate = b.startDate;
+        /* ⚠️ firstDate 与 firstBanner 必须**一起**更新 —— 否则会出现
+           「日期是 A 池的、池名是 B 池的」这种自相矛盾的浮窗 */
+        if (b.startDate < cur.firstDate) {
+          cur.firstDate = b.startDate;
+          cur.firstBanner = b.name;
+        }
       }
     }
   }

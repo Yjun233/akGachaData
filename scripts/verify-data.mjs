@@ -411,6 +411,27 @@ check('纵轴=距实装：最大跨度超过 800 天',
 /* 纵轴标签随模式换词（卡片头 / 文档都引它） */
 check('纵轴标签·进店模式', metricLabel('shop', 'gap'), '距同星级上一个首次进店（天）');
 check('纵轴标签·轮换模式', metricLabel('rotation', 'gap'), '距同星级上一个首次轮换（天）');
+
+/* ---------------- 浮窗的「所在卡池」（2026-10-03 加） ----------------
+   「首次日期」与「所在卡池」必须**同源** —— 都来自那次首次所在的同一场卡池。
+   若只更新其中之一（例如新遇到更早的池子只改了 firstDate），
+   浮窗就会出现「日期是 A 池的、池名却是 B 池的」这种自相矛盾的组合。
+   所以这里**反查数据**：确实存在一个卡池，名字与日期都对得上，
+   且该干员出现在它的 UP 名单里、并满足该模式的条件。 */
+function bannerMatchesFirst(r, b, mode) {
+  if (b.name !== r.firstBanner || b.startDate !== r.firstDate) return false;
+  if (mode === 'rotation' && !ROT_TYPES.includes(b.type)) return false;
+  const op = b.upOperators.find((o) => o.name === r.name);
+  if (!op || op.isLimited || (op.rarity || 0) < 5) return false;
+  return mode === 'rotation' || op.isShop === true;
+}
+for (const [modeName, set, mode] of [['进店', fupShop, 'shop'], ['轮换', fupRot, 'rotation']]) {
+  check(`${modeName}：每位干员的「所在卡池」与首次日期同源（能在同一场卡池里对上）`,
+    set.rows.every((r) => banners.some((b) => bannerMatchesFirst(r, b, mode))), true);
+}
+check('轮换：所在卡池名全部非空', fupRot.rows.every((r) => !!r.firstBanner), true);
+check('轮换：所在卡池名就是卡池的中文名（与 name 字段一致，不是其它语言的别名）',
+  fupRot.rows.every((r) => banners.some((b) => b.name === r.firstBanner)), true);
 check('纵轴标签·距实装日与模式无关',
   metricLabel('shop', 'sinceRelease') === metricLabel('rotation', 'sinceRelease'), true);
 
