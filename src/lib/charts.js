@@ -17,7 +17,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 /* ⚠️ 这里漏注册任何一种用到的图表类型，echarts 只会 console.warn 一句然后把整个系列静默跳过 ——
    表现是「坐标轴画出来了、图形一个都没有」。UP 历史时间轴用 custom 手绘，务必保留 CustomChart。 */
 echarts.use([
-  LineChart,      // 首次进店间隔折线
+  LineChart,      // 首次UP间隔折线（LineChart 只有这一处用）
   CustomChart,    // UP 历史时间轴（条形 + 标记全部手绘）
   GridComponent,
   TooltipComponent,

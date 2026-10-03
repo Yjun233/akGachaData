@@ -1,6 +1,6 @@
 /**
  * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**四个页面**（卡池列表 / 出率提升记录 /
- * 首次进店间隔 / UP 历史一览）真正渲染出来，再检查结构 / 数据是否与原型一致。
+ * 首次UP间隔 / UP 历史一览）真正渲染出来，再检查结构 / 数据是否与原型一致。
  *
  * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 README「本地环境」），
  * 而 SSR 渲染同样会执行组件、store、数据层，足以验证「迁移没有走样」。
@@ -91,8 +91,10 @@ try {
       routes: [
         { path: '/', name: 'banners', component: (await vite.ssrLoadModule('/src/views/BannerListView.vue')).default },
         { path: '/operators', name: 'stats', component: (await vite.ssrLoadModule('/src/views/StatsView.vue')).default },
-        { path: '/shop-interval', name: 'shopInterval', component: (await vite.ssrLoadModule('/src/views/ShopIntervalView.vue')).default },
+        { path: '/first-up', name: 'firstUp', component: (await vite.ssrLoadModule('/src/views/FirstUpView.vue')).default },
         { path: '/up-history', name: 'upHistory', component: (await vite.ssrLoadModule('/src/views/UpHistoryView.vue')).default },
+        /* 与 src/router/index.js 保持一致：老路径的前端跳转（核对脚本也要能走这条） */
+        { path: '/shop-interval', redirect: '/first-up' },
       ],
     });
     app.use(router);
@@ -216,104 +218,149 @@ try {
   check('统计页没有卡池表（无 1225px 兜底下限）',
     /min-width:1225px/.test(bh) && !/min-width:1225px/.test(sh), true);
 
-  /* ---------------- 首次进店间隔 ---------------- */
-  const shop = await renderRoute('/shop-interval');
-  const ph = shop.html;
+  /* ---------------- 首次UP间隔 ---------------- */
+  const fup = await renderRoute('/first-up');
+  const ph = fup.html;
 
   /* 页面内不再重复渲染 h2 大标题，标题只在顶栏出现一次（2026-09-30 去重） */
-  check('首次进店间隔页：页面内不再重复标题（顶栏那份负责）',
-    !/<h2>/.test(ph) && /首次进店间隔/.test(ph), true);
-  check('首次进店间隔页：卡片头统计（六星 N 位 · 五星 N 位）',
+  check('首次UP间隔页：页面内不再重复标题（顶栏那份负责）',
+    !/<h2>/.test(ph) && /首次UP间隔/.test(ph), true);
+  check('首次UP间隔页：卡片头统计（六星 N 位 · 五星 N 位）',
     /六星 \d+ 位 · 五星 \d+ 位/.test(ph), true);
-  check('首次进店间隔页：两个分节', count(ph, /class="grp-sep"/g), 2);
-  check('首次进店间隔页：六星 / 五星分节标题',
+  check('首次UP间隔页：两个分节', count(ph, /class="grp-sep"/g), 2);
+  check('首次UP间隔页：六星 / 五星分节标题（默认统计模式 = 首次进店）',
     ph.includes('六星干员 · 首次进店间隔') && ph.includes('五星干员 · 首次进店间隔'), true);
   /* ⚠️ 命中数与日期上下限都**会随数据更新变**（新增进店记录就变），不能写死 ——
-     期望值一律从 store 的 firstShop 派生（它算的就是同一份数据）。 */
-  const FS = shop.store.firstShop;
-  check('首次进店间隔页：命中数 = firstShop 的六星 / 五星行数',
+     期望值一律从 store 的 firstUp 派生（它算的就是同一份数据）。 */
+  const FS = fup.store.firstUp;
+  check('首次UP间隔页：命中数 = firstUp 的六星 / 五星行数',
     ph.includes(`六星 ${FS.six.length} 位 · 五星 ${FS.five.length} 位`), true);
-  check('首次进店间隔页：日期输入带上下限（= firstShop.bounds）',
+  check('首次UP间隔页：日期输入带上下限（= firstUp.bounds）',
     ph.includes(`min="${FS.bounds.min}"`) && ph.includes(`max="${FS.bounds.max}"`), true);
-  check('首次进店间隔页：两个图表容器', count(ph, /class="echart"/g), 2);
-  check('首次进店间隔页：图表外层可横向滚动', count(ph, /class="chart-scroll"/g), 2);
-  check('首次进店间隔页：SSR 下不初始化 echarts（无 canvas）', count(ph, /<canvas/g), 0);
+  check('首次UP间隔页：两个图表容器', count(ph, /class="echart"/g), 2);
+  check('首次UP间隔页：图表外层可横向滚动', count(ph, /class="chart-scroll"/g), 2);
+  check('首次UP间隔页：SSR 下不初始化 echarts（无 canvas）', count(ph, /<canvas/g), 0);
   /* 页内说明块已移除，横轴 / 纵轴的口径改由卡片头一行带过 */
-  check('首次进店间隔页：卡片头写明横轴 / 纵轴口径',
-    /横轴(按实装日期|按首次进店日期)/.test(ph) && /纵轴(距实装日|距上个首次进店)/.test(ph), true);
-  check('首次进店间隔页：两侧固定刻度条（六星 + 五星各左右一条）',
+  check('首次UP间隔页：卡片头写明横轴 / 纵轴口径',
+    /横轴(按实装日期|按首次进店日期|按首次轮换日期)/.test(ph)
+    && /纵轴(距实装日|距上个首次进店|距上个首次轮换)/.test(ph), true);
+  check('首次UP间隔页：两侧固定刻度条（六星 + 五星各左右一条）',
     count(ph, /class="ybar ybar-l"/g) === 2 && count(ph, /class="ybar ybar-r"/g) === 2, true);
-  check('首次进店间隔页：刻度条带单位标注', count(ph, /class="unit"/g), 4);
+  check('首次UP间隔页：刻度条带单位标注', count(ph, /class="unit"/g), 4);
   const tickVals = [...ph.matchAll(/class="tk"[^>]*>(\d+)</g)].map((m) => Number(m[1]));
-  check('首次进店间隔页：刻度存在且都是 14 的倍数',
+  check('首次UP间隔页：刻度存在且都是 14 的倍数',
     tickVals.length > 0 && tickVals.every((v) => v % 14 === 0), true);
-  check('首次进店间隔页：刻度从 0 起', tickVals.includes(0), true);
-  check('首次进店间隔页：右栏「近 N 年」输入框', ph.includes('id="shop-years"'), true);
-  check('首次进店间隔页：快速填入标题', ph.includes('快速填入日期范围'), true);
-  check('首次进店间隔页：三个「确认」按钮（近 N 年 / 起始日 / 结束日）',
+  check('首次UP间隔页：刻度从 0 起', tickVals.includes(0), true);
+  check('首次UP间隔页：右栏「近 N 年」输入框', ph.includes('id="fup-years"'), true);
+  check('首次UP间隔页：快速填入标题', ph.includes('快速填入日期范围'), true);
+  check('首次UP间隔页：三个「确认」按钮（近 N 年 / 起始日 / 结束日）',
     count(ph, />确认<\/button>/g), 3);
-  check('首次进店间隔页：未修改时不描红', !/dirty/.test(ph), true);
+  check('首次UP间隔页：未修改时不描红', !/dirty/.test(ph), true);
 
-  const rangedShop = await renderRoute('/shop-interval', (s) => s.setShopRange('2024-01-01', '2026-01-01'));
+  const rangedFup = await renderRoute('/first-up', (s) => s.setFirstUpRange('2024-01-01', '2026-01-01'));
   check('已应用的日期范围会同步进输入框',
-    rangedShop.html.includes('2024-01-01') && rangedShop.html.includes('2026-01-01'), true);
+    rangedFup.html.includes('2024-01-01') && rangedFup.html.includes('2026-01-01'), true);
 
   /* 筛选范围变化 → 纵轴范围与刻度跟着变（用户明确要求） */
   const ticksOf = (html) => [...html.matchAll(/class="tk"[^>]*>(-?\d+)</g)].map((m) => Number(m[1]));
   const wideTicks = ticksOf(ph);
-  const narrowTicks = ticksOf(rangedShop.html);
+  const narrowTicks = ticksOf(rangedFup.html);
   check('筛选范围变化后纵轴刻度随之变化',
     JSON.stringify(wideTicks) !== JSON.stringify(narrowTicks), true);
   check('刻度仍以 14 天为基准（或跨度小时降到 7）',
     wideTicks.every((v) => v % 7 === 0) && narrowTicks.every((v) => v % 7 === 0), true);
 
-  const y3 = await renderRoute('/shop-interval', (s) => s.applyShopYears(3));
+  const y3 = await renderRoute('/first-up', (s) => s.applyFirstUpYears(3));
   /* 「近 N 年」以**真实今天**为上界，所以期望值要按 store 的 today 算，不能写死 */
-  check('近 3 年：区间 = 今天往前 3 年', y3.store.shopRange.from, shiftYears(y3.store.today, -3));
-  check('近 3 年：结束端为今天', y3.store.shopRange.to, y3.store.today);
+  check('近 3 年：区间 = 今天往前 3 年', y3.store.firstUpRange.from, shiftYears(y3.store.today, -3));
+  check('近 3 年：结束端为今天', y3.store.firstUpRange.to, y3.store.today);
 
   /* 纵轴起点贴合数据：筛到近 2 年后，能在近两年进店的干员都等了很多年 */
-  const sinceShop = await renderRoute('/shop-interval', (s) => {
-    s.setShopMetric('sinceRelease');
-    s.setShopRange('2024-09-29', '2026-09-29');
+  const sinceFup = await renderRoute('/first-up', (s) => {
+    s.setFirstUpMetric('sinceRelease');
+    s.setFirstUpRange('2024-09-29', '2026-09-29');
   });
-  const sinceTicks = ticksOf(sinceShop.html);
+  const sinceTicks = ticksOf(sinceFup.html);
   check('纵轴=距实装 + 近 2 年：起点贴合数据（不再从 0 起）', Math.min(...sinceTicks) > 0, true);
   /* 每条刻度条内部应当是等差（条与条之间起点不同，所以按条分别看） */
-  const tickGroups = [...sinceShop.html.matchAll(/class="ybar ybar-[lr]"[^>]*>([\s\S]*?)<\/div>/g)]
+  const tickGroups = [...sinceFup.html.matchAll(/class="ybar ybar-[lr]"[^>]*>([\s\S]*?)<\/div>/g)]
     .map((m) => [...m[1].matchAll(/class="tk"[^>]*>(-?\d+)</g)].map((x) => Number(x[1])));
   check('纵轴=距实装 + 近 2 年：四条刻度条各自等差',
     tickGroups.length === 4 && tickGroups.every((g) => g.length >= 3
       && g.every((v, i) => i === 0 || v - g[i - 1] === g[1] - g[0])), true);
   check('纵轴=距实装 + 近 2 年：刻度里不再出现 0 刻度',
-    count(sinceShop.html, /class="tk"[^>]*>0</g), 0);
-  check('首次进店间隔页：顶栏标题已切换', /首次进店间隔/.test(ph) && !/出率提升记录<\/span>/.test(ph.slice(0, ph.indexOf('<main'))), true);
+    count(sinceFup.html, /class="tk"[^>]*>0</g), 0);
+  check('首次UP间隔页：顶栏标题已切换', /首次UP间隔/.test(ph) && !/出率提升记录<\/span>/.test(ph.slice(0, ph.indexOf('<main'))), true);
 
   /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四项，卡池列表页不显示进店那块） */
   check('左栏导航四项',
-    ['卡池列表', '出率提升记录', '首次进店间隔', 'UP 历史一览'].every((t) => ph.includes(t)), true);
-  check('首次进店间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
-  check('首次进店间隔页：右栏两个日期输入',
-    ph.includes('id="shop-from"') && ph.includes('id="shop-to"'), true);
-  check('首次进店间隔页：右栏命中提示（= firstShop 六星 / 五星行数）',
+    ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'].every((t) => ph.includes(t)), true);
+  check('首次UP间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
+  check('首次UP间隔页：右栏两个日期输入',
+    ph.includes('id="fup-from"') && ph.includes('id="fup-to"'), true);
+  check('首次UP间隔页：右栏命中提示（= firstUp 六星 / 五星行数）',
     new RegExp(`命中 六星 ${FS.six.length} 位 / 五星 ${FS.five.length} 位`).test(ph), true);
-  check('首次进店间隔页：不显示卡池筛选表单', !ph.includes('id="f-type"'), true);
-  check('统计页右栏不再显示进店筛选', !sh.includes('id="shop-from"'), true);
+  check('首次UP间隔页：不显示卡池筛选表单', !ph.includes('id="f-type"'), true);
+  check('统计页右栏不再显示进店筛选', !sh.includes('id="fup-from"'), true);
 
-  /* ---------------- 口径切换（右栏，仅首次进店间隔页） ---------------- */
-  check('首次进店间隔页：右栏有横轴口径按钮',
+  /* ---------------- 口径切换（右栏，仅首次UP间隔页） ---------------- */
+  check('首次UP间隔页：右栏有横轴口径按钮',
     ph.includes('按首次进店日期') && ph.includes('按实装日期'), true);
-  check('首次进店间隔页：右栏有纵轴口径按钮',
+  check('首次UP间隔页：右栏有纵轴口径按钮',
     ph.includes('距上个首次进店') && ph.includes('距实装日期'), true);
   check('统计页右栏没有口径切换', !sh.includes('距上个首次进店'), true);
 
-  const relShop = await renderRoute('/shop-interval', (s) => {
-    s.setShopAxis('release');
-    s.setShopMetric('sinceRelease');
+  const relFup = await renderRoute('/first-up', (s) => {
+    s.setFirstUpAxis('release');
+    s.setFirstUpMetric('sinceRelease');
   });
-  check('口径切换：头信息跟随', /横轴按实装日期/.test(relShop.html) && /纵轴距实装日/.test(relShop.html), true);
-  check('口径切换：卡片头切到「纵轴距实装日」', /纵轴距实装日/.test(relShop.html), true);
-  check('口径切换：按钮高亮跟随状态', count(relShop.html, /class="on"/g) >= 2, true);
+  check('口径切换：头信息跟随', /横轴按实装日期/.test(relFup.html) && /纵轴距实装日/.test(relFup.html), true);
+  check('口径切换：卡片头切到「纵轴距实装日」', /纵轴距实装日/.test(relFup.html), true);
+  check('口径切换：按钮高亮跟随状态', count(relFup.html, /class="on"/g) >= 2, true);
+
+  /* ---------------- 统计模式切换（首次进店 / 首次轮换，2026-10-02 加） ----------------
+     两种模式共用同一套横轴 / 纵轴口径，只是「首次日期」换了来源；
+     口径见 docs/工作指令.md 5.7 与 src/lib/firstUp.js 文件头。 */
+  check('首次UP间隔页：右栏有统计模式切换（首次进店 / 首次轮换）',
+    ph.includes('统计模式') && ph.includes('>首次进店</button>') && ph.includes('>首次轮换</button>'), true);
+  check('首次UP间隔页：默认统计模式 = 首次进店', fup.store.firstUpMode, 'shop');
+  check('首次UP间隔页：mode / axis / metric 都回传给数据层',
+    `${fup.store.firstUp.mode}/${fup.store.firstUp.axis}/${fup.store.firstUp.metric}`, 'shop/first/gap');
+
+  const rotFup = await renderRoute('/first-up', (s) => s.setFirstUpMode('rotation'));
+  check('统计模式=首次轮换：卡片头横轴 / 纵轴换词',
+    /横轴按首次轮换日期/.test(rotFup.html) && /纵轴距上个首次轮换/.test(rotFup.html), true);
+  check('统计模式=首次轮换：分节标题跟随模式',
+    rotFup.html.includes('六星干员 · 首次轮换间隔')
+    && rotFup.html.includes('五星干员 · 首次轮换间隔'), true);
+  check('统计模式=首次轮换：右栏标题跟随模式', /首次轮换日期范围/.test(rotFup.html), true);
+  check('统计模式=首次轮换：命中数 = 轮换口径的六星 / 五星行数',
+    rotFup.html.includes(`六星 ${rotFup.store.firstUp.six.length} 位`)
+    && rotFup.html.includes(`五星 ${rotFup.store.firstUp.five.length} 位`), true);
+  /* 轮换口径比进店宽（进店 ⊆ 轮换，见 verify-data 的不变量断言） */
+  check('统计模式=首次轮换：覆盖的干员不少于进店口径',
+    rotFup.store.firstUp.rows.length >= fup.store.firstUp.rows.length, true);
+  check('统计模式=首次轮换：日期输入上下限跟着模式变',
+    rotFup.html.includes(`min="${rotFup.store.firstUp.bounds.min}"`)
+    && rotFup.html.includes(`max="${rotFup.store.firstUp.bounds.max}"`), true);
+
+  /* 切换模式**不动**已设的时间范围（用户指定）；范围按新的「首次日期」重新筛 */
+  const rotKeep = await renderRoute('/first-up', (s) => {
+    s.setFirstUpRange('2024-01-01', '2026-01-01');
+    s.setFirstUpMode('rotation');
+  });
+  check('统计模式切换：已设的时间范围原样保留',
+    `${rotKeep.store.firstUpRange.from}~${rotKeep.store.firstUpRange.to}`, '2024-01-01~2026-01-01');
+  check('统计模式切换：区间按新的「首次轮换日」重新筛',
+    rotKeep.store.firstUp.rows.every((r) => r.firstDate >= '2024-01-01' && r.firstDate <= '2026-01-01'), true);
+  check('统计模式切换：右栏命中文案用「轮换」的词', /有轮换记录/.test(rotKeep.html), true);
+
+  /* 老路径（页面还叫「首次进店间隔」时的 `/shop-interval`）保留一条前端跳转 ——
+     线上被分享 / 收藏过的旧链接不该直接落到首页（catch-all 的 redirect 会让人以为"打开就回首页"）。 */
+  const legacyFup = await renderRoute('/shop-interval');
+  check('老路径 /shop-interval 会跳到首次UP间隔页（而不是落到首页）',
+    /首次UP间隔/.test(legacyFup.html)
+    && /六星干员 · 首次进店间隔/.test(legacyFup.html), true);
 
   /* ---------------- 干员展示模式（简洁 / 图片） ---------------- */
   check('左栏底部有干员展示切换', ph.includes('简洁模式') && ph.includes('图片模式'), true);
@@ -339,10 +386,10 @@ try {
   check('图片模式：统计表不再渲染干员名', !/<b>推进之王<\/b>/.test(imgStats.html), true);
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
 
-  const imgShop = await renderRoute('/shop-interval', (s) => s.setAvatarMode('image'));
+  const imgFup = await renderRoute('/first-up', (s) => s.setAvatarMode('image'));
   /* 页内说明块已移除；图片模式的关键行为（点用头像）在数据层与 upTimeline 断言里守 */
-  check('图片模式：折线页仍正常渲染两个分节', count(imgShop.html, /class="grp-sep"/g), 2);
-  check('图片模式：折线页仍渲染两侧刻度条', count(imgShop.html, /class="ybar ybar-l"/g), 2);
+  check('图片模式：折线页仍正常渲染两个分节', count(imgFup.html, /class="grp-sep"/g), 2);
+  check('图片模式：折线页仍渲染两侧刻度条', count(imgFup.html, /class="ybar ybar-l"/g), 2);
 
   /* ---------------- UP 历史一览 ---------------- */
   const up = await renderRoute('/up-history');
@@ -381,6 +428,55 @@ try {
     /\.tl-scroll\{[\s\S]*?max-height/.test(cssAll), true);
   check('UP 历史页：时间轴有最小宽度（内层 min-width 内联样式）',
     /class="tl-inner" style="min-width:\s*\d{3,}px/.test(uh), true);
+
+  /* ---------------- 鼠标拖拽平移（两个图表页共用 useDragPan） ----------------
+     需求（2026-10-02）：图表可以按住鼠标拖拽移动视图；⚠️ **手机端的滑动不能被影响**。
+     实现见 src/composables/useDragPan.js —— 要害是「只认鼠标」，触摸 / 触控笔一律不接管。
+     所以这里特意守一条：**全站 CSS 不许出现 `touch-action`**（写了就会把原生滑动掐掉）。 */
+  const dragSrc = fs.readFileSync(path.join(ROOT, 'src/composables/useDragPan.js'), 'utf8');
+  const dragShopSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpView.vue'), 'utf8');
+  check('拖拽：两个图表页的滚动容器都绑了 pointer 事件（UP 历史 4 个 / 进店间隔 8 个）',
+    (upSrc.match(/@pointer(down|move|up|cancel)/g) || []).length === 4
+    && (dragShopSrc.match(/@pointer(down|move|up|cancel)/g) || []).length === 8, true);
+  check('拖拽：拖拽中切 grabbing 光标（两个容器都带 .dragging）',
+    /:class="\{ dragging \}"/.test(upSrc)
+    && (dragShopSrc.match(/:class="\{ dragging \}"/g) || []).length === 2
+    && /\.tl-scroll\.dragging\{cursor:grabbing/.test(cssAll)
+    && /\.chart-scroll\.dragging\{cursor:grabbing/.test(cssAll), true);
+  check('拖拽：两个容器默认是 grab 光标',
+    /\.tl-scroll\{[\s\S]*?cursor:grab/.test(cssAll)
+    && /\.chart-scroll\{[\s\S]*?cursor:grab/.test(cssAll), true);
+  /* ⚠️ 只在**行首**找属性声明 —— 上面两条 CSS 的注释里也提到过 `touch-action:none`
+     （那是「别加」的提醒），用宽松正则会把它当成真写了属性。 */
+  check('拖拽：全站 CSS 没有真的写 touch-action（否则手机端滑动会被掐掉）',
+    !/^[ \t]*touch-action\s*:/m.test(cssAll), true);
+  check('拖拽：源码里显式判 pointerType（只认鼠标）',
+    /pointerType !== 'mouse'/.test(dragSrc), true);
+
+  /* shouldStartDrag 是纯函数，直接喂假事件断言 —— 「触摸不接管」是硬约束 */
+  const { shouldStartDrag } = await vite.ssrLoadModule('/src/composables/useDragPan.js');
+  /* 假容器：左上角落在视口 (100, 50)，可视区 1000×400 */
+  const dragNode = {
+    clientWidth: 1000,
+    clientHeight: 400,
+    getBoundingClientRect: () => ({ left: 100, top: 50 }),
+  };
+  const dragEv = (o) => ({ pointerType: 'mouse', button: 0, clientX: 110, clientY: 60, ...o });
+  check('拖拽判定：鼠标左键在内容区 → 接管', shouldStartDrag(dragEv(), dragNode), true);
+  check('拖拽判定：触摸 → 不接管（交给原生滑动）',
+    shouldStartDrag(dragEv({ pointerType: 'touch' }), dragNode), false);
+  check('拖拽判定：触控笔 → 不接管',
+    shouldStartDrag(dragEv({ pointerType: 'pen' }), dragNode), false);
+  check('拖拽判定：中键 / 右键 → 不接管',
+    shouldStartDrag(dragEv({ button: 1 }), dragNode), false);
+  check('拖拽判定：按在横向滚动条上 → 不接管',
+    shouldStartDrag(dragEv({ clientY: 455 }), dragNode), false);
+  check('拖拽判定：按在纵向滚动条上 → 不接管',
+    shouldStartDrag(dragEv({ clientX: 1105 }), dragNode), false);
+  /* ⚠️ 给「滚动条判断错用 offsetX/offsetY」那个 bug 上的锁：真实场景里事件目标常是内层
+     canvas（offsetY 能到两千多，远超容器高度），当时就是因此**永远拖不动**。 */
+  check('拖拽判定：点在图表主体上（事件目标很大、offset 远超容器）也要接管',
+    shouldStartDrag(dragEv({ offsetX: 480, offsetY: 2600 }), dragNode), true);
   /* 横向滚动条要一直停在最右：① 切服务器 / 切星级后重新贴右；
      ② 时间轴宽度变化时（动筛选会让它变窄 / 变宽）若本来就贴着右端就继续保持。 */
   check('UP 历史页：横向滚动条会重新贴到最右（切服 / 切星级 + 宽度变化）',
@@ -392,7 +488,7 @@ try {
     /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
 
   check('UP 历史页：左栏导航四项',
-    ['卡池列表', '出率提升记录', '首次进店间隔', 'UP 历史一览'].every((t) => uh.includes(t)), true);
+    ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'].every((t) => uh.includes(t)), true);
   check('UP 历史页：右栏标题', /时间范围与筛选/.test(uh), true);
   check('UP 历史页：星级切换按钮（六星 92 / 五星 112）',
     /六星（92）/.test(uh) && /五星（112）/.test(uh), true);
@@ -686,11 +782,11 @@ try {
      （表现为「卡池列表是方块、统计页却是真头像」） */
   check('卡池列表 OpTag：用干员名回查 store 取 charId',
     /site\.operators\[props\.op\.name\]/.test(opTagSrc), true);
-  const shopSrc = fs.readFileSync(path.join(ROOT, 'src/views/ShopIntervalView.vue'), 'utf8');
+  const fupViewSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpView.vue'), 'utf8');
   /* echarts 的 symbol:'image://…' 只是贴图、**不能裁剪**，所以图片模式改用手绘 + clipPath */
   check('进店间隔：图片模式用 custom 手绘 + clipPath 裁圆（不是 symbol:image://）',
-    /type: 'custom'/.test(shopSrc) && /clipPath/.test(shopSrc)
-    && !/symbol: `image:\/\//.test(shopSrc), true);
+    /type: 'custom'/.test(fupViewSrc) && /clipPath/.test(fupViewSrc)
+    && !/symbol: `image:\/\//.test(fupViewSrc), true);
 
   const viteCfg = fs.readFileSync(path.join(ROOT, 'vite.config.js'), 'utf8');
   check('vite：构建时不复制 public（dist 里不该有本地数据副本）',
@@ -756,9 +852,9 @@ try {
     const enUp = await renderRoute('/up-history', (s) => s.setServer('en'));
     check('国际服：UP 历史页有画布容器', count(enUp.html, /class="tl-scroll"/g), 1);
 
-    const enShop = await renderRoute('/shop-interval', (s) => s.setServer('en'));
-    check('国际服：首次进店间隔页两个刻度条 + 两个滚动区',
-      count(enShop.html, /ybar-l/g) + count(enShop.html, /chart-scroll/g), 4);
+    const enFup = await renderRoute('/first-up', (s) => s.setServer('en'));
+    check('国际服：首次UP间隔页两个刻度条 + 两个滚动区',
+      count(enFup.html, /ybar-l/g) + count(enFup.html, /chart-scroll/g), 4);
   }
 
   /* ---------------- 左栏：三个服务器各自的「数据更新日」（纯展示） ----------------
@@ -794,8 +890,8 @@ try {
       && tcNames.some((n) => /^联合行动\d+$/.test(n)), true);
     check('繁中服：限定 / 单六 的池名取自国服（「复刻」也带过来）',
       tcNames.some((n) => /复刻|返场/.test(n)), true);
-    check('繁中服：左栏署名是「本地卡池记录表」且不带外链',
-      tcHome.html.includes('本地卡池记录表') && !/本地卡池记录表<\/a>/.test(tcHome.html), true);
+    check('繁中服：左栏署名是「自建卡池记录表」且不带外链',
+      tcHome.html.includes('自建卡池记录表') && !/自建卡池记录表<\/a>/.test(tcHome.html), true);
 
     const tcStats = await renderRoute('/operators', (s) => s.setServer('tc'));
     check('繁中服：统计页四张表', count(tcStats.html, /class="grid floating stat-tbl"/g), 4);
@@ -807,9 +903,9 @@ try {
     const tcUp = await renderRoute('/up-history', (s) => s.setServer('tc'));
     check('繁中服：UP 历史页有画布容器', count(tcUp.html, /class="tl-scroll"/g), 1);
 
-    const tcShop = await renderRoute('/shop-interval', (s) => s.setServer('tc'));
-    check('繁中服：首次进店间隔页两个刻度条 + 两个滚动区',
-      count(tcShop.html, /ybar-l/g) + count(tcShop.html, /chart-scroll/g), 4);
+    const tcFup = await renderRoute('/first-up', (s) => s.setServer('tc'));
+    check('繁中服：首次UP间隔页两个刻度条 + 两个滚动区',
+      count(tcFup.html, /ybar-l/g) + count(tcFup.html, /chart-scroll/g), 4);
   }
 } finally {
   await vite.close();

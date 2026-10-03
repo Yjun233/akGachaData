@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { computeStats, endInfo, sortStatRows, daysSortValue } from '../src/lib/stats.js';
-import { computeFirstShop } from '../src/lib/firstShop.js';
+import { computeFirstUp, metricLabel } from '../src/lib/firstUp.js';
 import { computeUpHistory } from '../src/lib/upHistory.js';
 import {
   buildUpTimeline, monthIndexOf, monthLabel, monthStartDate, minInnerWidth, chartHeight, TL,
@@ -136,14 +136,20 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_en.json'))) {
     enBanners.filter((b) => /^lim/.test(b.type))
       .every((b) => cntRarity(b, 6) === 2 && cntRarity(b, 5) === 1), true);
 
-  /* 三个页面在国际服下都要能算出东西（不只是「不报错」）。
+  /* 各统计页面在国际服下都要能算出东西（不只是「不报错」）。
      实装日按服务器取：国际服用 enReleaseDate。 */
   const enList = Object.entries(enMap).map(([id, b]) => ({ id, ...b }));
   const enRel = (op) => (op ? op.enReleaseDate || null : null);
-  const enShop = computeFirstShop({
-    banners: enList, operatorByName: operators, relDateOf: enRel, from: '', to: '', axis: 'firstShop', metric: 'gap',
+  const enShop = computeFirstUp({
+    banners: enList, operatorByName: operators, relDateOf: enRel, from: '', to: '', axis: 'first', metric: 'gap',
   });
   check('国际服：首次进店序列（六星 / 五星）都非空', enShop.six.length > 0 && enShop.five.length > 0, true);
+  const enRot = computeFirstUp({
+    banners: enList, operatorByName: operators, relDateOf: enRel, mode: 'rotation',
+  });
+  check('国际服：首次轮换序列（六星 / 五星）都非空', enRot.six.length > 0 && enRot.five.length > 0, true);
+  check('国际服：轮换口径覆盖的干员不少于进店口径',
+    enRot.rows.length >= enShop.rows.length, true);
 
   const enUp = computeUpHistory({
     banners: enList, categories, operatorByName: operators, relDateOf: enRel, types: null, shopOnly: false, sort: 'release-asc',
@@ -232,12 +238,18 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
   check('繁中服只有常驻标准/中坚寻访带进店标记',
     tcBanners.every((b) => ['double', 'classic'].includes(b.type) || !b.upOperators.some((o) => o.isShop)), true);
 
-  /* 三个页面在繁中服下都要能算出东西（实装日按服务器取 tcReleaseDate） */
+  /* 各统计页面在繁中服下都要能算出东西（实装日按服务器取 tcReleaseDate） */
   const tcRel = (op) => (op ? op.tcReleaseDate || null : null);
-  const tcShop = computeFirstShop({
-    banners: tcBanners, operatorByName: operators, relDateOf: tcRel, from: '', to: '', axis: 'firstShop', metric: 'gap',
+  const tcShop = computeFirstUp({
+    banners: tcBanners, operatorByName: operators, relDateOf: tcRel, from: '', to: '', axis: 'first', metric: 'gap',
   });
   check('繁中服：首次进店序列（六星 / 五星）都非空', tcShop.six.length > 0 && tcShop.five.length > 0, true);
+  const tcRot = computeFirstUp({
+    banners: tcBanners, operatorByName: operators, relDateOf: tcRel, mode: 'rotation',
+  });
+  check('繁中服：首次轮换序列（六星 / 五星）都非空', tcRot.six.length > 0 && tcRot.five.length > 0, true);
+  check('繁中服：轮换口径覆盖的干员不少于进店口径',
+    tcRot.rows.length >= tcShop.rows.length, true);
 
   const tcUp = computeUpHistory({
     banners: tcBanners, categories, operatorByName: operators, relDateOf: tcRel, types: null, shopOnly: false, sort: 'release-asc',
@@ -289,55 +301,98 @@ check('卡池列表默认按开始日期倒序',
   all.every((b, i) => i === 0 || all[i - 1].startDate >= b.startDate), true);
 check('默认筛选命中全部卡池', all.length, banners.length);
 
-/* ---------------- 首次进店间隔 ---------------- */
-const firstShop = computeFirstShop({ banners, operatorByName: operators, relDateOf });
+/* ---------------- 首次UP间隔（两种统计模式：首次进店 / 首次轮换） ----------------
+   口径见 src/lib/firstUp.js 文件头与 docs/工作指令.md 5.7。 */
 
-check('有首次进店记录的干员数', firstShop.rows.length, 160);
-check('其中六星 / 五星', `${firstShop.six.length}/${firstShop.five.length}`, '69/91');
+/** 独立算一遍「首次轮换日」：只看那 4 类轮换卡池，不看进店标记 */
+function expectedFirstRotation(banners_, types) {
+  const m = new Map();
+  for (const b of banners_) {
+    if (!types.includes(b.type)) continue;
+    for (const op of b.upOperators) {
+      if (op.isLimited || (op.rarity || 0) < 5) continue;
+      const cur = m.get(op.name);
+      if (cur === undefined || b.startDate < cur) m.set(op.name, b.startDate);
+    }
+  }
+  return m;
+}
+const ROT_TYPES = ['double', 'joint', 'stdfes', 'mainfes'];
+const rotExpected = expectedFirstRotation(banners, ROT_TYPES);
+
+const fupShop = computeFirstUp({ banners, operatorByName: operators, relDateOf });
+const fupRot = computeFirstUp({ banners, operatorByName: operators, relDateOf, mode: 'rotation' });
+
+check('默认统计模式 = 首次进店', fupShop.mode, 'shop');
+check('有首次进店记录的干员数', fupShop.rows.length, 160);
+check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '69/91');
+
+check('轮换模式：mode 回传正确', fupRot.mode, 'rotation');
+check('轮换模式：干员数与独立重算一致', fupRot.rows.length, rotExpected.size);
+check('轮换模式：每位干员的首次轮换日与独立重算一致',
+  fupRot.rows.every((r) => rotExpected.get(r.name) === r.firstDate), true);
+/* ⚠️ 进店的干员必定也上过轮换（进店标记只出现在常驻标准 / 常驻中坚上，
+   而常驻中坚的日期晚于该干员首次上标准）→ 两条不变量，破了就说明上游数据形态变了 */
+check('不变量：有进店记录的干员都有轮换记录',
+  fupShop.rows.every((r) => rotExpected.has(r.name)), true);
+check('不变量：首次轮换日 ≤ 首次进店日',
+  fupShop.rows.every((r) => rotExpected.get(r.name) <= r.firstDate), true);
+/* ⚠️ 轮换口径**不含中坚寻访**（用户指定）。实测把 classic / clafes 加进来结果**完全一致**
+   —— 中坚干员的首次标准 UP 必然更早。这条断言把「不加也对」这件事钉住 */
+const rotWithMid = expectedFirstRotation(banners, [...ROT_TYPES, 'classic', 'clafes']);
+check('轮换口径不含中坚寻访：加上 classic / clafes 结果完全一致',
+  rotWithMid.size === rotExpected.size
+  && [...rotWithMid].every(([n, d]) => rotExpected.get(n) === d), true);
 
 /* 间隔必须在**同星级内部**比较（早期版本混排，算出了跨星级的假间隔） */
-for (const [label, list, rarity] of [['六星', firstShop.six, 6], ['五星', firstShop.five, 5]]) {
-  check(`${label}：组内只含 ${rarity} 星`, list.every((r) => r.rarity === rarity), true);
-  check(`${label}：组内按首次进店日期升序`,
-    list.every((r, i) => i === 0 || list[i - 1].firstDate <= r.firstDate), true);
-  check(`${label}：组内首位没有前序间隔`, list[0]?.gap === null, true);
-  check(`${label}：其余位置 gap 均 ≥ 0`, list.slice(1).every((r) => r.gap >= 0), true);
-  check(`${label}：每点的前一位就是同星级的前一个干员`,
-    list.slice(1).every((r, i) => r.prevName === list[i].name), true);
-  check(`${label}：间隔总和 = 末位与首位首次进店日之差`,
-    list.slice(1).reduce((a, r) => a + r.gap, 0),
-    diffDays(list[list.length - 1].firstDate, list[0].firstDate));
+for (const [modeName, set] of [['进店', fupShop], ['轮换', fupRot]]) {
+  for (const [label, list, rarity] of [['六星', set.six, 6], ['五星', set.five, 5]]) {
+    check(`${modeName}·${label}：组内只含 ${rarity} 星`, list.every((r) => r.rarity === rarity), true);
+    check(`${modeName}·${label}：组内按首次日期升序`,
+      list.every((r, i) => i === 0 || list[i - 1].firstDate <= r.firstDate), true);
+    check(`${modeName}·${label}：组内首位没有前序间隔`, list[0]?.gap === null, true);
+    check(`${modeName}·${label}：其余位置 gap 均 ≥ 0`, list.slice(1).every((r) => r.gap >= 0), true);
+    check(`${modeName}·${label}：每点的前一位就是同星级的前一个干员`,
+      list.slice(1).every((r, i) => r.prevName === list[i].name), true);
+    check(`${modeName}·${label}：间隔总和 = 末位与首位首次日期之差`,
+      list.slice(1).reduce((a, r) => a + r.gap, 0),
+      diffDays(list[list.length - 1].firstDate, list[0].firstDate));
+  }
+  check(`${modeName}：只含 5 / 6 星非限定干员`,
+    set.rows.every((r) => (r.rarity === 5 || r.rarity === 6) && !operators[r.name]?.isLimited), true);
 }
 
-check('只含 5 / 6 星非限定干员',
-  firstShop.rows.every((r) => (r.rarity === 5 || r.rarity === 6) && !operators[r.name]?.isLimited), true);
-check('六星序列首位是最早的六星首次进店日', firstShop.six[0]?.firstDate, '2019-04-30');
-check('bounds.min 取全部干员的最早进店日', firstShop.bounds.min, '2019-04-30');
+check('六星序列首位是最早的六星首次进店日', fupShop.six[0]?.firstDate, '2019-04-30');
+check('bounds.min 取全部干员的最早进店日', fupShop.bounds.min, '2019-04-30');
+check('轮换模式的 bounds 也是它自己的（另算一份，互不干扰）',
+  fupRot.bounds.min >= fupShop.bounds.min, true);
 
 /* 回归：用户报过的例子 —— 六星「夜莺」的前一位不该是五星「德克萨斯」 */
-const nightingale = firstShop.six.find((r) => r.name === '夜莺');
+const nightingale = fupShop.six.find((r) => r.name === '夜莺');
 check('夜莺的前一位是六星（不是五星德克萨斯）',
-  nightingale ? firstShop.six.some((r) => r.name === nightingale.prevName) : true, true);
+  nightingale ? fupShop.six.some((r) => r.name === nightingale.prevName) : true, true);
 
-/* 时间范围：按首次进店日期筛，区间内重新算间隔 */
-const ranged = computeFirstShop({
+/* 时间范围：按首次日期筛，区间内重新算间隔 */
+const ranged = computeFirstUp({
   banners, operatorByName: operators, relDateOf, from: '2024-01-01', to: '2026-12-31',
 });
 check('筛选后六星首条 ≥ from', ranged.six[0]?.firstDate >= '2024-01-01', true);
 check('筛选后六星末条 ≤ to', ranged.six[ranged.six.length - 1]?.firstDate <= '2026-12-31', true);
-check('筛选后条数少于全量', ranged.rows.length < firstShop.rows.length, true);
+check('筛选后条数少于全量', ranged.rows.length < fupShop.rows.length, true);
 check('筛选后组内首位仍为 null', ranged.six[0]?.gap === null, true);
 check('筛选后每点前一位仍是同星级序列中的前一个',
   ranged.six.slice(1).every((r, i) => r.prevName === ranged.six[i].name), true);
 check('筛选不影响 bounds（日期输入上下限用）',
-  JSON.stringify(ranged.bounds), JSON.stringify(firstShop.bounds));
+  JSON.stringify(ranged.bounds), JSON.stringify(fupShop.bounds));
 
 /* 口径切换：横轴按实装日期 / 纵轴距实装日 */
-check('默认口径：value 就是 gap', firstShop.six.every((r) => r.value === r.gap), true);
-check('默认口径：轴标签 = 首次进店日期', firstShop.six.every((r) => r.xLabel === r.firstDate), true);
-check('默认口径：axis / metric 回传正确', `${firstShop.axis}/${firstShop.metric}`, 'firstShop/gap');
+check('默认口径：value 就是 gap', fupShop.six.every((r) => r.value === r.gap), true);
+check('默认口径：轴标签 = 首次日期', fupShop.six.every((r) => r.xLabel === r.firstDate), true);
+check('默认口径：axis / metric 回传正确', `${fupShop.axis}/${fupShop.metric}`, 'first/gap');
+check('轮换模式默认也是 gap（与进店模式同一套横纵轴口径）',
+  fupRot.six.every((r) => r.value === r.gap), true);
 
-const byRelease = computeFirstShop({ banners, operatorByName: operators, relDateOf, axis: 'release' });
+const byRelease = computeFirstUp({ banners, operatorByName: operators, relDateOf, axis: 'release' });
 check('横轴=实装日期：组内按实装日升序',
   byRelease.six.every((r, i) => i === 0
     || (byRelease.six[i - 1].releaseDate || '9999') <= (byRelease.six[i].releaseDate || '9999')), true);
@@ -346,12 +401,18 @@ check('横轴=实装日期：轴标签改用实装日期',
 check('横轴=实装日期：会出现负间隔（更晚实装却更早进店）',
   [...byRelease.six, ...byRelease.five].some((r) => typeof r.gap === 'number' && r.gap < 0), true);
 
-const bySince = computeFirstShop({ banners, operatorByName: operators, relDateOf, metric: 'sinceRelease' });
-check('纵轴=距实装：value = 首次进店日 − 实装日',
+const bySince = computeFirstUp({ banners, operatorByName: operators, relDateOf, metric: 'sinceRelease' });
+check('纵轴=距实装：value = 首次日 − 实装日',
   bySince.six.every((r) => r.value === diffDays(r.firstDate, r.releaseDate)), true);
 check('纵轴=距实装：序列首位也有值（不再是 null）', typeof bySince.six[0]?.value, 'number');
 check('纵轴=距实装：最大跨度超过 800 天',
   Math.max(...bySince.six.concat(bySince.five).map((r) => r.value)) > 800, true);
+
+/* 纵轴标签随模式换词（卡片头 / 文档都引它） */
+check('纵轴标签·进店模式', metricLabel('shop', 'gap'), '距同星级上一个首次进店（天）');
+check('纵轴标签·轮换模式', metricLabel('rotation', 'gap'), '距同星级上一个首次轮换（天）');
+check('纵轴标签·距实装日与模式无关',
+  metricLabel('shop', 'sinceRelease') === metricLabel('rotation', 'sinceRelease'), true);
 
 /* 日期工具：近 N 年用（shiftYears） */
 check('shiftYears：2026-09-29 往前 3 年', shiftYears('2026-09-29', -3), '2023-09-29');
@@ -609,7 +670,7 @@ check('最小宽度口径：1 天 1px', TL.dayPx, 1);
 check('最小宽度 ≈ 全范围天数（2019-04-01 → 2026-10-01，2740 天左右）',
   minInnerWidth(tlFull.xMin, tlFull.xMax) > 2700
   && minInnerWidth(tlFull.xMin, tlFull.xMax) < 2900, true);
-check('横轴标签斜排（与首次进店间隔一致的 60°，自绘时用 TL.labelRotate）',
+check('横轴标签斜排（与首次UP间隔一致的 60°，自绘时用 TL.labelRotate）',
   TL.labelRotate, 60);
 /* 刻度条与表体必须共用同一份 grid 与同一套 scale —— 这是「竖线对齐」的根据 */
 check('刻度条与表体的 grid 左右内缩一致',

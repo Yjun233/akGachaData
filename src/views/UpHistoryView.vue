@@ -13,6 +13,8 @@
  *
  * 宽度：`minInnerWidth(xMin, xMax)` 给出最小宽度（**口径「1 天 = 1px」**，用户指定；
  * 不管标签会不会重叠），窗口不够宽时外层横向滚动。
+ * **鼠标可按住拖拽平移**（这个容器横竖都能滚，所以还能斜向拖）——
+ * 见 `composables/useDragPan.js`；触摸一概不接管，手机上仍是原生滑动。
  *
  * 已排除限定干员；一次只显示一个星级（右栏切换，默认六星）。
  */
@@ -20,6 +22,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useSiteStore } from '../stores/site.js';
 import { buildUpTimeline, chartHeight, minInnerWidth, TL } from '../lib/upTimeline.js';
 import EChart from '../components/EChart.vue';
+import { useDragPan } from '../composables/useDragPan.js';
 
 const site = useSiteStore();
 const data = computed(() => site.upHistory);
@@ -49,6 +52,9 @@ const rarityChar = computed(() => (site.upRarity === 5 ? '五' : '六'));
    ② 画布撑开后 scrollWidth 才准。所以 rAF 里再补一次。 */
 const scrollEl = ref(null);
 const innerEl = ref(null);
+
+/* 鼠标按住拖拽平移（只认鼠标 —— 触摸交给浏览器的原生滑动，见 composables/useDragPan.js） */
+const { dragging, onPointerDown, onPointerMove, onPointerUp } = useDragPan();
 
 /** 是不是正贴着右端看（容差 2px，浏览器取整会让它差个零点几） */
 const atRight = () => {
@@ -108,7 +114,12 @@ const filterText = computed(() => {
 
     <div class="grp-sep" :id="site.upRarity === 5 ? 'uh5' : 'uh6'">{{ rarityChar }}星干员</div>
     <div v-if="!rows.length" class="empty">当前筛选下没有{{ rarityChar }}星干员的 UP 记录</div>
-    <div v-else ref="scrollEl" class="tl-scroll" @scroll="onScroll">
+    <div
+      v-else ref="scrollEl" class="tl-scroll" :class="{ dragging }"
+      @scroll="onScroll"
+      @pointerdown="onPointerDown" @pointermove="onPointerMove"
+      @pointerup="onPointerUp" @pointercancel="onPointerUp"
+    >
       <div ref="innerEl" class="tl-inner" :style="{ minWidth: innerW + 'px' }">
         <!-- 顶部：固定的横轴刻度条 -->
         <div class="tl-head">

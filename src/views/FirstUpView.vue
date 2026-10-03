@@ -1,10 +1,17 @@
 <script setup>
 /**
- * 首次进店间隔。
+ * 首次UP间隔。
  *
- * 两个可切换的口径（右栏）：
- * - 横轴 `shopAxis`：按**首次进店日期**（默认，轴标签写首次进店日期）/ 按**实装日期**
- * - 纵轴 `shopMetric`：距**同星级上一个首次进店**（默认）/ 距**该干员实装日**
+ * 「首次UP」有两种**统计模式**（右栏顶部切换，用户 2026-10-02 加）：
+ * - **首次进店**（默认）：卡池的 `isShop` 标记 → 该干员首次进商店兑换的日期
+ * - **首次轮换**：进入「常驻标准寻访 / 联合行动 / 定向甄选 / 前路回响」最早的一次
+ *   （名单见 constants.js 的 `ROTATION_TYPES`；不看进店标记）
+ * 两种模式下面这套「横轴 / 纵轴」口径都一样，只是「首次日期」换了来源 ——
+ * 所以本组件里**只认 `data.mode`，不自己做分支**（文案词统一从 constants 取）。
+ *
+ * 另外两个可切换的口径（右栏）：
+ * - 横轴 `firstUpAxis`：按**首次日期**（默认）/ 按**实装日期**
+ * - 纵轴 `firstUpMetric`：距**同星级上一个首次日期**（默认）/ 距**该干员实装日**
  * 六星、五星各自成一条序列，**间隔只在同星级内部比较**
  * （六星与五星的进店名额/节奏不同，跨星级相减没有意义）。
  *
@@ -17,23 +24,30 @@
  *    且**下界也可能为负**（按实装日期排序时，后实装却更早进店的干员会算出负间隔）；
  *    `sinceRelease` 的**起点取筛选后数据的下界**（不是 0 —— 例如筛到近 2 年时，能在近两年
  *    进店的干员都是等了好几年的老干员，从 0 画起会把折线压成一条直线），
- *    步长用「整齐」步长（1/2/2.5/5 × 10ⁿ）。
+ *    步长用「整齐」步长（1/2.5/5 × 10ⁿ 那套）。
  * 3. 图片模式下点变成**圆形头像**（用 **custom 系列手绘 + zrender 的 `clipPath` 裁圆** ——
  *    `symbol:'image://…'` 不能裁剪，方形素材会直接显示成方块），此时不显示名字标签。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl } from '../lib/avatars.js';
+import { modeFirstLabel, modeWord } from '../lib/firstUp.js';
 import EChart from '../components/EChart.vue';
+import { useDragPan } from '../composables/useDragPan.js';
 
 const site = useSiteStore();
-const data = computed(() => site.firstShop);
+const data = computed(() => site.firstUp);
 const isImage = computed(() => site.avatarMode === 'image');
+
+/** 「首次进店」/「首次轮换」——分节标题、tooltip、空态文案都用它 */
+const firstLabel = computed(() => modeFirstLabel(data.value.mode));
+/** 「进店」/「轮换」——「累计 N 次」「没有 N 记录」这类句子里的词 */
+const word = computed(() => modeWord(data.value.mode));
 
 /* ---- 布局常量：grid 与两侧刻度条必须严格对齐，因此全部用固定像素 ---- */
 const GRID = { top: 30, height: 300, left: 56, right: 56, bottom: 96 };
 const CHART_H = GRID.top + GRID.height + GRID.bottom; // 426
-const TICK_STEP = 14;   // 纵轴 = 距上个首次进店时的刻度步长（天）
+const TICK_STEP = 14;   // 纵轴 = 距上个首次日期时的刻度步长（天）
 const POINT_W = 52;     // 每个点占的宽度（要放得下干员名标签 / 头像）
 const AVATAR_PT = 30;   // 图片模式下点的直径
 
@@ -60,7 +74,7 @@ function niceStep(raw) {
 }
 
 /**
- * 「距上个首次进店」的步长：以 14（两周）为基准，随**筛选后**的跨度自适应 ——
+ * 「距上个首次日期」的步长：以 14（两周）为基准，随**筛选后**的跨度自适应 ——
  * 目标 6 段左右，跨度很小时允许降到 7（一周）。这样缩小时间范围后
  * 纵轴不会还是「0 / 14 / 28」那几条、也不会因为跨度大而糊成一片。
  */
@@ -134,21 +148,21 @@ function buildOption(rows, rarity, ax) {
         if (!r) return '';
         const lines = [`<b>${r.name}</b>（${rarity}★）`,
           `实装：${r.releaseDate || '—'}`,
-          `首次进店：${r.firstDate}`];
+          `${firstLabel.value}：${r.firstDate}`];
 
         if (data.value.metric === 'gap') {
           lines.push(
             r.gap === null
               ? '<span style="color:#7b8794">该星级序列首位，没有前序间隔</span>'
               : `距同星级上一个点「${r.prevName}」：<b>${r.gap}</b> 天`
-                + (r.gap < 0 ? '<span style="color:#7b8794">（负数：更晚实装却更早进店）</span>' : ''),
+                + (r.gap < 0 ? `<span style="color:#7b8794">（负数：更晚实装却更早${word.value}）</span>` : ''),
           );
         } else {
           lines.push(r.sinceRelease === null
             ? '<span style="color:#7b8794">缺少实装日</span>'
-            : `首次进店距实装：<b>${r.sinceRelease}</b> 天`);
+            : `${firstLabel.value}距实装：<b>${r.sinceRelease}</b> 天`);
         }
-        lines.push(`累计进店 ${r.count} 次`);
+        lines.push(`累计${word.value} ${r.count} 次`);
         return lines.join('<br/>');
       },
     },
@@ -240,6 +254,12 @@ const option5 = computed(() => buildOption(data.value.five, 5, axis5.value));
 const scroll6 = ref(null);
 const scroll5 = ref(null);
 
+/* 鼠标按住拖拽平移（只认鼠标 —— 触摸交给浏览器的原生滑动，见 composables/useDragPan.js）。
+   ⚠️ 两个容器共用一套处理函数：它们不会同时出现（一次只渲染一个星级），
+   而且 useDragPan 内部同时只记一个活动指针，安全。
+   这两个容器是 `overflow-y: hidden`，所以纵向那句跟手会被浏览器忽略 → 表现就是纯横向拖。 */
+const { dragging, onPointerDown, onPointerMove, onPointerUp } = useDragPan();
+
 function scrollToEnd() {
   for (const el of [scroll6.value, scroll5.value]) {
     if (el) el.scrollLeft = el.scrollWidth;
@@ -253,13 +273,18 @@ watch(
 );
 
 const rangeText = computed(() => {
-  const { from, to } = site.shopRange;
+  const { from, to } = site.firstUpRange;
   if (!from && !to) return '全部';
   return `${from || '…'} ~ ${to || '…'}`;
 });
 
-const axisText = computed(() => (site.shopAxis === 'release' ? '按实装日期' : '按首次进店日期'));
-const metricText = computed(() => (site.shopMetric === 'sinceRelease' ? '距实装日' : '距上个首次进店'));
+/* 口径文案：横轴 / 纵轴的「首次XX」都跟着统计模式变（用户指定：分节标题也跟随） */
+const axisText = computed(
+  () => (site.firstUpAxis === 'release' ? '按实装日期' : `按${firstLabel.value}日期`),
+);
+const metricText = computed(
+  () => (site.firstUpMetric === 'sinceRelease' ? '距实装日' : `距上个${firstLabel.value}`),
+);
 </script>
 
 <template>
@@ -271,9 +296,13 @@ const metricText = computed(() => (site.shopMetric === 'sinceRelease' ? '距实�
       </span>
     </div>
 
-    <div class="grp-sep" id="g6">六星干员 · 首次进店间隔</div>
-    <div v-if="!data.six.length" class="empty">当前筛选范围内没有六星干员的进店记录</div>
-    <div v-else ref="scroll6" class="chart-scroll">
+    <div class="grp-sep" id="g6">六星干员 · {{ firstLabel }}间隔</div>
+    <div v-if="!data.six.length" class="empty">当前筛选范围内没有六星干员的{{ word }}记录</div>
+    <div
+      v-else ref="scroll6" class="chart-scroll" :class="{ dragging }"
+      @pointerdown="onPointerDown" @pointermove="onPointerMove"
+      @pointerup="onPointerUp" @pointercancel="onPointerUp"
+    >
       <div class="chart-row" :style="{ width: `${rowW(data.six)}px` }">
         <div class="ybar ybar-l" :style="{ width: `${GRID.left}px`, flex: `0 0 ${GRID.left}px`, height: `${CHART_H}px` }">
           <span class="unit">天</span>
@@ -287,9 +316,13 @@ const metricText = computed(() => (site.shopMetric === 'sinceRelease' ? '距实�
       </div>
     </div>
 
-    <div class="grp-sep" id="g5">五星干员 · 首次进店间隔</div>
-    <div v-if="!data.five.length" class="empty">当前筛选范围内没有五星干员的进店记录</div>
-    <div v-else ref="scroll5" class="chart-scroll">
+    <div class="grp-sep" id="g5">五星干员 · {{ firstLabel }}间隔</div>
+    <div v-if="!data.five.length" class="empty">当前筛选范围内没有五星干员的{{ word }}记录</div>
+    <div
+      v-else ref="scroll5" class="chart-scroll" :class="{ dragging }"
+      @pointerdown="onPointerDown" @pointermove="onPointerMove"
+      @pointerup="onPointerUp" @pointercancel="onPointerUp"
+    >
       <div class="chart-row" :style="{ width: `${rowW(data.five)}px` }">
         <div class="ybar ybar-l" :style="{ width: `${GRID.left}px`, flex: `0 0 ${GRID.left}px`, height: `${CHART_H}px` }">
           <span class="unit">天</span>

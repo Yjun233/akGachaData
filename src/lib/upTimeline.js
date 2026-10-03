@@ -53,7 +53,7 @@ export const TL = {
   padRight: 26,
   gridTop: 4,
   gridBottom: 8,
-  /* 顶部刻度条：标签斜 60° 摆放（与「首次进店间隔」一致），所以需要更高的条 */
+  /* 顶部刻度条：标签斜 60° 摆放（与「首次UP间隔」一致），所以需要更高的条 */
   stripH: 64,
   stripLineY: 46,     // 竖线的上端（在条内的 y）
   stripGridH: 16,     // 竖线长度
@@ -240,7 +240,7 @@ export function buildUpTimeline({
             },
             /* 标签：斜 60°。⚠️ 角度符号别搞反 —— 取负值会让文字**往右下**排，
                压到竖线上、还伸出条外，看起来就像"刻度线错位"（实测踩过）。
-               正值才是往右上抬头，与「首次进店间隔」页的观感一致。 */
+               正值才是往右上抬头，与「首次UP间隔」页的观感一致。 */
             {
               type: 'text',
               rotation: TL.labelRotate * Math.PI / 180,

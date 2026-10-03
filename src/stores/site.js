@@ -17,7 +17,7 @@ import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
 import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
-import { computeFirstShop } from '../lib/firstShop.js';
+import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
 
@@ -38,9 +38,10 @@ export const useSiteStore = defineStore('site', {
     refDate: '',                       // 参考日期，仅作用于统计页
     today: localToday(),               // 页面打开时的真实当天
     filters: emptyFilters(),
-    shopRange: { from: '', to: '' },   // 首次进店间隔页：按首次进店日期筛（空 = 不限）
-    shopAxis: 'firstShop',             // 横轴口径：firstShop 按首次进店日期 | release 按实装日期
-    shopMetric: 'gap',                 // 纵轴口径：gap 距上个首次进店 | sinceRelease 距实装日期
+    firstUpRange: { from: '', to: '' }, // 首次UP间隔页：按首次日期筛（空 = 不限）
+    firstUpMode: 'shop',               // 统计模式：shop 首次进店 | rotation 首次轮换
+    firstUpAxis: 'first',              // 横轴口径：first 按首次日期 | release 按实装日期
+    firstUpMetric: 'gap',              // 纵轴口径：gap 距上个首次日期 | sinceRelease 距实装日期
     upRange: { from: '', to: '' },     // UP 历史：控制图表横轴范围，**同时**决定哪些干员占行
                                        //（范围内没有任何标记的干员不显示，见 computeUpHistory）
     upShowAll: false,                  // UP 历史：勾上则忽略上面那条，范围内没 UP 的干员也占行
@@ -130,16 +131,17 @@ export const useSiteStore = defineStore('site', {
       return Object.values(this.statData.map);
     },
 
-    /** 首次进店间隔页：全部干员按选定口径排序后的序列（含六星 / 五星分组） */
-    firstShop(s) {
-      return computeFirstShop({
+    /** 首次UP间隔页：全部干员按选定口径排序后的序列（含六星 / 五星分组） */
+    firstUp(s) {
+      return computeFirstUp({
         banners: this.banners,
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
-        from: s.shopRange.from,
-        to: s.shopRange.to,
-        axis: s.shopAxis,
-        metric: s.shopMetric,
+        mode: s.firstUpMode,
+        from: s.firstUpRange.from,
+        to: s.firstUpRange.to,
+        axis: s.firstUpAxis,
+        metric: s.firstUpMetric,
       });
     },
 
@@ -218,7 +220,7 @@ export const useSiteStore = defineStore('site', {
       this.server = id;
       this.refDate = this.today;
       this.filters = emptyFilters();
-      this.shopRange = { from: '', to: '' };
+      this.firstUpRange = { from: '', to: '' };
       this.upRange = { from: '', to: '' };
       this.upRarity = 6;
       this.upTypes = [];
@@ -233,29 +235,36 @@ export const useSiteStore = defineStore('site', {
       this.bannerSort = { key: 'startDate', dir: 'desc' };
     },
 
-    setShopRange(from, to) {
-      this.shopRange = { from: from ?? this.shopRange.from, to: to ?? this.shopRange.to };
+    setFirstUpRange(from, to) {
+      this.firstUpRange = { from: from ?? this.firstUpRange.from, to: to ?? this.firstUpRange.to };
     },
 
     /** 「近 N 年」：以真实今天为上界，往前推 N 年（n 必须为正整数） */
-    applyShopYears(n) {
+    applyFirstUpYears(n) {
       const years = Number(n);
       if (!Number.isFinite(years) || years <= 0) return false;
       const to = this.today;
-      this.shopRange = { from: shiftYears(to, -Math.floor(years)), to };
+      this.firstUpRange = { from: shiftYears(to, -Math.floor(years)), to };
       return true;
     },
 
-    resetShopRange() {
-      this.shopRange = { from: '', to: '' };
+    resetFirstUpRange() {
+      this.firstUpRange = { from: '', to: '' };
     },
 
-    setShopAxis(axis) {
-      this.shopAxis = axis === 'release' ? 'release' : 'firstShop';
+    /* ⚠️ 下面三个「口径」**不随切服务器重置**（setServer 里没有它们）——
+       它们是看数据的角度，不是筛选条件；与 firstUpRange 那种筛选项的待遇不同。 */
+
+    setFirstUpMode(mode) {
+      this.firstUpMode = mode === 'rotation' ? 'rotation' : 'shop';
     },
 
-    setShopMetric(metric) {
-      this.shopMetric = metric === 'sinceRelease' ? 'sinceRelease' : 'gap';
+    setFirstUpAxis(axis) {
+      this.firstUpAxis = axis === 'release' ? 'release' : 'first';
+    },
+
+    setFirstUpMetric(metric) {
+      this.firstUpMetric = metric === 'sinceRelease' ? 'sinceRelease' : 'gap';
     },
 
     /* ---------------- UP 历史一览 ---------------- */

@@ -11,13 +11,14 @@ import { useLayout } from '../composables/useLayout.js';
 /**
  * 卡池数据的来源**按服务器不同**：
  *   国服来自 PRTS Wiki；国际服来自 arknights.wiki.gg；
- *   繁中服没有可用的数据站，来自本地人工维护的卡池记录表（没有链接，所以 url 为 null）。
+ *   繁中服没有公开数据站，来自用户自建的卡池记录表（金山文档在线表格，人工维护，
+ *   没有对外链接，所以 url 为 null）。
  * （干员头像一律来自 ArknightsGameResource，见 ../akGachaResource/docs/资源仓库说明.md。）
  */
 const BANNER_SOURCES = {
   sc: { label: 'PRTS Wiki', url: 'https://prts.wiki' },
   en: { label: 'Arknights Wiki（wiki.gg）', url: 'https://arknights.wiki.gg' },
-  tc: { label: '本地卡池记录表', url: null },
+  tc: { label: '自建卡池记录表', url: null },
 };
 const site = useSiteStore();
 
@@ -52,8 +53,8 @@ function onServerChange(e) {
       <button class="navitem" type="button" :class="{ active: route.name === 'stats' }" @click="go('stats')">
         <span class="ic" />出率提升记录
       </button>
-      <button class="navitem" type="button" :class="{ active: route.name === 'shopInterval' }" @click="go('shopInterval')">
-        <span class="ic" />首次进店间隔
+      <button class="navitem" type="button" :class="{ active: route.name === 'firstUp' }" @click="go('firstUp')">
+        <span class="ic" />首次UP间隔
       </button>
       <button class="navitem" type="button" :class="{ active: route.name === 'upHistory' }" @click="go('upHistory')">
         <span class="ic" />UP 历史一览

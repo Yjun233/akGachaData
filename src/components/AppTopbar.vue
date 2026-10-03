@@ -15,7 +15,7 @@ const { toggleNav, toggleFilter } = useLayout();
 const TITLES = {
   banners: '卡池列表',
   stats: '出率提升记录',
-  shopInterval: '首次进店间隔',
+  firstUp: '首次UP间隔',
   upHistory: 'UP 历史一览',
 };
 

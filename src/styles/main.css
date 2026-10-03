@@ -277,7 +277,11 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
   overflow:auto;overscroll-behavior:contain;
   max-height:max(320px, calc(100dvh - var(--top-h) - 150px));
   scrollbar-color:#9db4cf #eef3f9;scrollbar-width: thin;
+  /* 鼠标可按住拖拽平移（见 composables/useDragPan.js）。
+     ⚠️ 别加 touch-action:none —— 那会把手机端的原生滑动一起杀掉。 */
+  cursor:grab;
 }
+.tl-scroll.dragging{cursor:grabbing;user-select:none}
 .tl-scroll::-webkit-scrollbar{width:13px;height:13px}
 .tl-scroll::-webkit-scrollbar-track{background:#eef3f9}
 .tl-scroll::-webkit-scrollbar-thumb{background:#9db4cf;border-radius:7px;border:2px solid #eef3f9}
@@ -500,7 +504,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 /* ---------------- 图片模式：干员头像（正方形 / 圆形） ----------------
    头像是**真实素材**（96×96 PNG，来自资源仓库经 jsDelivr CDN，见 src/lib/avatars.js），
    显示尺寸 26px。卡池列表 / 出率提升记录用圆角正方形（CSS 裁出来），
-   首次进店间隔与 UP 历史的点是圆形（素材本身是方形半身像，由 zrender 的 clipPath 裁圆）。
+   首次UP间隔与 UP 历史的点是圆形（素材本身是方形半身像，由 zrender 的 clipPath 裁圆）。
    「限」「兑」两个标记挪到头像右上角（并排挂在头像外侧一点点）。 */
 .avt{position:relative;display:inline-flex;width:26px;height:26px;margin:2px 5px 2px 0;vertical-align:middle}
 .avt .av,.avt-sq{
@@ -624,7 +628,7 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   }
 } */
 
-/* ---------------- 图表（首次进店间隔） ----------------
+/* ---------------- 图表（首次UP间隔） ----------------
    每个干员一个点、点上要写干员名，横轴还要写完整的首次进店日期 ——
    一屏塞不下 60~90 个点时点会挤成一团，所以绘图区按「点数 × 每点宽度」铺开，
    外层容器横向滚动；滚动条做细（滚动条实际由哪个属性决定，见 `.tl-scroll` 上面那段说明）。
@@ -636,7 +640,11 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .chart-scroll{
   overflow-x:auto;overflow-y:hidden;padding:6px 0 12px;
   scrollbar-color:#9db4cf #eef3f9;overscroll-behavior-x:contain;scrollbar-width: thin;
+  /* 鼠标可按住拖拽平移（见 composables/useDragPan.js）。
+     ⚠️ 别加 touch-action:none —— 那会把手机端的原生滑动一起杀掉。 */
+  cursor:grab;
 }
+.chart-scroll.dragging{cursor:grabbing;user-select:none}
 .chart-scroll::-webkit-scrollbar{height:13px}
 .chart-scroll::-webkit-scrollbar-track{background:#eef3f9}
 .chart-scroll::-webkit-scrollbar-thumb{

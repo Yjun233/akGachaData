@@ -13,7 +13,7 @@
 | --- | --- |
 | `/` | **卡池一览**：可按寻访类型 / 大类 / 日期 / 干员名筛选 |
 | `/operators` | **出率提升记录**：干员的 UP 次数与商店兑换次数（六星 / 五星 × 标准 / 中坚） |
-| `/shop-interval` | **首次进店间隔**：相邻两次进店隔了多久，看轮换节奏 |
+| `/first-up` | **首次UP间隔**：相邻两次首次上位隔了多久；可切「首次进店 / 首次轮换」两种统计模式 |
 | `/up-history` | **UP 历史一览**：横向时间轴，看每位干员的出率提升历史 |
 
 ## 快速开始
@@ -21,7 +21,7 @@
 ```bash
 pnpm install        # 没装 pnpm 可用 npx --yes pnpm@9 install
 pnpm dev            # http://127.0.0.1:5173
-pnpm build          # 构建到 dist/（纯静态，约 761 KB）
+pnpm build          # 构建到 dist/（纯静态，数据与图片走 CDN）
 ```
 
 > **开发默认读本地**：`public/data`、`public/avatars` 是指向同级 `akGachaResource` 仓库的目录联接，
@@ -42,7 +42,7 @@ https://cdn.jsdelivr.net/gh/Yjun233/akGachaResource@<sha>/avatars/char_306_leizi
 所以站点的构建产物里不含任何数据或图片。
 
 - **卡池 / 干员数据**：**国服**抓取自 [PRTS Wiki](https://prts.wiki/)、**国际服**抓取自
-  [arknights.wiki.gg](https://arknights.wiki.gg/)、**繁中服**由人工维护的表格生成
+  [arknights.wiki.gg](https://arknights.wiki.gg/)、**繁中服**取自人工维护的金山文档在线表格
 - **干员头像**：来自 [ArknightsGameResource](https://github.com/yuanyan3060/ArknightsGameResource)，
   已压缩到 96×96
 
@@ -55,4 +55,4 @@ Vue 3 + Vite + Vue Router + Pinia + ECharts。
 ## 声明
 
 本站点是个人非商业的数据整理项目。《明日方舟》相关素材与数据的著作权归上海鹰角网络科技有限公司所有。
-数据来源为 PRTS Wiki 与 arknights.wiki.gg（均为玩家共建 Wiki），繁中服数据来自人工整理的卡池记录表。
+数据来源为 PRTS Wiki 与 arknights.wiki.gg（均为玩家共建 Wiki），繁中服数据来自人工维护的金山文档在线表格。

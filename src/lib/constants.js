@@ -128,6 +128,27 @@ export const SERVER_CLASSIC_FIELD = {
   tc: 'tcClassicDate',
 };
 
+/**
+ * **「首次轮换」的口径**（首次UP间隔页的两种统计模式之一，用户 2026-10-02 指定）：
+ * 进入「常驻标准寻访 / 联合行动 / 定向甄选 / 前路回响」这四类卡池，**不看进店标记**。
+ *
+ * ⚠️ **不含中坚寻访**（常驻中坚 / 中坚甄选）—— 实测三服把它们加进来结果**完全一致**
+ * （中坚干员的首次标准 UP 必然更早，日期集合一个都不变），所以按这四类即可。
+ * ⚠️ 也不含单六寻访 / 双五寻访（那两类算「标准寻访」大类，但不是轮换池）。
+ */
+export const ROTATION_TYPES = ['double', 'joint', 'stdfes', 'mainfes'];
+
+/**
+ * 首次UP间隔页的两种统计模式（右栏切换）。
+ * ⚠️ 右栏按钮组的顺序、卡片头的口径文案、分节标题、tooltip 都从这份映射取词，
+ * 别再各处硬编码「首次进店 / 首次轮换」。
+ */
+export const FIRST_UP_MODES = [
+  { id: 'shop', label: '首次进店' },
+  { id: 'rotation', label: '首次轮换' },
+];
+export const FIRST_UP_MODE_LABEL = Object.fromEntries(FIRST_UP_MODES.map((m) => [m.id, m.label]));
+
 /** 距今天数着色阈值（出率提升 / 商店兑换共用） */
 export const WARN_DAYS = 180; // ≥ 180 天标黄
 export const DANGER_DAYS = 365; // ≥ 365 天标红

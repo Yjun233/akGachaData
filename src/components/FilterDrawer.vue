@@ -3,14 +3,15 @@
  * 右抽屉：只装当前页面用得到的筛选。
  *  - 卡池列表页   → 筛选表单（类型 / 大类 / 开始日期范围 / UP 干员名）
  *  - 统计页       → 参考日期
- *  - 首次进店间隔 → 口径切换 + 首次进店日期范围
+ *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
  *
  * 两条「时间范围」共用同一套「草稿 + 确认」逻辑，见 composables/useRangeDraft.js。
  */
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { UP_SORT_ROWS } from '../lib/constants.js';
+import { FIRST_UP_MODES, FIRST_UP_MODE_LABEL, UP_SORT_ROWS } from '../lib/constants.js';
+import { modeWord } from '../lib/firstUp.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
@@ -22,18 +23,23 @@ const { filterShow, toggleFilter } = useLayout();
 
 const isBanners = computed(() => route.name === 'banners');
 const isStats = computed(() => route.name === 'stats');
-const isShop = computed(() => route.name === 'shopInterval');
+const isFirstUp = computed(() => route.name === 'firstUp');
 const isUp = computed(() => route.name === 'upHistory');
+
+/** 当前统计模式的词：`首次进店` / `首次轮换` */
+const firstLabel = computed(() => FIRST_UP_MODE_LABEL[site.firstUpMode]);
+/** 不带「首次」的词：`进店` / `轮换` */
+const firstWord = computed(() => modeWord(site.firstUpMode));
 
 const filterTitle = computed(() => {
   if (isStats.value) return '参考日期';
-  if (isShop.value) return '首次进店日期范围';
+  if (isFirstUp.value) return `${firstLabel.value}日期范围`;
   if (isUp.value) return '时间范围与筛选';
   return '数据筛选';
 });
 
-/** 有进店记录的日期边界（首末进店日），用作日期输入的上下限 */
-const shopBounds = computed(() => site.firstShop.bounds);
+/** 当前模式下的首次日期边界（首末首次进店日 / 首次轮换日），用作日期输入的上下限 */
+const firstUpBounds = computed(() => site.firstUp.bounds);
 
 /** 当前服务器**卡池**的开始 / 结束日边界 —— UP 历史「开始日期」的下限用第一个卡池的开始日 */
 const bannerBounds = computed(() => site.bannerBounds);
@@ -47,9 +53,10 @@ const statResult = computed(() => {
   return `参考日期 ${site.refDate} · 可见卡池 ${visible.length} 个 · 参与统计干员 ${Object.keys(map).length} 位`;
 });
 
-const shopResult = computed(() => {
-  const { six, five, rows } = site.firstShop;
-  return `命中 六星 ${six.length} 位 / 五星 ${five.length} 位（共 ${rows.length} 位有进店记录）`;
+const firstUpResult = computed(() => {
+  const { six, five, rows, mode } = site.firstUp;
+  return `命中 六星 ${six.length} 位 / 五星 ${five.length} 位`
+    + `（共 ${rows.length} 位有${modeWord(mode)}记录）`;
 });
 
 const upResult = computed(() => {
@@ -60,14 +67,14 @@ const upResult = computed(() => {
 
 /* ---------------- 两条「时间范围」共用的草稿+确认逻辑 ---------------- */
 const {
-  draftFrom: shopFrom, draftTo: shopTo, yearsInput: shopYears, error: shopError,
-  fromDirty: shopFromDirty, toDirty: shopToDirty,
-  confirmFrom: confirmShopFrom, confirmTo: confirmShopTo,
-  confirmYears: confirmShopYears, reset: resetShop,
+  draftFrom: fupFrom, draftTo: fupTo, yearsInput: fupYears, error: fupError,
+  fromDirty: fupFromDirty, toDirty: fupToDirty,
+  confirmFrom: confirmFupFrom, confirmTo: confirmFupTo,
+  confirmYears: confirmFupYears, reset: resetFup,
 } = useRangeDraft(
-  () => site.shopRange,
-  (f, t) => site.setShopRange(f, t),
-  (n) => site.applyShopYears(n),
+  () => site.firstUpRange,
+  (f, t) => site.setFirstUpRange(f, t),
+  (n) => site.applyFirstUpYears(n),
 );
 
 const {
@@ -165,18 +172,28 @@ function resetUp() {
       <div class="fresult">{{ statResult }}</div>
     </div>
 
-    <!-- 首次进店间隔：口径切换 + 按首次进店日期筛选 -->
-    <div v-else-if="isShop" class="drawer-bd pane pane-shop">
+    <!-- 首次UP间隔：统计模式 + 横轴 / 纵轴口径 + 按首次日期筛选 -->
+    <div v-else-if="isFirstUp" class="drawer-bd pane pane-firstup">
+      <div class="fgroup">
+        <label>统计模式</label>
+        <div class="seg">
+          <button
+            v-for="m in FIRST_UP_MODES" :key="m.id"
+            type="button" :class="{ on: site.firstUpMode === m.id }"
+            @click="site.setFirstUpMode(m.id)"
+          >{{ m.label }}</button>
+        </div>
+      </div>
       <div class="fgroup">
         <label>横轴（顺序与轴标签日期）</label>
         <div class="seg">
           <button
-            type="button" :class="{ on: site.shopAxis === 'firstShop' }"
-            @click="site.setShopAxis('firstShop')"
-          >按首次进店日期</button>
+            type="button" :class="{ on: site.firstUpAxis === 'first' }"
+            @click="site.setFirstUpAxis('first')"
+          >按{{ firstLabel }}日期</button>
           <button
-            type="button" :class="{ on: site.shopAxis === 'release' }"
-            @click="site.setShopAxis('release')"
+            type="button" :class="{ on: site.firstUpAxis === 'release' }"
+            @click="site.setFirstUpAxis('release')"
           >按实装日期</button>
         </div>
       </div>
@@ -184,12 +201,12 @@ function resetUp() {
         <label>纵轴</label>
         <div class="seg">
           <button
-            type="button" :class="{ on: site.shopMetric === 'gap' }"
-            @click="site.setShopMetric('gap')"
-          >距上个首次进店</button>
+            type="button" :class="{ on: site.firstUpMetric === 'gap' }"
+            @click="site.setFirstUpMetric('gap')"
+          >距上个{{ firstLabel }}</button>
           <button
-            type="button" :class="{ on: site.shopMetric === 'sinceRelease' }"
-            @click="site.setShopMetric('sinceRelease')"
+            type="button" :class="{ on: site.firstUpMetric === 'sinceRelease' }"
+            @click="site.setFirstUpMetric('sinceRelease')"
           >距实装日期</button>
         </div>
       </div>
@@ -198,46 +215,49 @@ function resetUp() {
         <div class="quick-row">
           <span class="q-txt">近</span>
           <input
-            id="shop-years" v-model="shopYears" type="number" min="1" step="1"
-            inputmode="numeric" title="输入正整数年数" @keyup.enter="confirmShopYears"
+            id="fup-years" v-model="fupYears" type="number" min="1" step="1"
+            inputmode="numeric" title="输入正整数年数" @keyup.enter="confirmFupYears"
           />
           <span class="q-txt">年</span>
-          <button class="btn sm" type="button" @click="confirmShopYears">确认</button>
+          <button class="btn sm" type="button" @click="confirmFupYears">确认</button>
         </div>
       </div>
       <div class="fgroup">
-        <label for="shop-from">开始日期</label>
+        <label for="fup-from">开始日期</label>
         <div class="date-row">
           <input
-            id="shop-from" v-model="shopFrom" type="date" :class="{ dirty: shopFromDirty }"
-            :min="shopBounds.min" :max="shopBounds.max" @keyup.enter="confirmShopFrom"
+            id="fup-from" v-model="fupFrom" type="date" :class="{ dirty: fupFromDirty }"
+            :min="firstUpBounds.min" :max="firstUpBounds.max" @keyup.enter="confirmFupFrom"
           />
-          <button class="btn sm" type="button" @click="confirmShopFrom">确认</button>
+          <button class="btn sm" type="button" @click="confirmFupFrom">确认</button>
         </div>
       </div>
       <div class="fgroup">
-        <label for="shop-to">结束日期</label>
+        <label for="fup-to">结束日期</label>
         <div class="date-row">
           <input
-            id="shop-to" v-model="shopTo" type="date" :class="{ dirty: shopToDirty }"
-            :min="shopBounds.min" :max="shopBounds.max" @keyup.enter="confirmShopTo"
+            id="fup-to" v-model="fupTo" type="date" :class="{ dirty: fupToDirty }"
+            :min="firstUpBounds.min" :max="firstUpBounds.max" @keyup.enter="confirmFupTo"
           />
-          <button class="btn sm" type="button" @click="confirmShopTo">确认</button>
+          <button class="btn sm" type="button" @click="confirmFupTo">确认</button>
         </div>
       </div>
 
-      <p v-if="shopError" class="ferr">{{ shopError }}</p>
+      <p v-if="fupError" class="ferr">{{ fupError }}</p>
 
       <div class="btn-row">
-        <button class="btn" type="button" @click="resetShop">全部</button>
+        <button class="btn" type="button" @click="resetFup">全部</button>
       </div>
       <div class="fhint">
-        只保留<b>首次进店日</b>落在区间内的干员（可用范围
-        <code>{{ shopBounds.min }} ~ {{ shopBounds.max }}</code>），区间内按<b>同星级</b>重新计算相邻间隔，
-        纵轴起点与刻度会跟着数据变。日期框<b>描红</b>表示改动还没确认；
-        两端冲突时以刚确认的一端为准，自动把另一端挪到相隔 1 天。不影响其他页面。
+        只保留<b>{{ firstLabel }}日</b>落在区间内的干员（当前模式的可用范围
+        <code>{{ firstUpBounds.min }} ~ {{ firstUpBounds.max }}</code>），区间内按<b>同星级</b>重新计算相邻间隔，
+        纵轴起点与刻度会跟着数据变。<br />
+        切换<b>统计模式</b>时区间<b>保持不变</b>，只是筛的日期从「首次进店日」换成「首次轮换日」
+        （两种模式的可用范围略有不同）。<br />
+        日期框<b>描红</b>表示改动还没确认；两端冲突时以刚确认的一端为准，自动把另一端挪到相隔 1 天。
+        不影响其他页面。
       </div>
-      <div class="fresult">{{ shopResult }}</div>
+      <div class="fresult">{{ firstUpResult }}</div>
     </div>
 
     <!-- UP 历史一览 -->
