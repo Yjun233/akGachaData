@@ -194,6 +194,8 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 /* 右栏内容随页面切换：pane 由所在视图按需渲染 */
 .fgroup{display:flex;flex-direction:column;gap:6px}
 .fgroup > label{font-size:12px;color:var(--muted);font-weight:600}
+/* 标签里的补充说明（如「默认今天」）：同色但不加粗，避免跟标签主文案抢眼 */
+.fgroup > label small{font-weight:400}
 .fgroup select,.fgroup input[type=text],.fgroup input[type=date]{
   width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 9px;
   font-size:13px;background:#fff;color:var(--ink);font-family:inherit;
@@ -222,6 +224,13 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 }
 .quick-row input:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
 .quick-row .btn{margin-left:auto}
+/* 「近 N 年」下面那排快捷预设（最早~今天 / 最早~最晚，两枚等宽） */
+.presets{display:flex;gap:6px}
+.presets .btn{flex:1 1 0}
+/* 已经生效的那枚置灰（避免点了「没反应」） */
+.presets .btn:disabled,.presets .btn:disabled:hover{
+  background:#f6f8fb;border-color:var(--border);color:var(--muted);cursor:default;
+}
 .date-row{display:flex;align-items:center;gap:6px}
 .date-row input{flex:1 1 auto;min-width:0}
 /* 改了但还没点确认：把输入框描红提醒 */

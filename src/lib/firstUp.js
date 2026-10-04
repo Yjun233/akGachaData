@@ -60,10 +60,11 @@ export const metricShort = (mode, metric) =>
 
 /**
  * 卡片头「筛选范围」的文案。
- * ⚠️ 日期框现在**默认就填完整跨度**（否则只显示「年/月/日」），所以「等于完整跨度」
- *   也要算「全部」—— 不然卡片头会从「全部」变成一串日期。
+ * ⚠️ 日期框现在**默认就填满范围**（否则只显示「年/月/日」；结束日期 = 今天，见 store 的
+ *   fullFirstUpRange），所以「等于默认范围」也要算「全部」—— 不然卡片头会从「全部」
+ *   变成一串日期。
  * @param {{from:string,to:string}} range 当前区间
- * @param {{from:string,to:string}} full  当前模式的完整跨度（store 的 fullFirstUpRange）
+ * @param {{from:string,to:string}} full  当前模式的默认范围（store 的 fullFirstUpRange）
  */
 export const firstUpRangeLabel = (range, full) => {
   const { from, to } = range;

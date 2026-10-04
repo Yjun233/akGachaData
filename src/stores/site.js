@@ -7,7 +7,8 @@
  *  2. 界面：server、refDate、filters、各表排序
  *
  * 关键语义（勿混用）：
- *  - `today`       = 页面打开时的真实当天，**参考日期的初始值**，也是「进行中」的判定基准
+ *  - `today`       = 页面打开时的真实当天，**参考日期的初始值**，也是「进行中」的判定基准，
+ *                    还是 UP 历史 / 首次UP间隔**结束日期的默认值**（2026-10-04，见 fullUpRange）
  *  - `updateDates` = 三个服务器各自的**数据更新日**（纯展示，不参与计算）：
  *                    国服 = metadata.generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt
  */
@@ -20,6 +21,18 @@ import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
+
+/**
+ * 时间范围的**结束日期默认值** = 访问网站时的**真实今天**（用户 2026-10-04 指定）。
+ *
+ * ⚠️ 只用于 **UP 历史**（`fullUpRange`）与**首次UP间隔**（`fullFirstUpRange`）——
+ * 这两处的右栏 / 时间轴不该默认伸到未来。**卡池列表**（`fullBannerRange`）刻意**不**用它，
+ * 结束日期仍取数据的最晚结束日（列表要照常列出已预告、还没开的池子）。
+ *
+ * 数据下界比今天还晚时（刚开服、或数据里全是预告池）取下界 —— 否则会得到
+ * 「结束 < 开始」的反向区间，日期框一打开就是冲突状态。
+ */
+const endDefault = (min, today) => (min && today < min ? min : today);
 
 export const useSiteStore = defineStore('site', {
   state: () => ({
@@ -98,7 +111,7 @@ export const useSiteStore = defineStore('site', {
       return m;
     },
 
-    /** 当前服务器卡池的开始 / 结束日边界（右栏日期输入的 min / max 用） */
+    /** 当前服务器卡池的开始 / 结束日边界（右栏日期输入的 min 用；也是卡池列表默认值的上界） */
     bannerBounds() {
       let min = null;
       let max = null;
@@ -110,21 +123,34 @@ export const useSiteStore = defineStore('site', {
     },
 
     /**
-     * 卡池日期范围控件的**默认值** = 本服卡池的完整跨度。
+     * **卡池列表**日期范围控件的**默认值** = 本服卡池的完整跨度 `[最早开始日, 最晚结束日]`。
      *
      * 为什么要有它：`type="date"` 的输入框在值为空时浏览器只画「年/月/日」三个字，
      * 完全看不出可用范围，所以初始（以及重置 / 切服务器）就把跨度填进去。
-     * ⚠️ 这两个值与「不限」**完全等价**（没有任何卡池落在范围外），所以筛选结果一字不变。
+     * ⚠️ 这个跨度与「不限」**完全等价**（没有任何卡池落在范围外），所以筛选结果一字不变，
+     * 已预告但还没开始的卡池也照常列出。
+     * ⚠️ 结束日期**不取「今天」**（2026-10-04 用户只要求改另外两处）：这里仍取数据上界，
+     * 否则列表默认就少了未来池。UP 历史 / 首次UP间隔见 `fullUpRange` / `fullFirstUpRange`。
      */
     fullBannerRange() {
       const { min, max } = this.bannerBounds;
       return { from: min || '', to: max || '' };
     },
 
-    /** 首次UP间隔的日期范围默认值 = 当前模式下首次日期的完整跨度（同 fullBannerRange） */
+    /**
+     * **UP 历史**时间范围的默认值 = `[本服最早卡池开始日, 今天]`。
+     * ⚠️ 结束日期取「访问网站时的真实今天」（2026-10-04 用户要求，以前取 `bannerBounds.max`）——
+     * 时间轴右端因此不再伸到未来，数据里「已预告但还没开始」的卡池默认不参与（要看得往后调）。
+     */
+    fullUpRange() {
+      const { min } = this.bannerBounds;
+      return { from: min || '', to: endDefault(min, this.today) };
+    },
+
+    /** 首次UP间隔的默认值 = `[当前模式下首次日期下界, 今天]`（结束日期口径见 fullUpRange） */
     fullFirstUpRange() {
-      const { min, max } = this.firstUp.bounds;
-      return { from: min || '', to: max || '' };
+      const { min } = this.firstUp.bounds;
+      return { from: min || '', to: endDefault(min, this.today) };
     },
 
     /** 卡池列表：筛选 + 排序后的行（与参考日期无关） */
@@ -171,7 +197,7 @@ export const useSiteStore = defineStore('site', {
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
         classicDateOf: this.classicDateOf,
-        /* 「在结束日期已属中坚」的判据时点 = 右栏结束日期，没设就按真实今天 */
+        /* 「在结束日期已属中坚」的判据时点 = 右栏结束日期（默认值就是今天），没设才按 today */
         today: s.today,
         hideMid: s.upHideMid,
         types: s.upTypes,
@@ -229,10 +255,11 @@ export const useSiteStore = defineStore('site', {
         this.server = data.meta.defaultServer;
         /* 参考日期初始值 = 打开页面的真实当天（2026-10-01 口径调整；以前取数据快照日） */
         this.refDate = this.today;
-        /* 日期范围框初始就填上完整跨度（否则只显示「年/月/日」；与「不限」等价，见 fullBannerRange） */
+        /* 日期范围框初始就填上默认范围（否则只显示「年/月/日」）：
+           卡池列表 = 本服完整跨度，UP 历史 / 首次UP间隔 = 到「今天」，见三个 fullXxxRange */
         this.filters = { ...emptyFilters(), ...this.fullBannerRange };
         this.firstUpRange = { ...this.fullFirstUpRange };
-        this.upRange = { ...this.fullBannerRange };
+        this.upRange = { ...this.fullUpRange };
         this.ready = true;
       } catch (err) {
         this.error = err?.message || String(err);
@@ -246,10 +273,10 @@ export const useSiteStore = defineStore('site', {
       if (!id || !this.bannersByServer[id]) return;
       this.server = id;
       this.refDate = this.today;
-      /* 日期范围回到新服的**完整跨度**（不是空；空框只显示「年/月/日」，见 fullBannerRange） */
+      /* 日期范围回到新服的默认范围（不是空；空框只显示「年/月/日」，见三个 fullXxxRange） */
       this.filters = { ...emptyFilters(), ...this.fullBannerRange };
       this.firstUpRange = { ...this.fullFirstUpRange };
-      this.upRange = { ...this.fullBannerRange };
+      this.upRange = { ...this.fullUpRange };
       this.upRarity = 6;
       this.upTypes = [];
       this.upShopOnly = false;
@@ -267,16 +294,22 @@ export const useSiteStore = defineStore('site', {
       this.firstUpRange = { from: from ?? this.firstUpRange.from, to: to ?? this.firstUpRange.to };
     },
 
-    /** 「近 N 年」：以真实今天为上界，往前推 N 年（n 必须为正整数） */
+    /**
+     * 「近 N 年」：**从右栏当前的结束日期**往前推 N 年（2026-10-04 用户要求；以前固定以今天为上界）。
+     * 这样「先把结束日期调到某个时点，再点近 N 年」得到的区间正好以那个时点收尾。
+     * ⚠️ 结束日期被调得比数据下界还早时，算出来的起点会落到区间右侧 → 起点夹到数据下界。
+     */
     applyFirstUpYears(n) {
       const years = Number(n);
       if (!Number.isFinite(years) || years <= 0) return false;
-      const to = this.today;
-      this.firstUpRange = { from: shiftYears(to, -Math.floor(years)), to };
+      const to = this.firstUpRange.to || this.today;
+      const from = shiftYears(to, -Math.floor(years));
+      const min = this.firstUp.bounds.min;
+      this.firstUpRange = { from: !min || from < min ? min : from, to };
       return true;
     },
 
-    /** 「全部」：回到当前模式首次日期的完整跨度（等价于不限，但日期框里看得到范围） */
+    /** 「全部」：回到默认范围 `[最早首次日, 今天]`（日期框里看得到范围，见 fullFirstUpRange） */
     resetFirstUpRange() {
       this.firstUpRange = { ...this.fullFirstUpRange };
     },
@@ -310,17 +343,37 @@ export const useSiteStore = defineStore('site', {
       this.upRange = { from: f ?? this.upRange.from, to: to ?? this.upRange.to };
     },
 
-    /** 回到本服卡池的完整跨度（等价于不限，但日期框里看得到范围） */
+    /** 「全部重置」：回到默认范围 `[本服最早卡池开始日, 今天]`（见 fullUpRange） */
     resetUpRange() {
-      this.upRange = { ...this.fullBannerRange };
+      this.upRange = { ...this.fullUpRange };
     },
 
-    /** 「近 N 年」：以真实今天为上界往前推 N 年（开始日期同样受本服第一个卡池约束） */
+    /** 「近 N 年」：从右栏**当前的结束日期**往前推 N 年（开始日期同样受本服第一个卡池约束） */
     applyUpYears(n) {
       const years = Number(n);
       if (!Number.isFinite(years) || years <= 0) return false;
-      this.setUpRange(shiftYears(this.today, -Math.floor(years)), this.today);
+      const to = this.upRange.to || this.today;
+      this.setUpRange(shiftYears(to, -Math.floor(years)), to);
       return true;
+    },
+
+    /**
+     * 右栏「近 N 年」下面那排**快捷预设**（2026-10-04 用户要求，两处右栏各一对）：
+     * - `'today'` = `[最早, 今天]` —— 结束日期改成「今天」之后的默认口径
+     * - `'full'`  = `[最早, 数据里最晚]` —— 结束日期改成「今天」之前的旧口径（想看完整跨度时用）
+     *
+     * ⚠️ 两个都是**即时生效**的动作（与「全部」一样）：草稿由 `useRangeDraft` 的 watch 同步回来，
+     * 所以点完不会描红。开始日期一律取数据下界，不接受参数。
+     */
+    setFirstUpRangePreset(kind) {
+      const { min, max } = this.firstUp.bounds;
+      this.setFirstUpRange(min || '', (kind === 'full' ? max : this.today) || '');
+    },
+
+    /** 同上，UP 历史的时间范围 */
+    setUpRangePreset(kind) {
+      const { min, max } = this.bannerBounds;
+      this.setUpRange(min || '', (kind === 'full' ? max : this.today) || '');
     },
 
     setUpSort(id) {

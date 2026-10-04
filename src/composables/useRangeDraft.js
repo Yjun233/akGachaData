@@ -61,6 +61,12 @@ export function useRangeDraft(getRange, apply, applyYears, defaultRange = null) 
     }
     error.value = '';
     applyYears(n);
+    /* ⚠️ 2026-10-04：「近 N 年」改为**从当前结束日期**往前推（store 的 applyXxxYears），
+       所以结束日期被调得比数据下界还早时，算出来的两端可能是反的 —— 与手输一样强制修正
+       （以刚算出的结束日期为准，把开始挪到它前一天）。 */
+    const cur = getRange();
+    const r = enforceRangeOrder(cur.from, cur.to, 'to');
+    if (r.pushed) apply(r.from, null);
     yearsInput.value = ''; // 确认后清空
   }
 

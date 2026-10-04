@@ -10,6 +10,10 @@
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
  *
  * 两条「时间范围」共用同一套「草稿 + 确认」逻辑，见 composables/useRangeDraft.js。
+ * ⚠️ **首次UP间隔**与**UP 历史**两处的**结束日期默认值 = 访问网站时的真实今天**
+ * （2026-10-04 用户要求），由 store 的 `fullFirstUpRange` / `fullUpRange` 提供，
+ * 「全部 / 重置」也回到它 —— 这两个标签因此都带一句「默认今天」。
+ * ⚠️ **卡池列表**不在此列：结束日期仍取数据的最晚结束日（列表要照常列出预告池）。
  */
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
@@ -47,8 +51,28 @@ const filterTitle = computed(() => {
 /** 当前模式下的首次日期边界（首末首次进店日 / 首次轮换日），用作日期输入的上下限 */
 const firstUpBounds = computed(() => site.firstUp.bounds);
 
+/** 结束日期输入框的上限 = 首次日期上界与「今天」里较晚的那个。
+ *  ⚠️ 2026-10-04：结束日期默认值改成了「今天」（store 的 fullFirstUpRange），而首次日期上界
+ *  通常比今天还早 —— 上限还压着数据上界的话，原生选择器就够不到自己默认填的那个值。 */
+const firstUpToMax = computed(() => Math.max(site.today, firstUpBounds.value.max || site.today));
+
 /** 当前服务器**卡池**的开始 / 结束日边界 —— UP 历史「开始日期」的下限用第一个卡池的开始日 */
 const bannerBounds = computed(() => site.bannerBounds);
+
+/**
+ * 两枚快捷预设里，**当前区间正好等于哪一枚**（配 `site.setXxxRangePreset`）：
+ * `'today'` = `[最早, 今天]`（默认口径）、`'full'` = `[最早, 数据里最晚]`、都不是则 `''`。
+ * 用来把已经生效的那枚**置灰** —— 两枚都不高亮的话，用户点「最早 ~ 今天」看到的是「没反应」。
+ * ⚠️ 开始日期也参与比较：只改了一半（比如只把结束日期调到最晚）不算命中任何一枚。
+ */
+function presetOn(range, min, max) {
+  if (!min || range.from !== min) return '';
+  if (range.to === site.today) return 'today';
+  if (max && range.to === max) return 'full';
+  return '';
+}
+const fupPresetOn = computed(() => presetOn(site.firstUpRange, firstUpBounds.value.min, firstUpBounds.value.max));
+const upPresetOn = computed(() => presetOn(site.upRange, bannerBounds.value.min, bannerBounds.value.max));
 
 const bannerResult = computed(
   () => `命中 ${site.bannerRows.length} / ${site.banners.length} 个卡池`,
@@ -81,7 +105,7 @@ const {
   () => site.firstUpRange,
   (f, t) => site.setFirstUpRange(f, t),
   (n) => site.applyFirstUpYears(n),
-  /* 「全部」回到完整跨度（空框只显示「年/月/日」，见 store 的 fullFirstUpRange） */
+  /* 「全部」回到默认范围（空框只显示「年/月/日」；结束日期 = 今天，见 store 的说明） */
   () => site.fullFirstUpRange,
 );
 
@@ -94,8 +118,8 @@ const {
   () => site.upRange,
   (f, t) => site.setUpRange(f, t),
   (n) => site.applyUpYears(n),
-  /* 「全部重置」同理：回到本服卡池的完整跨度 */
-  () => site.fullBannerRange,
+  /* 「全部重置」同理：回到默认范围（本服最早卡池开始日 ~ 今天，见 store 的 fullUpRange） */
+  () => site.fullUpRange,
 );
 
 /* ---------------- 卡池列表：寻访筛选（多选按钮组，见 TypeButtons.vue） ---------------- */
@@ -156,7 +180,9 @@ function resetUp() {
 
 /* ⚠️ 日期输入框上的 `min` 只约束**原生选择器**，手打更早的日期照样能提交。
    真正的下限夹在 store 的 `setUpRange()` 里（顺带把「近 N 年」那条路径一起盖住），
-   所以这里不需要再包一层。 */
+   所以这里不需要再包一层。
+   结束日期**不设上下限**：默认值是「今天」，但允许往后调（要看已预告的卡池），
+   也允许往前调（回看某个历史时点）。 */
 </script>
 
 <template>
@@ -287,6 +313,18 @@ function resetUp() {
           <span class="q-txt">年</span>
           <button class="btn sm" type="button" @click="confirmFupYears">确认</button>
         </div>
+        <!-- ⚠️ 两枚快捷预设：「最早 ~ 今天」= 现在的默认口径；「最早 ~ 最晚」= 结束日期
+             改成「今天」之前的旧口径（2026-10-04 用户要求）。当前已是该口径的那枚置灰。 -->
+        <div class="presets">
+          <button
+            class="btn sm" type="button" :disabled="fupPresetOn === 'today'"
+            @click="site.setFirstUpRangePreset('today')"
+          >最早 ~ 今天</button>
+          <button
+            class="btn sm" type="button" :disabled="fupPresetOn === 'full'"
+            @click="site.setFirstUpRangePreset('full')"
+          >最早 ~ 最晚</button>
+        </div>
       </div>
       <div class="fgroup">
         <label for="fup-from">开始日期</label>
@@ -299,11 +337,11 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="fup-to">结束日期</label>
+        <label for="fup-to">结束日期<small>默认今天</small></label>
         <div class="date-row">
           <input
             id="fup-to" v-model="fupTo" type="date" :class="{ dirty: fupToDirty }"
-            :min="firstUpBounds.min" :max="firstUpBounds.max" @keyup.enter="confirmFupTo"
+            :min="firstUpBounds.min" :max="firstUpToMax" @keyup.enter="confirmFupTo"
           />
           <button class="btn sm" type="button" @click="confirmFupTo">确认</button>
         </div>
@@ -353,6 +391,17 @@ function resetUp() {
           <span class="q-txt">年</span>
           <button class="btn sm" type="button" @click="confirmUpYears">确认</button>
         </div>
+        <!-- 同上：两枚预设（store 的 setUpRangePreset），当前口径的那枚置灰 -->
+        <div class="presets">
+          <button
+            class="btn sm" type="button" :disabled="upPresetOn === 'today'"
+            @click="site.setUpRangePreset('today')"
+          >最早 ~ 今天</button>
+          <button
+            class="btn sm" type="button" :disabled="upPresetOn === 'full'"
+            @click="site.setUpRangePreset('full')"
+          >最早 ~ 最晚</button>
+        </div>
       </div>
       <div class="fgroup">
         <label for="up-from">开始日期<small>不早于本服第一个卡池</small></label>
@@ -365,7 +414,7 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="up-to">结束日期</label>
+        <label for="up-to">结束日期<small>默认今天，时间轴不伸到未来</small></label>
         <div class="date-row">
           <input
             id="up-to" v-model="upTo" type="date" :class="{ dirty: upToDirty }"

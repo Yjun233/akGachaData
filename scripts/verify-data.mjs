@@ -17,7 +17,7 @@ import {
 } from '../src/lib/upTimeline.js';
 import { bannerRows, emptyFilters } from '../src/lib/banners.js';
 import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearch.js';
-import { diffDays, shiftYears, shiftDays, enforceRangeOrder } from '../src/lib/date.js';
+import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '../src/lib/date.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,12 +42,15 @@ const operators = {};
 for (const op of Object.values(rawOperators)) operators[op.name] = op;
 
 const banners = Object.keys(bannerMap).map((id) => ({ id, ...bannerMap[id] }));
-/* 本服卡池的**完整跨度** [最早开始日, 最晚结束日] —— 就是右栏日期框现在的默认值
-   （store 的 fullBannerRange）。下面几处「完整跨度与不限等价」的断言都用它。 */
+/* 本服卡池的**完整跨度** [最早开始日, 最晚结束日] —— 就是**卡池列表**右栏日期框的默认值
+   （store 的 fullBannerRange）。下面几处「完整跨度与不限等价」的断言都用它。
+   ⚠️ UP 历史 / 首次UP间隔的结束日期默认 = 真实今天（2026-10-04），那是 `bannerTodayRange`。 */
 const bannerFullRange = {
   from: banners.reduce((m, b) => (!m || b.startDate < m ? b.startDate : m), ''),
   to: banners.reduce((m, b) => (!m || b.endDate > m ? b.endDate : m), ''),
 };
+/** UP 历史右栏时间范围的默认值 = [最早开始日, 今天]（store 的 fullUpRange） */
+const bannerTodayRange = { ...bannerFullRange, to: localToday() };
 const operatorIndex = {};
 for (const name of Object.keys(operators)) {
   operatorIndex[name] = { rarity: operators[name].rarity, isLimited: operators[name].isLimited };
@@ -511,12 +514,18 @@ check('UP 历史：默认按实装日升序',
     || (upAll.all[i - 1].releaseDate || '9999') <= (r.releaseDate || '9999')), true);
 check('UP 历史：条形起点（实装日）都有值', upAll.all.every((r) => !!r.releaseDate), true);
 
-/* UP 历史的日期框默认 = 本服卡池完整跨度（bannerFullRange），同样必须与「不限」等价 ——
-   它同时决定横轴范围与「范围内有没有标记」这层干员过滤，所以按行数比 */
+/* UP 历史的日期框默认 = [最早卡池开始日, 今天]（bannerTodayRange），它同时决定横轴范围与
+   「范围内有没有标记」这层干员过滤 → 默认值不能悄悄筛掉「已经发生过」的记录（按行数比）。
+   ⚠️ 未来预告池的标记（起始日 > 今天）默认不参与 —— 那是「还没发生」，与右栏口径一致。 */
+const upDefault = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, range: bannerTodayRange,
+});
+check('UP 历史：默认范围（结束 = 今天）与不限的行数一致（当前数据没有未来的标记）',
+  upDefault.all.length, upAll.all.length);
 const upFull = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, range: bannerFullRange,
 });
-check('UP 历史：完整跨度与不限等价（行数一致）', upFull.all.length, upAll.all.length);
+check('UP 历史：数据跨度与不限等价（行数一致）', upFull.all.length, upAll.all.length);
 
 const upShop = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, shopOnly: true,
@@ -645,7 +654,9 @@ check('卡池筛选：多选两位 = 并集（OR）而不是交集',
 check('卡池筛选：选中没 UP 过的干员 = 0 个卡池',
   bannerRows(banners, { ...fEmpty, ops: ['这个干员不存在'] }, categories, fSort).length, 0);
 
-/* 「日期框默认填完整跨度」的前提：**完整跨度与「不限」等价**（否则那个默认值会悄悄筛掉数据） */
+/* 卡池列表的日期框默认 = 本服卡池**完整跨度**（bannerFullRange），与「不限」等价 ——
+   结束日期取数据上界（不是今天），所以已预告但还没开始的池子照常显示。
+   ⚠️ 「结束日期默认 = 今天」只用于 UP 历史（bannerTodayRange）与首次UP间隔。 */
 check('卡池筛选：完整跨度与空范围等价（日期框可以拿它当默认值）',
   bannerRows(banners, { ...fEmpty, ...bannerFullRange }, categories, fSort).length, banners.length);
 

@@ -147,6 +147,11 @@ try {
   /* 参考日期的初始值 = 打开页面的**真实当天**（2026-10-01 口径调整；以前取数据快照日 SNAP）。
      三个服务器的「数据更新日」只用于左栏展示，不再参与计算。 */
   const TODAY = localToday();
+  /* 「可见卡池」= 开始日不晚于当天的卡池数。**统计页**的参考日期是当天，所以已公布、
+     但还没到开始日的卡池（繁中服就有，国服将来也可能有）不进统计表 —— 别拿 bannerCount 直接比。
+     ⚠️ 卡池列表**不**受这条影响：它的结束日期默认取数据最晚结束日（2026-10-04 只把 UP 历史 /
+     首次UP间隔改成「今天」），所以列表照常列出预告池，行数仍等于 bannerCount。 */
+  const visibleOf = (store) => store.banners.filter((b) => b.startDate <= TODAY).length;
 
   check('数据层加载成功', banners.store.error, '');
   check('卡池总数 = metadata.bannerCount', banners.store.banners.length, BANNER_N);
@@ -169,8 +174,9 @@ try {
   check('结果提示（命中 N / M）',
     new RegExp(`命中 ${BANNER_N} / ${BANNER_N} 个卡池`).test(bh), true);
   /* 日期范围框**初始就有值**：值为空时浏览器只画「年/月/日」，看不出可用范围。
-     默认 = 本服卡池的完整跨度，它与「不限」等价 → 所以上面那条命中数仍是全部卡池。 */
-  check('卡池列表右栏：开始 / 结束日期框初始填上本服完整跨度',
+     默认 = 本服卡池的完整跨度，它与「不限」等价 → 所以上面那条命中数仍是全部卡池。
+     ⚠️ 2026-10-04：结束日期默认 = 「今天」只改了 UP 历史 / 首次UP间隔，卡池列表仍取数据上界。 */
+  check('卡池列表右栏：开始 / 结束日期框初始填上本服完整跨度（结束日期 ≠ 今天口径）',
     dateVal(bh, 'f-from') === banners.store.fullBannerRange.from
     && dateVal(bh, 'f-to') === banners.store.fullBannerRange.to
     && !!dateVal(bh, 'f-from'), true);
@@ -268,10 +274,7 @@ try {
   /* 抽样：与原型逐格核对过的干员应出现在统计页 */
   check('统计页：包含「推进之王」', sh.includes('推进之王'), true);
   check('统计页：结果提示含参考日期，且等于当天', new RegExp(`参考日期 ${TODAY}`).test(sh), true);
-  /* 「可见卡池」= 开始日不晚于参考日期的卡池数。参考日期现在是**当天**，
-     所以如果有已公布、但还没到开始日的卡池（繁中服就有，国服将来也可能有），
-     这个数会小于卡池总数 —— 别再拿 bannerCount 直接比。 */
-  const visibleOf = (store) => store.banners.filter((b) => b.startDate <= TODAY).length;
+  /* 「可见卡池」= 开始日不晚于参考日期的卡池数（visibleOf 定义见上，与卡池列表同一口径）。 */
   check('统计页：可见卡池数 = 开始日不晚于当天的卡池数',
     new RegExp(`可见卡池 ${visibleOf(banners.store)} 个`).test(sh), true);
   /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值 */
@@ -302,8 +305,11 @@ try {
   const FS = fup.store.firstUp;
   check('首次UP间隔页：命中数 = firstUp 的六星 / 五星行数',
     ph.includes(`六星 ${FS.six.length} 位 · 五星 ${FS.five.length} 位`), true);
-  check('首次UP间隔页：日期输入带上下限（= firstUp.bounds）',
-    ph.includes(`min="${FS.bounds.min}"`) && ph.includes(`max="${FS.bounds.max}"`), true);
+  /* ⚠️ 结束日期输入的 `max` 取「首次日期上界」与「今天」里较晚的那个（2026-10-04）：
+     结束日期默认值就是今天，上限再压着数据上界的话原生选择器够不到自己默认填的值。 */
+  check('首次UP间隔页：日期输入带上下限（开始 = firstUp.bounds.min，结束 = max(bounds.max, 今天)）',
+    ph.includes(`min="${FS.bounds.min}"`)
+    && ph.includes(`max="${Math.max(TODAY, FS.bounds.max || TODAY)}"`), true);
   check('首次UP间隔页：两个图表容器', count(ph, /class="echart"/g), 2);
   check('首次UP间隔页：图表外层可横向滚动', count(ph, /class="chart-scroll"/g), 2);
   check('首次UP间隔页：SSR 下不初始化 echarts（无 canvas）', count(ph, /<canvas/g), 0);
@@ -320,6 +326,12 @@ try {
   check('首次UP间隔页：刻度从 0 起', tickVals.includes(0), true);
   check('首次UP间隔页：右栏「近 N 年」输入框', ph.includes('id="fup-years"'), true);
   check('首次UP间隔页：快速填入标题', ph.includes('快速填入日期范围'), true);
+  /* 快捷预设（2026-10-04 加）：「近 N 年」下面两枚，默认口径那枚置灰 */
+  check('首次UP间隔页：两枚快捷预设（最早~今天 / 最早~最晚）',
+    count(ph, />最早 ~ (今天|最晚)<\/button>/g), 2);
+  check('首次UP间隔页：默认口径（最早 ~ 今天）那枚置灰、「最早 ~ 最晚」可点',
+    /<button[^>]*disabled[^>]*>最早 ~ 今天<\/button>/.test(ph)
+    && !/<button[^>]*disabled[^>]*>最早 ~ 最晚<\/button>/.test(ph), true);
   check('首次UP间隔页：三个「确认」按钮（近 N 年 / 起始日 / 结束日）',
     count(ph, />确认<\/button>/g), 3);
   check('首次UP间隔页：未修改时不描红', !/dirty/.test(ph), true);
@@ -338,9 +350,28 @@ try {
     wideTicks.every((v) => v % 7 === 0) && narrowTicks.every((v) => v % 7 === 0), true);
 
   const y3 = await renderRoute('/first-up', (s) => s.applyFirstUpYears(3));
-  /* 「近 N 年」以**真实今天**为上界，所以期望值要按 store 的 today 算，不能写死 */
+  /* 「近 N 年」默认从**当前结束日期**（此处 = 今天）往前推，所以期望值按 store 的 today 算 */
   check('近 3 年：区间 = 今天往前 3 年', y3.store.firstUpRange.from, shiftYears(y3.store.today, -3));
   check('近 3 年：结束端为今天', y3.store.firstUpRange.to, y3.store.today);
+
+  /* ⚠️ 2026-10-04：「近 N 年」改为从**右栏当前的结束日期**倒推（以前固定以今天为上界）。
+     结束日期被调过之后，「近 N 年」就该以那个时点收尾 —— 这两条守住新口径。 */
+  const yBase = await renderRoute('/first-up', (s) => {
+    s.setFirstUpRange('2019-01-01', '2026-01-01');
+    s.applyFirstUpYears(2);
+  });
+  check('近 N 年：从当前结束日期倒推（不再固定用今天）',
+    `${yBase.store.firstUpRange.from}~${yBase.store.firstUpRange.to}`, '2024-01-01~2026-01-01');
+
+  /* 右栏两枚快捷预设（最早~今天 / 最早~最晚，2026-10-04 加） */
+  const fupPresetFull = await renderRoute('/first-up', (s) => s.setFirstUpRangePreset('full'));
+  check('首次UP间隔：「最早 ~ 最晚」= 数据里最晚的首次日期',
+    `${fupPresetFull.store.firstUpRange.from}~${fupPresetFull.store.firstUpRange.to}`,
+    `${FS.bounds.min}~${FS.bounds.max}`);
+  const fupPresetToday = await renderRoute('/first-up', (s) => s.setFirstUpRangePreset('today'));
+  check('首次UP间隔：「最早 ~ 今天」= 默认口径',
+    `${fupPresetToday.store.firstUpRange.from}~${fupPresetToday.store.firstUpRange.to}`,
+    `${FS.bounds.min}~${TODAY}`);
 
   /* 纵轴起点贴合数据：筛到近 2 年后，能在近两年进店的干员都等了很多年 */
   const sinceFup = await renderRoute('/first-up', (s) => {
@@ -374,10 +405,12 @@ try {
   check('首次UP间隔页：右栏标题为日期范围', /首次进店日期范围/.test(ph), true);
   check('首次UP间隔页：右栏两个日期输入',
     ph.includes('id="fup-from"') && ph.includes('id="fup-to"'), true);
-  check('首次UP间隔页：两个日期框初始填上当前模式的完整跨度',
+  check('首次UP间隔页：两个日期框初始填上默认范围（结束日期 = 今天）',
     dateVal(ph, 'fup-from') === fup.store.fullFirstUpRange.from
     && dateVal(ph, 'fup-to') === fup.store.fullFirstUpRange.to
     && !!dateVal(ph, 'fup-to'), true);
+  check('首次UP间隔页：结束日期默认值 = 真实今天',
+    fup.store.fullFirstUpRange.to === TODAY && fup.store.firstUpRange.to === TODAY, true);
   /* 「全部」按钮走 useRangeDraft 的 reset（客户端点击，SSR 点不到）→ 读源码把它钉住：
      必须回到调用方给的默认范围，而不是清成空框 */
   {
@@ -385,18 +418,18 @@ try {
     const rangeDraftSrc = fs.readFileSync(path.join(ROOT, 'src/composables/useRangeDraft.js'), 'utf8');
     check('日期范围「全部」回到默认范围（不是清成空框）',
       /\(\) => site\.fullFirstUpRange/.test(filterDrawerSrc)
-      && /\(\) => site\.fullBannerRange/.test(filterDrawerSrc)
+      && /\(\) => site\.fullUpRange/.test(filterDrawerSrc)
       && /const d = defaultRange \? defaultRange\(\) : null;/.test(rangeDraftSrc), true);
   }
-  /* 重置类动作同样要回到完整跨度（store 侧可验） */
+  /* 重置类动作同样要回到默认范围（store 侧可验） */
   const fupReset = await renderRoute('/first-up', (s) => {
     s.setFirstUpRange('2024-01-01', '2025-01-01');
     s.resetFirstUpRange();
   });
-  check('首次UP间隔：「全部」后仍是完整跨度（日期框不回空）',
+  check('首次UP间隔：「全部」后回到默认范围（结束日期 = 今天，日期框不回空）',
     fupReset.store.firstUpRange.from === fupReset.store.fullFirstUpRange.from
     && fupReset.store.firstUpRange.to === fupReset.store.fullFirstUpRange.to
-    && dateVal(fupReset.html, 'fup-from') === fupReset.store.fullFirstUpRange.from, true);
+    && fupReset.store.firstUpRange.to === TODAY, true);
   check('首次UP间隔页：右栏命中提示（= firstUp 六星 / 五星行数）',
     new RegExp(`命中 六星 ${FS.six.length} 位 / 五星 ${FS.five.length} 位`).test(ph), true);
   check('首次UP间隔页：不显示卡池筛选表单', !ph.includes('id="f-type"'), true);
@@ -441,7 +474,7 @@ try {
     rotFup.store.firstUp.rows.length >= fup.store.firstUp.rows.length, true);
   check('统计模式=首次轮换：日期输入上下限跟着模式变',
     rotFup.html.includes(`min="${rotFup.store.firstUp.bounds.min}"`)
-    && rotFup.html.includes(`max="${rotFup.store.firstUp.bounds.max}"`), true);
+    && rotFup.html.includes(`max="${Math.max(TODAY, rotFup.store.firstUp.bounds.max || TODAY)}"`), true);
   /* 浮窗多一行「所在卡池」（该次「首次」发生在哪个卡池；用户 2026-10-03 加）。
      ⚠️ tooltip 的 formatter 由 echarts **在客户端**调用，SSR 出的 HTML 里不含它，
      所以只能查组件源码把这句话钉住（改坏了会红）。数据字段的「同源」由 verify-data 守。
@@ -790,18 +823,20 @@ try {
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
-  check('UP 历史页：两个日期框初始填上本服完整跨度',
-    dateVal(uh, 'up-from') === up.store.fullBannerRange.from
-    && dateVal(uh, 'up-to') === up.store.fullBannerRange.to
+  check('UP 历史页：两个日期框初始填上默认范围（结束日期 = 今天）',
+    dateVal(uh, 'up-from') === up.store.fullUpRange.from
+    && dateVal(uh, 'up-to') === up.store.fullUpRange.to
     && !!dateVal(uh, 'up-from'), true);
+  check('UP 历史页：结束日期默认值 = 真实今天（时间轴不伸到未来）',
+    up.store.fullUpRange.to === TODAY && up.store.upRange.to === TODAY, true);
   const upReset = await renderRoute('/up-history', (s) => {
     s.setUpRange('2024-01-01', '2025-01-01');
     s.resetUpRange();
   });
-  check('UP 历史：「全部重置」后仍是完整跨度（日期框不回空）',
-    upReset.store.upRange.from === upReset.store.fullBannerRange.from
-    && upReset.store.upRange.to === upReset.store.fullBannerRange.to
-    && dateVal(upReset.html, 'up-from') === upReset.store.fullBannerRange.from, true);
+  check('UP 历史：「全部重置」后回到默认范围（结束日期 = 今天，日期框不回空）',
+    upReset.store.upRange.from === upReset.store.fullUpRange.from
+    && upReset.store.upRange.to === upReset.store.fullUpRange.to
+    && upReset.store.upRange.to === TODAY, true);
   /* 开始日期不能早于本服第一个卡池的开始日。输入框上的 `min` 只是提示（只管得住原生选择器），
      真正夹取在 store 的 `setUpRange()` 里（下面单独断言）；这里核对属性确实带了下限。
      ⚠️ 只取 `#up-from` 那一个标签来判，别用全页 includes —— 其它输入框也有 min。 */
@@ -823,6 +858,24 @@ try {
     s.setUpRange('', null);
     check('UP 历史：清空开始日期不会被夹（空串表示「清空」而不是过早日期）', s.upRange.from, '');
   }
+  /* ⚠️ 2026-10-04：「近 N 年」改为从**右栏当前的结束日期**倒推（以前固定以今天为上界）——
+     先把结束日期调到某个时点，「近 2 年」就该以那个时点收尾。 */
+  {
+    const s = up.store;
+    s.setUpRange('2020-01-01', '2026-02-01');
+    s.applyUpYears(2);
+    check('UP 历史：「近 N 年」从当前结束日期倒推',
+      `${s.upRange.from}~${s.upRange.to}`, '2024-02-01~2026-02-01');
+  }
+  /* 右栏两枚快捷预设（最早~今天 / 最早~最晚，2026-10-04 加）：store 侧口径 + 置灰状态 */
+  const upPresetFull = await renderRoute('/up-history', (s) => s.setUpRangePreset('full'));
+  check('UP 历史：「最早 ~ 最晚」= 本服卡池最晚结束日',
+    `${upPresetFull.store.upRange.from}~${upPresetFull.store.upRange.to}`,
+    `${up.store.bannerBounds.min}~${up.store.bannerBounds.max}`);
+  check('UP 历史页：两枚快捷预设，默认口径那枚置灰',
+    count(upPresetFull.html, />最早 ~ (今天|最晚)<\/button>/g) === 2
+    && /<button[^>]*disabled[^>]*>最早 ~ 最晚<\/button>/.test(upPresetFull.html)
+    && !/<button[^>]*disabled[^>]*>最早 ~ 今天<\/button>/.test(upPresetFull.html), true);
   /* 右栏两个新勾选框：隐藏已属中坚的干员 / 显示两次 UP 的间隔天数。
      ⚠️ 后者的**默认是「不勾」**（间隔文案默认不显示）——这个默认值在 state 初值、
      setServer 的切服重置、右栏的「全部重置」三处都有，改的时候要一起改（见 site.js 注释）。 */
@@ -1346,6 +1399,8 @@ try {
     const tcHome = await renderRoute('/', (s) => s.setServer('tc'));
     const tcNames = tcHome.store.banners.map((b) => b.name);
     check('繁中服：当前服务器切到 tc', tcHome.store.server, 'tc');
+    /* ⚠️ 繁中服有 2 个「已公布但还没开始」的池子（最新到 10-22）—— 卡池列表的结束日期默认取
+       数据上界，所以它们照常显示、行数 = bannerCount；只有**统计页**按参考日期过滤。 */
     check('繁中服：卡池行数 = metadata.tc.bannerCount',
       count(tcHome.html.slice(tcHome.html.indexOf('<tbody>'), tcHome.html.indexOf('</tbody>')), /<tr>/g),
       TC.bannerCount);
