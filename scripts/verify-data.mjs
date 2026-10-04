@@ -934,6 +934,50 @@ if (hasProto) {
   console.log('（未找到 prototype/index.html，跳过逐格对比；先运行 pnpm build:prototype）');
 }
 
+/* ---------------- 皮肤 × 卡池：「同期有皮肤上架」标记（UP 历史页） ----------------
+   站点侧的判定在 src/lib/upHistory.js 的 `skinOverlapsBanner`；这里直接用**它本体**跑一遍
+   （接线 + 判定一起验），再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。 */
+const skinsFile = fs.existsSync(path.join(RES_DIR, 'skins.json')) ? read('skins.json') : null;
+check('skins.json 已产出', !!skinsFile, true);
+if (skinsFile) {
+  const skinList = skinsFile.skins || [];
+  check('skins.json：每套都有 char / name / onShelf / isCrossover',
+    skinList.every((s) => s.char && s.name && Array.isArray(s.onShelf)
+      && typeof s.isCrossover === 'boolean'), true);
+  check('skins.json：合作款数量 > 0', skinList.filter((s) => s.isCrossover).length > 0, true);
+
+  const skinsByOperator = {};
+  for (const s of skinList) (skinsByOperator[s.char] ||= []).push(s);
+
+  const uhRows = computeUpHistory({
+    banners,
+    categories: BANNER_CATEGORIES,
+    operatorByName: operators,
+    skinsByOperator,
+    relDateOf: () => null,
+    today: localToday(),
+  });
+  const allMarks = [...uhRows.six, ...uhRows.five].flatMap((r) => r.marks);
+  const hit = allMarks.filter((m) => m.skinRelated).length;
+  const rate = hit / allMarks.length;
+  check('皮肤标记：全部标记都带 skinRelated（布尔）',
+    allMarks.every((m) => typeof m.skinRelated === 'boolean'), true);
+  check('皮肤标记：命中比例落在 5%~25%（防判定失效）', rate > 0.05 && rate < 0.25, true);
+  check('皮肤标记：至少有 1 位干员命中',
+    [...uhRows.six, ...uhRows.five].some((r) => r.marks.some((m) => m.skinRelated)), true);
+  /* 降级：没有皮肤数据时必须**一个都不标**（线上 CDN 还没有这个文件时的情形） */
+  const uhNoSkin = computeUpHistory({
+    banners,
+    categories: BANNER_CATEGORIES,
+    operatorByName: operators,
+    relDateOf: () => null,
+    today: localToday(),
+  });
+  check('皮肤标记：不传 skinsByOperator 时一个都不标（降级正常）',
+    [...uhNoSkin.six, ...uhNoSkin.five].flatMap((r) => r.marks).every((m) => m.skinRelated === false), true);
+  console.log(`· 皮肤×卡池：标记 ${allMarks.length} 个，其中同期有皮肤上架 ${hit} 个（${(rate * 100).toFixed(1)}%）`);
+}
+
 // ---- 输出 ----
 let bad = 0;
 for (const r of results) {

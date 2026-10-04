@@ -42,6 +42,9 @@ export const useSiteStore = defineStore('site', {
     error: '',
     meta: { servers: [], defaultServer: 'sc', generatedAt: '' },
     operators: {},
+    /* 干员名 → 该干员的时装数组（来自 skins.json，**只做国服、不分服**）。
+       缺文件时是空对象 → UP 历史页只是不显示「同期有皮肤上架」的标记。 */
+    skinsByOperator: {},
     /* type → 大类：来自 constants.js（不再由 JSON 数据文件提供） */
     categories: BANNER_CATEGORIES,
     bannersByServer: {},
@@ -197,6 +200,8 @@ export const useSiteStore = defineStore('site', {
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
         classicDateOf: this.classicDateOf,
+        /* 皮肤（国服、不分服）：用来判断「该期卡池与该干员的皮肤上架窗口是否重叠」 */
+        skinsByOperator: s.skinsByOperator,
         /* 「在结束日期已属中坚」的判据时点 = 右栏结束日期（默认值就是今天），没设才按 today */
         today: s.today,
         hideMid: s.upHideMid,
@@ -250,6 +255,7 @@ export const useSiteStore = defineStore('site', {
         const data = await loadSiteData();
         this.meta = data.meta;
         this.operators = data.operators;
+        this.skinsByOperator = data.skinsByOperator || {};
         this.categories = data.categories;
         this.bannersByServer = data.bannersByServer;
         this.server = data.meta.defaultServer;

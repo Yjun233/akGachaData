@@ -6,6 +6,7 @@
  * `VITE_RESOURCE=cdn` 才让 dev 走 CDN；**build 一律走 CDN**。切换逻辑见 `resource.js`。
  *   metadata.json          站点元信息 + 服务器列表
  *   operators.json         干员表（各服共用，靠 *ReleaseDate 区分实装日）
+ *   skins.json             干员时装（只做国服；**可选** —— 缺文件时 UP 历史页不显示皮肤标记）
  *   卡池类型 → 大类：见 `constants.js` 的 `BANNER_CATEGORIES`（不再用 JSON 数据文件）
  *   banners_<server>.json  各服卡池表
  *
@@ -35,15 +36,25 @@ async function getJSONOptional(name) {
 export async function loadSiteData() {
   /* ⚠️ 大类映射 `BANNER_CATEGORIES` 已从 `banner-categories.json` 移入 `constants.js`
      （各服共用、不随数据更新），这里不再额外发一个请求。 */
-  const [meta, rawOperators] = await Promise.all([
+  const [meta, rawOperators, rawSkins] = await Promise.all([
     getJSON('metadata.json'),
     getJSON('operators.json'),
+    /* 皮肤是**可选**的（2026-10-04 才产出）—— 线上 CDN 上还没有时要能降级，
+       不能因为缺它整站加载失败。缺了只是 UP 历史页不显示「同期有皮肤上架」的标记。 */
+    getJSONOptional('skins.json'),
   ]);
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），
      前端一律按干员名索引（卡池数据里的 upOperators 只有 name）。 */
   const operators = {};
   for (const op of Object.values(rawOperators)) operators[op.name] = op;
+
+  /* 皮肤**不分服**（只做国服），按干员名索引即可。
+     用途：UP 历史页判断「该期卡池的开放窗口与该干员的皮肤上架窗口是否重叠」。 */
+  const skinsByOperator = {};
+  for (const s of rawSkins?.skins || []) {
+    if (s?.char) (skinsByOperator[s.char] ||= []).push(s);
+  }
 
   const declared = meta.servers || [];
   const bannersByServer = {};
@@ -74,6 +85,7 @@ export async function loadSiteData() {
     operators,
     categories: BANNER_CATEGORIES,
     bannersByServer,
+    skinsByOperator,
   };
 }
 

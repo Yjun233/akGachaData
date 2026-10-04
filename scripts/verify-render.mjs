@@ -757,6 +757,34 @@ try {
   check('UP 历史页：时间轴有最小宽度（内层 min-width 内联样式）',
     /class="tl-inner" style="min-width:\s*\d{3,}px/.test(uh), true);
 
+  /* --- 皮肤同期标记（2026-10-04）：卡池窗口 ∩ 皮肤上架窗口 → 头像**左下角**深赭三角 ---
+     图表内容是 canvas 自绘，SSR 产物里看不到 → 只能读源码钉住契约（参考手册 ⑫ 的老办法）。 */
+  const uhLibSrc = fs.readFileSync(path.join(ROOT, 'src/lib/upHistory.js'), 'utf8');
+  const loadSrc = fs.readFileSync(path.join(ROOT, 'src/lib/loadData.js'), 'utf8');
+  const siteSrc = fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8');
+
+  check('皮肤标记：loadData 加载 skins.json（可选，缺文件降级）并按干员名索引',
+    /getJSONOptional\('skins\.json'\)/.test(loadSrc)
+    && /skinsByOperator\[s\.char\]/.test(loadSrc), true);
+  check('皮肤标记：store 把 skinsByOperator 传进 computeUpHistory',
+    /skinsByOperator: s\.skinsByOperator/.test(siteSrc), true);
+  /* 判定口径：**闭区间求交**（卡池 [startDate,endDate] ∩ 皮肤 onShelf [start,end]） */
+  check('皮肤标记：判定是闭区间求交',
+    /aStart <= bEnd && bStart <= aEnd/.test(uhLibSrc), true);
+  check('皮肤标记：mark 上带 skinRelated',
+    /skinRelated: skinOverlapsBanner\(/.test(uhLibSrc), true);
+  /* 绘制：polygon 手拼三点（zrender 无 triangle 类型）；底边半宽 = R·cos30° 是等边三角的特征 */
+  check('皮肤标记：画成等边三角形（底边半宽 = R·cos30°）',
+    /mark\.skinRelated/.test(tlSrc) && /R \* 0\.866/.test(tlSrc), true);
+  check('皮肤标记：三角落在标记圆**左下角**（cy + d / 2）',
+    /const ty = cy \+ d \/ 2 - TL\.dotInset;/.test(tlSrc), true);
+  /* ⚠️ 颜色必须与「常驻标准寻访」的圆环色 `#FFD524` 拉开 —— 早先用 `#FFC400` 时两者
+     几乎重合、同屏糊成一团（实测过，连像素扫描都被骗） */
+  check('皮肤标记：三角用深赭 #8D2E00，且与标准池圆环色 #FFD524 不同',
+    /triColor: '#8D2E00'/.test(tlSrc) && !/triColor: '#FFD524'/.test(tlSrc), true);
+  check('皮肤标记：tooltip 有「同期有皮肤上架」一行',
+    /同期有皮肤上架/.test(tlSrc), true);
+
   /* ---------------- 鼠标拖拽平移（两个图表页共用 useDragPan） ----------------
      需求（2026-10-02）：图表可以按住鼠标拖拽移动视图；⚠️ **手机端的滑动不能被影响**。
      实现见 src/composables/useDragPan.js —— 要害是「只认鼠标」，触摸 / 触控笔一律不接管。

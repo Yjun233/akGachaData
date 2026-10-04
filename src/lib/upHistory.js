@@ -25,6 +25,9 @@
  *   范围内一个标记都没有的干员默认不显示（`null` = 不做这层过滤，
  *   对应右栏的「显示范围内未 UP 干员」勾选框）。
  *   ⚠️ 2026-09-30 口径调整：以前时间范围只改横轴、纵轴始终保留全部干员。
+ *
+ * 标记上的 `skinRelated`（2026-10-04 新增）：这一期卡池的开放窗口与该干员某套皮肤的
+ * 上架窗口**有重叠** → `true`（页面在头像左下角打深赭色正三角）。判定见 `skinOverlapsBanner`。
  */
 import { diffDays } from './date.js';
 
@@ -33,6 +36,30 @@ const SORT_KEY = {
   release: (r) => r.releaseDate || '9999-12-31',
   lastUp: (r) => r.lastDate,
 };
+
+/** 两个**闭区间**日期段有没有共同的一天（都是 'YYYY-MM-DD'，可以直接比大小） */
+const spansOverlap = (aStart, aEnd, bStart, bEnd) =>
+  !!aStart && !!aEnd && !!bStart && !!bEnd && aStart <= bEnd && bStart <= aEnd;
+
+/**
+ * 该干员的皮肤里，有没有哪一套的**上架窗口与这个卡池重叠**。
+ *
+ * ⚠️ 口径（闭环）：卡池取 `[startDate, endDate]`、皮肤取每个 `onShelf` 的 `[start, end]`，
+ *   **闭区间求交** —— 两个区间只要有共同的一天就算重叠。
+ *   （卡池在站点别处的「进行中」用的是半开 `[开始日, 结束日)`，这里刻意没用它：
+ *   「有没有关联」要的是宽松信号，边界那天差一天不值得纠结。）
+ * ⚠️ `longTime` 的那几个窗口（常驻类，`end = start + 14` 是脚本**造出来的**）照常参与
+ *   —— 用户定过「只为讨论与 UP 的关联性，这里数据不真实也无妨」。
+ * ⚠️ 皮肤数据只有国服：切到国际服 / 繁中服时，这里按同一份国服皮肤表判（页面不区分服）。
+ */
+function skinOverlapsBanner(skins, start, end) {
+  for (const s of skins || []) {
+    for (const w of s.onShelf || []) {
+      if (spansOverlap(w.start, w.end, start, end)) return true;
+    }
+  }
+  return false;
+}
 
 function sorter(sort) {
   const desc = String(sort).endsWith('desc');
@@ -50,6 +77,7 @@ function sorter(sort) {
  * @param {Array}  ctx.banners         当前服务器全部卡池（含 id）
  * @param {object} ctx.categories      type → 大类
  * @param {object} ctx.operatorByName  干员名 → 干员
+ * @param {object} [ctx.skinsByOperator] 干员名 → 该干员的时装数组（skins.json；缺省=不做皮肤关联判定）
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
@@ -64,6 +92,7 @@ export function computeUpHistory({
   banners,
   categories,
   operatorByName,
+  skinsByOperator = {},
   relDateOf,
   classicDateOf = null,
   today = '',
@@ -94,6 +123,8 @@ export function computeUpHistory({
         endDate: b.endDate,
         isShop: !!op.isShop,
         rarity: op.rarity,
+        /* 这一期卡池与该干员的皮肤上架窗口有重叠（页面在头像左下角打深赭色正三角） */
+        skinRelated: skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
       });
     }
   }

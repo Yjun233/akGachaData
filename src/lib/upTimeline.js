@@ -70,6 +70,14 @@ export const TL = {
   dotR: 3.5,          // 进店小圆点
   diamondR: 4,          // 中坚甄选小菱形的半径（外接圆半径）
   dotInset: 2,        // 小圆点距标记圆**左边缘**的内缩（挪到左边，见 renderItem）
+  /* 「这一期有该干员的皮肤上架」→ **左下角**深赭色正三角（2026-10-04 新增）。
+     左上角已经被进店绿点 / 中坚甄选蓝菱形占着，左下角空着，互不打扰。 */
+  triR: 5,          // 正三角的**外接圆半径**（比进店点略大：三角形的视觉重量比同半径的圆小）
+  /* 深赭色（用户 2026-10-04 指定）。
+     好处之一是与「常驻标准寻访」的圆环色 `#FFD524` 完全不同 —— 早先试过 `#FFC400`，
+     跟那个黄几乎重合、同屏糊成一团（连像素扫描都被骗过）。深色 + 白描边在浅圆底和头像上都醒目。 */
+  triColor: '#8D2E00',
+  triStroke: '#fff',  // 白描边：与进店点 / 蓝菱形同一手法，压在头像上也能看清
   /* 选中（悬停 / 点了弹浮窗）那个标记的**黑色外发光**（见 renderItem 的 children[0]）。
      平时完全透明，只有 `emphasis` 状态才亮起来 —— 于是「哪个标记被选中了」一眼可见
      （此前实测选中前后**一个像素都不差**，页面上完全没有选中反馈）。 */
@@ -305,6 +313,8 @@ export function buildUpTimeline({
           `类型：${TYPE_LABEL[mark.type]}（${mark.cat}）`,
         ];
         if (mark.isShop) lines.push(`<b style="color:${SHOP.color}">商店兑换</b>`);
+        /* 文字色与标记同色（深赭）—— 浮窗是白底，这个深度读得清 */
+        if (mark.skinRelated) lines.push('<b style="color:#8D2E00">同期有皮肤上架</b>');
         if (row.releaseDate) {
           lines.push(`实装 ${row.releaseDate} · 第 ${row.marks.indexOf(mark) + 1}/${row.count} 次 UP`);
         }
@@ -371,7 +381,8 @@ export function buildUpTimeline({
       /* 2) 标记：每次 UP 一个（圆**左边缘**对齐卡池开始日）
             两种模式用**同一套配色**：浅色圆底 + 大类色外圈，区别只是里面放
             头像（图片模式）还是干员名首字（简洁模式）。
-            进店 = **左上角**绿点（圆）、中坚甄选 = **左上角**蓝菱形（同位，两者互斥，见 renderItem 里的注释）。 */
+            进店 = **左上角**绿点（圆）、中坚甄选 = **左上角**蓝菱形（同位，两者互斥，见 renderItem 里的注释）、
+            **该期有皮肤在售 = 左下角深赭三角**（2026-10-04 加，判定见 lib/upHistory.js）。 */
       {
         type: 'custom',
         data: markRefs.map((ref) => [ref.mi, ref.idx]),
@@ -515,6 +526,27 @@ export function buildUpTimeline({
               },
               style: { fill: '#fff', stroke: CAT_COLOR[BANNER_CATEGORIES[mark.type]], lineWidth: 2 },
               // style: { fill: CAT_COLOR[BANNER_CATEGORIES[mark.type]], stroke: '#fff', lineWidth: 1 },
+            });
+          }
+
+          /* 这一期有该干员的**皮肤在售**（卡池窗口 ∩ 皮肤上架窗口）→ **左下角**深赭色正三角。
+             ⚠️ 与上面的蓝菱形同理：zrender **没有 `type:'triangle'`**，要用 polygon 手拼三个顶点。
+             位置挑左下角是因为左上角已被进店绿点 / 中坚甄选蓝菱形占着 —— 四种标记互不遮挡。
+             判定在 `lib/upHistory.js` 的 `skinOverlapsBanner`。 */
+          if (mark.skinRelated) {
+            const tx = cx + TL.dotInset;
+            const ty = cy + d / 2 - TL.dotInset;
+            const R = TL.triR;
+            children.push({
+              type: 'polygon',
+              shape: {
+                points: [
+                  [tx, ty - R], // 上顶点
+                  [tx + R * 0.866, ty + R * 0.5], // 右下（等边：底边半宽 = R·cos30°）
+                  [tx - R * 0.866, ty + R * 0.5], // 左下
+                ],
+              },
+              style: { fill: TL.triColor, stroke: TL.triStroke, lineWidth: 1 },
             });
           }
 
