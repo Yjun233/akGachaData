@@ -298,10 +298,15 @@ check('干员表带 tcClassicDate 字段', Object.values(rawOperators).every((o)
     /* ② 限定干员一律 null（中坚寻访池不含限定干员） */
     check(`${server}：限定干员没有中坚转入日期`,
       rows.filter((o) => o.isLimited).every((o) => !o[FIELD[server]]), true);
-    /* ③ 已实装、非限定、且实装日 ≤ 最后一段上界的干员必须有值（批次表漏一段就会红） */
+    /* ③ 已实装、非限定、且实装日 ≤ 最后一段上界的干员必须有值（批次表漏一段就会红）。
+       ⚠️ 「被 overrides 显式置 null 的特例段」除外 —— 国际服 2023-01-13 实装的鸿雪 / 晓歌落在
+       第 4 批区间内，但至今未转入中坚（`date: null`），那是**声明过的**例外，不是漏判。 */
     const lastTo = cfg.batches[cfg.batches.length - 1].to;
-    check(`${server}：落在批次区间内的非限定干员都有中坚转入日期`,
-      rows.filter((o) => !o.isLimited && o[relKey] && o[relKey] <= lastTo)
+    const nulledByOverride = (rel) => cfg.overrides.some(
+      (o) => !o.date && rel >= o.from && rel <= o.to,
+    );
+    check(`${server}：落在批次区间内的非限定干员都有中坚转入日期（显式置 null 的特例除外）`,
+      rows.filter((o) => !o.isLimited && o[relKey] && o[relKey] <= lastTo && !nulledByOverride(o[relKey]))
         .every((o) => o[FIELD[server]]), true);
     /* ④ 批次区间首尾相接且有序：第 1 段无下界，之后每段 from = 上一段 to
        （相邻两段**共界当天**，因此同一天实装的干员归前一批） */
