@@ -7,7 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { computeStats, endInfo, sortStatRows, daysSortValue } from '../src/lib/stats.js';
 import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/firstUp.js';
@@ -276,6 +276,48 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
 
 check('干员表带 tcReleaseDate 字段', Object.values(rawOperators).every((o) => 'tcReleaseDate' in o), true);
 check('干员表带 tcClassicDate 字段', Object.values(rawOperators).every((o) => 'tcClassicDate' in o), true);
+
+/* ---------------- 中坚转入日期：国际服 / 繁中服按批次表硬编码 ----------------
+   wiki.gg 与繁中资料页都没有「该干员何时转入中坚寻访」这个字段，所以 en / tc 的
+   classicDate 由资源仓库 `scripts/lib/mid-batches.mjs` 的批次表 + 该服实装日判定
+   （2026-10-04 改；以前是「第一次出现在中坚寻访卡池」，那是轮换 UP 的日期）。
+   下面把该口径的硬约束钉住 —— 批次表改错时这里会红。 */
+{
+  /* 批次表的真身在资源仓库（站点构建不依赖它）—— 与上面读 data/ 同一套路径约定。
+     ⚠️ Windows 上动态 import 必须给 file:// URL，直接塞绝对路径会 ERR_UNSUPPORTED_ESM_URL_SCHEME。 */
+  const MID_BATCHES = (await import(
+    pathToFileURL(path.join(RES_DIR, '..', 'scripts', 'lib', 'mid-batches.mjs')).href
+  )).MID_BATCHES;
+  const FIELD = { en: 'enClassicDate', tc: 'tcClassicDate' };
+  for (const [server, cfg] of Object.entries(MID_BATCHES)) {
+    const relKey = cfg.releaseKey;
+    const rows = Object.values(operators);
+    /* ① classicDate 不能早于该服实装日（「转入中坚」比「实装」还早，逻辑上不可能） */
+    check(`${server}：中坚转入日期 ≥ 该服实装日`,
+      rows.every((o) => !o[FIELD[server]] || !o[relKey] || o[FIELD[server]] >= o[relKey]), true);
+    /* ② 限定干员一律 null（中坚寻访池不含限定干员） */
+    check(`${server}：限定干员没有中坚转入日期`,
+      rows.filter((o) => o.isLimited).every((o) => !o[FIELD[server]]), true);
+    /* ③ 已实装、非限定、且实装日 ≤ 最后一段上界的干员必须有值（批次表漏一段就会红） */
+    const lastTo = cfg.batches[cfg.batches.length - 1].to;
+    check(`${server}：落在批次区间内的非限定干员都有中坚转入日期`,
+      rows.filter((o) => !o.isLimited && o[relKey] && o[relKey] <= lastTo)
+        .every((o) => o[FIELD[server]]), true);
+    /* ④ 批次区间首尾相接且有序：第 1 段无下界，之后每段 from = 上一段 to
+       （相邻两段**共界当天**，因此同一天实装的干员归前一批） */
+    check(`${server}：批次区间首尾相接且有序`,
+      cfg.batches.every((s, i) => (i === 0 ? s.from === null : cfg.batches[i - 1].to === s.from)
+        && (!s.from || !s.to || s.from <= s.to)), true);
+    /* ⑤ 特例区间（若有）必须被某一批次区间覆盖 —— 特例是「从某批里挖出来」的 */
+    check(`${server}：特例区间都落在某个批次区间内`,
+      cfg.overrides.every((o) => cfg.batches.some((b) => (!b.from || o.from >= b.from) && o.to <= b.to)), true);
+    /* ⑥ 批次日期递增（批次表按时间追加，乱序说明写错了）。
+       ⚠️ **只查 batches**：特例段（国际服「1.5 批」2023-10-27）本来就比它所属的第 1 批晚 14 天，
+       混在一起比必然红 —— 特例的语义是「那批之后补上」，不是新批次。 */
+    check(`${server}：批次日期递增`,
+      cfg.batches.every((s, i) => !i || cfg.batches[i - 1].date <= s.date), true);
+  }
+}
 /* 三个服务器各有自己的「数据更新日」（左栏展示用） */
 check('metadata：三个服务器都有数据更新日',
   !!meta.generatedAt && !!meta.enGeneratedAt && !!meta.tcGeneratedAt, true);
