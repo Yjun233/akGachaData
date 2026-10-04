@@ -663,13 +663,13 @@ try {
   check('表格版图片模式：干员格是定位包含块（img 绝对定位的参照）',
     /fup-tbl td\.opcell\{position:relative\}/.test(cssAll), true);
   /* 干员列**定宽 = 7 个汉字**（用户 2026-10-03 指定，设计常量、不随数据变）：
-     13×7 = 91px 文字 + 左右内边距 10×2 = **111px**。统计表那边 padding 是 4px 6px，
-     所以是 103px —— 文字部分两边都是 91px，别把两个数看成互抄错了。
+     13×7 = 91px 文字 + 左右内边距 6×2 = **103px**（padding `4px 6px`，与统计表同一套 ——
+     旧值 111px 是 padding 还是 `6px 10px` 时的，2026-10-05 随行高统一一起改过来）。
      width / min / max **三处必须一致**（真源 = main.css 的 .opcell）。 */
   const opColCss = (cssAll.match(/fup-tbl \.opcell\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   const opColW = Number((opColCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
-  check('表格版：干员列定宽 = 7 个汉字 + 内边距（13×7 + 10×2 = 111px），三处一致',
-    opColW === 111
+  check('表格版：干员列定宽 = 7 个汉字 + 内边距（13×7 + 6×2 = 103px），三处一致',
+    opColW === 103
     && opColCss.includes(`width:${opColW}px`)
     && opColCss.includes(`min-width:${opColW}px`)
     && opColCss.includes(`max-width:${opColW}px`), true);
@@ -1360,8 +1360,8 @@ try {
     && /-webkit-mask-composite:source-in/.test(rectCss), true);
   check('统计页图片模式：头像不被拉伸（object-fit:cover）+ 绝对定位（不影响行高）',
     /object-fit:cover/.test(rectCss) && /position:absolute/.test(rectCss), true);
-  check('统计页图片模式：干员格补回一个行框高度的占位块（height:1lh）',
-    /stat-tbl\.img-mode\s+td\.wrapcell::before\{[^}]*height:1lh\}/.test(cssAll), true);
+  check('统计页图片模式：行高由「两表统一」的 height:35px 钉死（占位行框已随行高统一删除）',
+    /stat-tbl tbody td,\s*table\.grid\.fup-tbl tbody td\{\s*padding-top:0;padding-bottom:0;height:35px;\s*\}/.test(cssAll), true);
   /* ⚠️ 冻结列表头的 z-index 必须**高于**分组表头，否则 DOM 靠后的「出率提升」会盖住「干员」。
      而全局 `table.grid.floating thead tr:first-child th`（特异性 0,3,4）会压过
      只写到 `.stat-tbl` 的规则 —— 所以选择器必须带上 .floating 与 tr。 */

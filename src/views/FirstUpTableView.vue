@@ -96,8 +96,8 @@ const isMetric = (which) => site.firstUpMetric === which;
             <table class="grid floating fup-tbl" :class="{ 'img-mode': isImage }">
               <thead>
                 <tr>
-                  <th class="opcell">干员</th>
                   <th class="num">实装日</th>
+                  <th class="opcell">干员</th>
                   <th class="num">首次{{ word }}日</th>
                   <th>所在卡池</th>
                   <th
@@ -113,16 +113,16 @@ const isMetric = (which) => site.firstUpMetric === which;
               </thead>
               <tbody>
                 <tr v-for="(r, i) in sec.rows" :key="r.name">
+                  <td class="num">
+                    <span v-if="!r.releaseDate" class="dash">—</span>
+                    <template v-else>{{ r.releaseDate }}</template>
+                  </td>
                   <td class="opcell">
                     <img
                       v-if="isImage" class="avt-rect" :src="avatarOf(r.name)"
                       :alt="r.name" :title="r.name"
                     />
                     <b v-else>{{ r.name }}</b>
-                  </td>
-                  <td class="num">
-                    <span v-if="!r.releaseDate" class="dash">—</span>
-                    <template v-else>{{ r.releaseDate }}</template>
                   </td>
                   <td class="num">{{ r.firstDate }}</td>
                   <td class="tl">{{ r.firstBanner || '—' }}</td>

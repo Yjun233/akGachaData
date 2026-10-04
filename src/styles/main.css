@@ -505,20 +505,12 @@ table.grid.stat-tbl thead tr:first-child th:last-child{
   box-shadow:inset 0 -1px 0 var(--blue-200);
 }
 /* 统计表列宽本就按内容自适应，干员名不需要换行 ——
-   覆盖掉上面给卡池列表用的 .wrapcell（否则窄屏下「玛恩纳」会被折成两行） */
+   覆盖掉上面给卡池列表用的 .wrapcell（否则窄屏下「玛恩纳」会被折成两行）。
+   ⚠️ 上下 padding 不在这里给：行高已由上面「两表行高统一」的 `height:35px` 钉死，
+   这里再多给 8px 会把干员格撑到 37.8px，行高又跟表格版对不上（2026-10-05 删）。 */
 table.grid.stat-tbl td.wrapcell{
   white-space:nowrap;overflow-wrap:normal;word-break:normal;
-  padding-top:8px;padding-bottom:8px;
 }
-/* ⚠️ 图片模式下干员格要**补回一个文本行框的高度**，否则整行会矮 8px：
-   简洁模式的 37.8px 行高其实是**干员格**撑出来的 —— 格子里是名字（行框 20.8px）
-   + 上下 padding 8×2 + 底边线 1；而数字格只有 4px padding，本身只有 29.8px。
-   头像改成绝对定位后格子里没有行流内容了，行高就掉到 29.8px（与简洁模式对不上）。
-   `::before` 是个高度 1lh（= line-height 20.8px）的空块，把格子内容高度顶回行框高度：
-   20.8 + 16 + 1 = **37.8px**，与简洁模式逐像素一致。
-   ⚠️ 不能在 `td` 上写 `height:1lh` —— 全局 `*{box-sizing:border-box}`，
-   td 的 height 是**外高**，20.8 反而比原来的 29.8 更矮。 */
-table.grid.stat-tbl.img-mode td.wrapcell::before{content:'';display:block;height:20.8px;height:1lh}
 
 /* ---------------- 统计表：冻结「实装时间」「干员」两列 ----------------
    横向滚动时这两列钉在左边（配合 StatTable 里的 colgroup 定宽；第 2 列的 left
@@ -640,6 +632,25 @@ table.grid.fup-tbl td.opcell img.avt-rect{
    linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
   mask-composite: intersect;
 }
+
+/* ---------------- 统计表 / 首次UP表格版：**两表行高统一** ----------------
+   两处数据行原本不一样高（统计表 ≈37.8px、表格版 ≈29.8px）—— 统计表的干员格自带
+   8px 上下 padding 且图片模式还有一条 `::before` 占位行框，表格版两者都没有。
+   图片模式的表现因此也相反：统计表头像上下留白（有缝），表格版头像比行还高（重叠）。
+
+   2026-10-05 统一成 **35px**：内容区 = 35 − 0（padding 已归零）− 1（横边线）= **34px**，
+   正好等于上面 `.avt-rect` 的高度 → 头像垂直居中后上下贴边，相邻两行的头像之间
+   只剩那条 1px 横边线，看上去没有缝隙。
+
+   ⚠️ 为什么写 35 而不是 34：全局 `*{box-sizing:border-box}`，td 的 `height` 是**外高**
+   （含 padding 与 `border-bottom` 的那 1px），内容区 = 外高 − padding − border。
+   ⚠️ padding 必须一起归零：只给 height 的话，统计表干员格自带的 8px 上下 padding
+   会把内容区挤到 34 − 16 = 18px，头像反而被压得更挤。
+   ⚠️ 只作用于 tbody：表头（统计表两行表头的 sticky 对齐靠 `--head-h`）不受影响。 */
+table.grid.stat-tbl tbody td,
+table.grid.fup-tbl tbody td{
+  padding-top:0;padding-bottom:0;height:35px;
+}
 .avt .corners{position:absolute;top:-6px;right:-5px;display:flex;gap:2px;pointer-events:none}
 .avt .corners .mk{
   margin:0;min-width:13px;height:13px;line-height:13px;font-size:10px;
@@ -653,7 +664,7 @@ table.grid.fup-tbl td.opcell img.avt-rect{
 table.grid.fup-tbl{width:auto;table-layout:auto;border-collapse:separate}
 table.grid.fup-tbl th,
 table.grid.fup-tbl td{
-  overflow:visible;padding:6px 10px;
+  overflow:visible;padding:4px 6px;
   box-shadow:inset -1px 0 0 var(--border);
 }
 /* 最后一列不画右边线（表格外侧不出线） */
@@ -684,9 +695,9 @@ table.grid.fup-tbl tbody td.metric-on{background:#eef5fd}
 table.grid.fup-tbl .neg{color:var(--warn);font-weight:600}
 /* ---------------- 首次UP间隔 · 表格版：「干员」列定宽 ----------------
    干员列**固定 = 7 个汉字的宽度**（用户 2026-10-03 指定，与出率提升记录同一个口径）：
-   13×7 = 91px 文字 + 左右内边距 10×2 = **111px**。
-   ⚠️ 比统计表的 103px 多 8px 是因为两边的 padding 不同（这里 `6px 10px`，
-   统计表是 `4px 6px`），**不是**抄错了 —— 文字部分两边都是 91px。
+   13×7 = 91px 文字 + 左右内边距 6×2 = **103px**（padding 与统计表同为 `4px 6px`，
+   所以两表的干员列一样宽 —— 旧值 111px 是 padding 还是 `6px 10px` 时的，已随 2026-10-05
+   的行高统一一起作废）。
    ⚠️ 宽度三件套要一起写：`table-layout:auto` 下光有 width，内容一长列还是会被撑开。
      · width / min-width —— 图片模式的**前提**：蒙版头像是绝对定位、不占位，
        不给宽度时这一列会缩到只剩表头「干员」两个字的宽度，68px 的头像就溢到日期列上；
@@ -695,14 +706,14 @@ table.grid.fup-tbl .neg{color:var(--warn);font-weight:600}
    ⚠️ 选择器按 **opcell 类**而不是 `:first-child` —— 认列名比认列位置稳
    （th 与 td 都挂 opcell，见 FirstUpTableView.vue）。 */
 table.grid.fup-tbl .opcell{
-  width:111px;min-width:111px;max-width:111px;
+  width:103px;min-width:103px;max-width:103px;
 }
 /* 图片模式的干员列：长方形蒙版头像 —— 与「出率提升记录」同款，几何 + 四边渐隐全在
    上面那条 `img.avt-rect` 里（用户 2026-10-03 指定，替换掉原来的 26px 圆形头像）。
    与统计表的差异——这边没有冻结列，所以要自己补**定位包含块**：
    td 不是定位元素 → 给 opcell 补 position:relative，否则 img 的 left/top:50%
    会相对更外层（表格 / 滚动容器）定位。
-   行高不用管：头像脱离文档流后，整行高度由数字列的行框决定，与简洁模式一致。 */
+   行高不用管：由上面「两表行高统一」的 `height:35px` 钉死。 */
 table.grid.fup-tbl td.opcell{position:relative}
 .badge{
   display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;
