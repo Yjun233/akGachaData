@@ -121,6 +121,27 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_en.json'))) {
      凡出现在国际服卡池里的干员，都必须有 enReleaseDate（否则站点侧会算出空日期）。 */
   check('国际服卡池里的干员都有国际服实装日',
     enBanners.every((b) => b.upOperators.every((o) => operators[o.name]?.enReleaseDate)), true);
+
+  /* ---- 开服干员的实装日 = 各服开服日（2026-10-04 修） ----
+     三服**同构**：国服开服当天就在 roster 里的那批干员，在任何服务器的实装日都是**该服开服日**。
+     ⚠️ 实测踩过：国际服那 35 位曾被 wiki 的事件表带偏到 `2020-02-05`（= 国际服第一场活动的
+     开始日，即开服后的**普通轮换**）。繁中服当时锚定了、国际服漏了 → 现在两边都锚。
+     开服 roster 是**历史常量**（不会因新干员入库而变），所以「35」可以写死在断言里。 */
+  const launchOps = Object.values(operators)
+    .filter((o) => o.scReleaseDate && o.scReleaseDate <= '2019-04-30');
+  check('开服干员恰好 35 位', launchOps.length, 35);
+  check('开服干员的国服实装日都是 2019-04-30',
+    launchOps.every((o) => o.scReleaseDate === '2019-04-30'), true);
+  check('开服干员的国际服实装日锚定为 2020-01-16（不是开服后的轮换 2020-02-05）',
+    launchOps.every((o) => o.enReleaseDate === '2020-01-16'), true);
+  check('开服干员的繁中服实装日锚定为 2020-06-29',
+    launchOps.every((o) => o.tcReleaseDate === '2020-06-29'), true);
+  /* 反向：开服后才实装的干员**不该**被锚定（斯卡蒂 / 夜魔是 2019-05-30 实装，国际服 = 2020-02-05） */
+  check('开服后实装的干员没有被误锚定（斯卡蒂的国际服实装日仍是 2020-02-05）',
+    operators['斯卡蒂']?.enReleaseDate === '2020-02-05', true);
+  check('国际服 metadata 的最早卡池 = 开服日 2020-01-16',
+    enMeta.earliestBanner === '2020-01-16', true);
+
   check('国际服「双五寻访」恰好 3 个', enBanners.filter((b) => b.type === 'five').length, 3);
   check('国际服卡池按 (开始日, id) 升序', (() => {
     const ks = Object.keys(enMap);
