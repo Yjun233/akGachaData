@@ -1045,6 +1045,40 @@ if (skinsFile) {
     + ` 含「只皮肤」${onlySkin} / 空心·只密录模组 ${onlyExtra} / 两者都有 ${both}）`);
 }
 
+/* ---------------- 卡池所属活动：actType / canRerun（2026-10-05 加） ----------------
+   资源仓库的 `fetch-data.mjs` 在**周五**抓活动页（`{{活动信息}}` 模板）把「卡池所属活动」
+   写进 `banners_sc.json`。这里守住最关键的那条**不变量**：
+   **`canRerun=true` 的池必须属于「支线故事」** —— 它是整套判定的依据
+   （实测：非支线故事的单六寻访 **0 个**复刻过，见 akGachaDocs 的同名预研）。
+   ⚠️ 只做国服（活动页只有 PRTS 有）；另两服的文件不带这些键，所以以下都只看 sc。 */
+const scBanners = banners;
+const scSingles = scBanners.filter((b) => b.type === 'single');
+check('卡池所属活动：所有国服卡池都有 actType / actName 两个键',
+  scBanners.every((b) => 'actType' in b && 'actName' in b), true);
+check('卡池所属活动：单六寻访都有 canRerun / rerunKind',
+  scSingles.filter((b) => 'canRerun' in b && 'rerunKind' in b).length, scSingles.length);
+check('卡池所属活动：非单六寻访不带 canRerun（常驻轮换池谈复刻没意义）',
+  scBanners.filter((b) => b.type !== 'single' && 'canRerun' in b).length, 0);
+check('卡池所属活动：rerunKind 取值合法',
+  scSingles.every((b) => ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
+/* ⭐ 核心不变量（用户给的规律：只有支线故事的单六寻访会复刻） */
+check('卡池所属活动：canRerun=true 的池全都是「支线故事」',
+  scSingles.filter((b) => b.canRerun).every((b) => b.actType === '支线故事'), true);
+check('卡池所属活动：canRerun=true 的池都是「首发」池（复刻 / 返场都算已再上架、不再有下一次）',
+  scSingles.filter((b) => b.canRerun).every((b) => b.rerunKind === '首发'), true);
+/* ⚠️ 支线故事的首发池里 canRerun=false 的，应当**只有**那两个已知反例
+   （2019「火蓝之心」复刻时带了新干员、开的是新池，旧池没复刻）。
+   以后要是冒出第三个，说明规律变了 —— 这条会立刻红。 */
+const ssNoRerun = scSingles.filter((b) => b.actType === '支线故事' && b.rerunKind === '首发' && !b.canRerun);
+check('卡池所属活动：支线故事首发池里 canRerun=false 的只有那 2 个已知反例',
+  ssNoRerun.length === 2 && ssNoRerun.every((b) => ['深夏的守夜人', '久铸尘铁'].includes(b.name)), true);
+const crTrue = scSingles.filter((b) => b.canRerun).length;
+check('卡池所属活动：canRerun=true 的数量落在 10~45（防判定失效 → 全 true / 全 false）',
+  crTrue >= 10 && crTrue <= 45, true);
+console.log(`· 卡池所属活动：${scBanners.length} 个卡池，actType 取值 `
+  + `${[...new Set(scBanners.map((b) => b.actType ?? '(null)'))].join(' / ')}；`
+  + `单六寻访 ${scSingles.length} 个中 canRerun=true 的 ${crTrue} 个`);
+
 // ---- 输出 ----
 let bad = 0;
 for (const r of results) {
