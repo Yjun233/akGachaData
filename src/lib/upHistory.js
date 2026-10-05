@@ -26,8 +26,13 @@
  *   对应右栏的「显示范围内未 UP 干员」勾选框）。
  *   ⚠️ 2026-09-30 口径调整：以前时间范围只改横轴、纵轴始终保留全部干员。
  *
- * 标记上的 `skinRelated`（2026-10-04 新增）：这一期卡池的开放窗口与该干员某套皮肤的
- * 上架窗口**有重叠** → `true`（页面在头像左下角打深赭色正三角）。判定见 `skinOverlapsBanner`。
+ * 标记上的三个「时间重合」布尔（都在头像左下角的三角上体现，见 lib/upTimeline.js）：
+ * - `skinRelated`：卡池窗口 ∩ 某套皮肤的**上架窗口**（区间 ∩ 区间）
+ * - `memoirRelated` / `moduleRelated`：某条密录 / 模组的**推出日**落在卡池窗口内（点 ∈ 区间）
+ *
+ * ⚠️ **这三个只在国服（`sc`）判**（用户 2026-10-05 定）：皮肤 / 密录 / 模组三份数据都**只做国服**，
+ *   拿国服的推出日期去比国际服 / 繁中服的卡池窗口是错的（国际服比国服晚约 9 个月）。
+ *   所以非国服一律**不做判定、不显示标记**（三个布尔都是 `false`）—— 而不是拿国服数据凑合标。
  */
 import { diffDays } from './date.js';
 
@@ -41,6 +46,9 @@ const SORT_KEY = {
 const spansOverlap = (aStart, aEnd, bStart, bEnd) =>
   !!aStart && !!aEnd && !!bStart && !!bEnd && aStart <= bEnd && bStart <= aEnd;
 
+/** 单个日期有没有落在某个闭区间内 */
+const dateInSpan = (d, start, end) => !!d && !!start && !!end && start <= d && d <= end;
+
 /**
  * 该干员的皮肤里，有没有哪一套的**上架窗口与这个卡池重叠**。
  *
@@ -50,7 +58,8 @@ const spansOverlap = (aStart, aEnd, bStart, bEnd) =>
  *   「有没有关联」要的是宽松信号，边界那天差一天不值得纠结。）
  * ⚠️ `longTime` 的那几个窗口（常驻类，`end = start + 14` 是脚本**造出来的**）照常参与
  *   —— 用户定过「只为讨论与 UP 的关联性，这里数据不真实也无妨」。
- * ⚠️ 皮肤数据只有国服：切到国际服 / 繁中服时，这里按同一份国服皮肤表判（页面不区分服）。
+ * ⚠️ 皮肤数据只有国服 → **门控交给调用方**（`computeUpHistory` 里 `extrasOk = server === 'sc'`），
+ *   非国服根本走不到这里。见文件头。
  */
 function skinOverlapsBanner(skins, start, end) {
   for (const s of skins || []) {
@@ -60,6 +69,15 @@ function skinOverlapsBanner(skins, start, end) {
   }
   return false;
 }
+
+/**
+ * 该干员的密录 / 模组里，有没有哪一条的**推出日落在卡池窗口内**（用户 2026-10-05 追加）。
+ *
+ * ⚠️ 与皮肤不同，密录 / 模组的日期是**单日**（推出日），不是窗口 → 判据是「点 ∈ 区间」。
+ * ⚠️ 同样是国服数据 → 门控同上（见 `skinOverlapsBanner` 的说明）。
+ */
+const anyDateInBanner = (dates, start, end) =>
+  (dates || []).some((d) => dateInSpan(d, start, end));
 
 function sorter(sort) {
   const desc = String(sort).endsWith('desc');
@@ -78,6 +96,10 @@ function sorter(sort) {
  * @param {object} ctx.categories      type → 大类
  * @param {object} ctx.operatorByName  干员名 → 干员
  * @param {object} [ctx.skinsByOperator] 干员名 → 该干员的时装数组（skins.json；缺省=不做皮肤关联判定）
+ * @param {object} [ctx.memoirsByOperator] 干员名 → 该干员密录的**推出日期数组**（memoirs.json）
+ * @param {object} [ctx.modulesByOperator] 干员名 → 该干员模组的**推出日期数组**（modules.json）
+ * @param {string} [ctx.server]        当前服务器 id —— 皮肤 / 密录 / 模组**只有国服数据**，
+ *        所以**非 `sc` 一律不判**（见文件头说明）
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
@@ -93,6 +115,9 @@ export function computeUpHistory({
   categories,
   operatorByName,
   skinsByOperator = {},
+  memoirsByOperator = {},
+  modulesByOperator = {},
+  server = '',
   relDateOf,
   classicDateOf = null,
   today = '',
@@ -103,6 +128,8 @@ export function computeUpHistory({
   sort = 'release-asc',
 }) {
   const typeSet = types && types.length ? new Set(types) : null;
+  /* 皮肤 / 密录 / 模组**只有国服数据** → 非国服不做这三个判定（见文件头的说明） */
+  const extrasOk = server === 'sc';
   /* 「已属中坚」的判据时点：优先右栏的结束日期，没设就按今天 */
   const midCutoff = hideMid ? ((range && range.to) || today || '') : '';
 
@@ -123,8 +150,15 @@ export function computeUpHistory({
         endDate: b.endDate,
         isShop: !!op.isShop,
         rarity: op.rarity,
-        /* 这一期卡池与该干员的皮肤上架窗口有重叠（页面在头像左下角打深赭色正三角） */
-        skinRelated: skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
+        /* 这一期卡池与该干员的这些内容「时间重合」（页面在头像左下角打三角，样式见 upTimeline）：
+           皮肤 = 上架窗口与卡池窗口重叠；密录 / 模组 = 推出日落在卡池窗口内。
+           ⚠️ 前面挂 `extrasOk` —— 非国服一律 false（三份数据都只有国服，见文件头）。 */
+        skinRelated: extrasOk
+          && skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
+        memoirRelated: extrasOk
+          && anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
+        moduleRelated: extrasOk
+          && anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
       });
     }
   }

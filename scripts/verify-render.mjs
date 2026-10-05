@@ -757,33 +757,59 @@ try {
   check('UP 历史页：时间轴有最小宽度（内层 min-width 内联样式）',
     /class="tl-inner" style="min-width:\s*\d{3,}px/.test(uh), true);
 
-  /* --- 皮肤同期标记（2026-10-04）：卡池窗口 ∩ 皮肤上架窗口 → 头像**左下角**深赭三角 ---
+  /* --- 时间重合标记（2026-10-04 起）：皮肤上架窗口 ∩ 卡池窗口；密录 / 模组推出日 ∈ 卡池窗口
+         → 头像**左下角**赭三角（**实心 = 有皮肤**、**空心 = 只有密录·模组**）。
      图表内容是 canvas 自绘，SSR 产物里看不到 → 只能读源码钉住契约（参考手册 ⑫ 的老办法）。 */
   const uhLibSrc = fs.readFileSync(path.join(ROOT, 'src/lib/upHistory.js'), 'utf8');
   const loadSrc = fs.readFileSync(path.join(ROOT, 'src/lib/loadData.js'), 'utf8');
   const siteSrc = fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8');
 
-  check('皮肤标记：loadData 加载 skins.json（可选，缺文件降级）并按干员名索引',
+  check('时间重合：loadData 加载 skins / memoirs / modules 三个文件（都是可选，缺则降级）',
     /getJSONOptional\('skins\.json'\)/.test(loadSrc)
-    && /skinsByOperator\[s\.char\]/.test(loadSrc), true);
-  check('皮肤标记：store 把 skinsByOperator 传进 computeUpHistory',
-    /skinsByOperator: s\.skinsByOperator/.test(siteSrc), true);
-  /* 判定口径：**闭区间求交**（卡池 [startDate,endDate] ∩ 皮肤 onShelf [start,end]） */
-  check('皮肤标记：判定是闭区间求交',
+    && /getJSONOptional\('memoirs\.json'\)/.test(loadSrc)
+    && /getJSONOptional\('modules\.json'\)/.test(loadSrc), true);
+  check('时间重合：loadData 按干员名索引（skins 存整套、密录模组只留日期）',
+    /skinsByOperator\[s\.char\]/.test(loadSrc)
+    && /memoirsByOperator\[m\.char\]/.test(loadSrc)
+    && /modulesByOperator\[m\.char\]/.test(loadSrc), true);
+  check('时间重合：store 把三个数据源都传进 computeUpHistory',
+    /skinsByOperator: s\.skinsByOperator/.test(siteSrc)
+    && /memoirsByOperator: s\.memoirsByOperator/.test(siteSrc)
+    && /modulesByOperator: s\.modulesByOperator/.test(siteSrc), true);
+  /* 判定口径：皮肤是**区间 ∩ 区间**（闭区间求交）；密录 / 模组是**点 ∈ 区间** */
+  check('时间重合：皮肤用闭区间求交',
     /aStart <= bEnd && bStart <= aEnd/.test(uhLibSrc), true);
-  check('皮肤标记：mark 上带 skinRelated',
-    /skinRelated: skinOverlapsBanner\(/.test(uhLibSrc), true);
+  check('时间重合：密录 / 模组用「推出日落在卡池窗口内」',
+    /const dateInSpan = \(d, start, end\) => !!d && !!start && !!end && start <= d && d <= end;/.test(uhLibSrc)
+    && /anyDateInBanner\(/.test(uhLibSrc), true);
+  check('时间重合：mark 上带三个布尔（且都受 `extrasOk` 门控）',
+    /skinRelated: extrasOk\s*&& skinOverlapsBanner\(/.test(uhLibSrc)
+    && /memoirRelated: extrasOk\s*&& anyDateInBanner\(/.test(uhLibSrc)
+    && /moduleRelated: extrasOk\s*&& anyDateInBanner\(/.test(uhLibSrc), true);
   /* 绘制：polygon 手拼三点（zrender 无 triangle 类型）；底边半宽 = R·cos30° 是等边三角的特征 */
-  check('皮肤标记：画成等边三角形（底边半宽 = R·cos30°）',
-    /mark\.skinRelated/.test(tlSrc) && /R \* 0\.866/.test(tlSrc), true);
-  check('皮肤标记：三角落在标记圆**左下角**（cy + d / 2）',
+  check('时间重合：画成等边三角形（底边半宽 = R·cos30°）',
+    /mark\.skinRelated \|\| mark\.memoirRelated \|\| mark\.moduleRelated/.test(tlSrc)
+    && /R \* 0\.866/.test(tlSrc), true);
+  check('时间重合：三角落在标记圆**左下角**（cy + d / 2）',
     /const ty = cy \+ d \/ 2 - TL\.dotInset;/.test(tlSrc), true);
-  /* ⚠️ 颜色必须与「常驻标准寻访」的圆环色 `#FFD524` 拉开 —— 早先用 `#FFC400` 时两者
-     几乎重合、同屏糊成一团（实测过，连像素扫描都被骗） */
-  check('皮肤标记：三角用深赭 #8D2E00，且与标准池圆环色 #FFD524 不同',
+  /* ⚠️ **三态**（用户 2026-10-05 定稿）：
+     · 只有皮肤 → 实心赭（填充赭 + **白**描边）
+     · 有密录 / 模组 → **描边也变赭**
+     · 只有密录 / 模组（无皮肤）→ **空心赭**（白填充 + 赭描边） */
+  check('时间重合：填充 = 有皮肤 ? 赭 : 白',
+    /fill: mark\.skinRelated \? TL\.triColor : TL\.triEmpty/.test(tlSrc), true);
+  check('时间重合：描边 = 有密录 / 模组 ? 赭 : 白',
+    /stroke: mark\.memoirRelated \|\| mark\.moduleRelated \? TL\.triColor : TL\.triEmpty/.test(tlSrc), true);
+  check('时间重合：三角描边很细（lineWidth 0.5）', /lineWidth: 0\.5/.test(tlSrc), true);
+  check('时间重合：三角色 #8D2E00（且 ≠ 标准池圆环色 #FFD524）',
     /triColor: '#8D2E00'/.test(tlSrc) && !/triColor: '#FFD524'/.test(tlSrc), true);
-  check('皮肤标记：tooltip 有「同期有皮肤上架」一行',
-    /同期有皮肤上架/.test(tlSrc), true);
+  /* ⚠️ 三份数据只有国服 → 非 `sc` 一律不判（用户 2026-10-05 定） */
+  check('时间重合：store 把当前服务器传进去',
+    /server: s\.server,/.test(siteSrc), true);
+  check("时间重合：lib 里非国服一律不判（extrasOk = server === 'sc'）",
+    /const extrasOk = server === 'sc';/.test(uhLibSrc), true);
+  check('时间重合：tooltip 分别提示「同期有皮肤上架」与「同期有密录 / 模组上线」',
+    /同期有皮肤上架/.test(tlSrc) && /同期有\$\{extraUp\.join/.test(tlSrc), true);
 
   /* ---------------- 鼠标拖拽平移（两个图表页共用 useDragPan） ----------------
      需求（2026-10-02）：图表可以按住鼠标拖拽移动视图；⚠️ **手机端的滑动不能被影响**。

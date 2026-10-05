@@ -955,9 +955,10 @@ if (hasProto) {
   console.log('（未找到 prototype/index.html，跳过逐格对比；先运行 pnpm build:prototype）');
 }
 
-/* ---------------- 皮肤 × 卡池：「同期有皮肤上架」标记（UP 历史页） ----------------
-   站点侧的判定在 src/lib/upHistory.js 的 `skinOverlapsBanner`；这里直接用**它本体**跑一遍
-   （接线 + 判定一起验），再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。 */
+/* ---------------- 时间重合 × 卡池：头像左下角的赭三角（UP 历史页） ----------------
+   三段判定都在 src/lib/upHistory.js（皮肤 = 区间 ∩ 区间；密录 / 模组 = 推出日 ∈ 区间），
+   这里**照站点的接线**把三个数据源喂进去跑一遍（接线 + 判定一起验），
+   再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。 */
 const skinsFile = fs.existsSync(path.join(RES_DIR, 'skins.json')) ? read('skins.json') : null;
 check('skins.json 已产出', !!skinsFile, true);
 if (skinsFile) {
@@ -970,33 +971,78 @@ if (skinsFile) {
   const skinsByOperator = {};
   for (const s of skinList) (skinsByOperator[s.char] ||= []).push(s);
 
+  /* 密录 / 模组：同样只留**推出日期**（与 src/lib/loadData.js 同一口径） */
+  const memFile = fs.existsSync(path.join(RES_DIR, 'memoirs.json')) ? read('memoirs.json') : null;
+  const modFile = fs.existsSync(path.join(RES_DIR, 'modules.json')) ? read('modules.json') : null;
+  check('memoirs.json / modules.json 已产出', !!memFile && !!modFile, true);
+  const memoirsByOperator = {};
+  for (const m of memFile?.memoirs || []) {
+    const ds = (m.batches || []).map((b) => b.date).filter(Boolean);
+    if (ds.length) (memoirsByOperator[m.char] ||= []).push(...ds);
+  }
+  const modulesByOperator = {};
+  for (const m of modFile?.modules || []) {
+    if (m?.char && m.date) (modulesByOperator[m.char] ||= []).push(m.date);
+  }
+
   const uhRows = computeUpHistory({
     banners,
     categories: BANNER_CATEGORIES,
     operatorByName: operators,
+    server: 'sc',
     skinsByOperator,
+    memoirsByOperator,
+    modulesByOperator,
     relDateOf: () => null,
     today: localToday(),
   });
   const allMarks = [...uhRows.six, ...uhRows.five].flatMap((r) => r.marks);
-  const hit = allMarks.filter((m) => m.skinRelated).length;
-  const rate = hit / allMarks.length;
-  check('皮肤标记：全部标记都带 skinRelated（布尔）',
-    allMarks.every((m) => typeof m.skinRelated === 'boolean'), true);
-  check('皮肤标记：命中比例落在 5%~25%（防判定失效）', rate > 0.05 && rate < 0.25, true);
-  check('皮肤标记：至少有 1 位干员命中',
-    [...uhRows.six, ...uhRows.five].some((r) => r.marks.some((m) => m.skinRelated)), true);
-  /* 降级：没有皮肤数据时必须**一个都不标**（线上 CDN 还没有这个文件时的情形） */
-  const uhNoSkin = computeUpHistory({
+  const skinHit = allMarks.filter((m) => m.skinRelated).length;
+  const onlySkin = allMarks.filter((m) => m.skinRelated && !m.memoirRelated && !m.moduleRelated).length;
+  const onlyExtra = allMarks.filter((m) => !m.skinRelated && (m.memoirRelated || m.moduleRelated)).length;
+  const both = skinHit - onlySkin;
+  const triTotal = skinHit + onlyExtra;
+  check('时间重合：三个布尔都在（skinRelated / memoirRelated / moduleRelated）',
+    allMarks.every((m) => typeof m.skinRelated === 'boolean' && typeof m.memoirRelated === 'boolean'
+      && typeof m.moduleRelated === 'boolean'), true);
+  check('时间重合：三角总数（有皮肤或密录·模组）比例落在 5%~30%',
+    triTotal / allMarks.length > 0.05 && triTotal / allMarks.length < 0.3, true);
+  check('时间重合：有皮肤的 > 0（实心三角）', skinHit > 0, true);
+  /* ⚠️「只有密录 / 模组」这一类**必须存在** —— 它是「空心三角」那半边的依据（实测 ~96 个） */
+  check('时间重合：只有密录 / 模组（无皮肤）的 > 0（空心三角）', onlyExtra > 0, true);
+  check('时间重合：实心 + 空心 + 两种都有 = 三角总数',
+    onlySkin + onlyExtra + both === triTotal, true);
+  /* 降级：三个数据源都不传时必须**一个都不标**（线上 CDN 还没有这些文件时的情形） */
+  const uhNoExtra = computeUpHistory({
     banners,
     categories: BANNER_CATEGORIES,
     operatorByName: operators,
     relDateOf: () => null,
     today: localToday(),
   });
-  check('皮肤标记：不传 skinsByOperator 时一个都不标（降级正常）',
-    [...uhNoSkin.six, ...uhNoSkin.five].flatMap((r) => r.marks).every((m) => m.skinRelated === false), true);
-  console.log(`· 皮肤×卡池：标记 ${allMarks.length} 个，其中同期有皮肤上架 ${hit} 个（${(rate * 100).toFixed(1)}%）`);
+  check('时间重合：不传三个数据源时一个都不标（降级正常）',
+    [...uhNoExtra.six, ...uhNoExtra.five].flatMap((r) => r.marks)
+      .every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
+  /* ⚠️ 这三份数据**只有国服** → 非 `sc` 一律不判、不显示（用户 2026-10-05 定）。
+     即便把国服的数据照传进去，也要一个都不标 —— 否则就是「拿国服的推出日期去比别服的卡池窗口」。 */
+  for (const srv of ['en', 'tc']) {
+    const uhOther = computeUpHistory({
+      banners,
+      categories: BANNER_CATEGORIES,
+      operatorByName: operators,
+      server: srv,
+      skinsByOperator,
+      memoirsByOperator,
+      modulesByOperator,
+      relDateOf: () => null,
+      today: localToday(),
+    });
+    check(`时间重合：非国服（${srv}）即便传了国服数据也一个都不标`,
+      [...uhOther.six, ...uhOther.five].flatMap((r) => r.marks)
+        .every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
+  }
+  console.log(`· 时间重合：标记 ${allMarks.length} 个 → 三角 ${triTotal} 个（实心·有皮肤 ${skinHit}`
+    + ` 含「只皮肤」${onlySkin} / 空心·只密录模组 ${onlyExtra} / 两者都有 ${both}）`);
 }
 
 // ---- 输出 ----

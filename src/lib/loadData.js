@@ -6,7 +6,9 @@
  * `VITE_RESOURCE=cdn` 才让 dev 走 CDN；**build 一律走 CDN**。切换逻辑见 `resource.js`。
  *   metadata.json          站点元信息 + 服务器列表
  *   operators.json         干员表（各服共用，靠 *ReleaseDate 区分实装日）
- *   skins.json             干员时装（只做国服；**可选** —— 缺文件时 UP 历史页不显示皮肤标记）
+ *   skins.json             干员时装（只做国服；**可选** —— 缺文件时 UP 历史页不显示相应标记）
+ *   memoirs.json           干员密录（只做国服；**可选**）
+ *   modules.json           干员模组（只做国服；**可选**）
  *   卡池类型 → 大类：见 `constants.js` 的 `BANNER_CATEGORIES`（不再用 JSON 数据文件）
  *   banners_<server>.json  各服卡池表
  *
@@ -36,12 +38,14 @@ async function getJSONOptional(name) {
 export async function loadSiteData() {
   /* ⚠️ 大类映射 `BANNER_CATEGORIES` 已从 `banner-categories.json` 移入 `constants.js`
      （各服共用、不随数据更新），这里不再额外发一个请求。 */
-  const [meta, rawOperators, rawSkins] = await Promise.all([
+  const [meta, rawOperators, rawSkins, rawMemoirs, rawModules] = await Promise.all([
     getJSON('metadata.json'),
     getJSON('operators.json'),
-    /* 皮肤是**可选**的（2026-10-04 才产出）—— 线上 CDN 上还没有时要能降级，
-       不能因为缺它整站加载失败。缺了只是 UP 历史页不显示「同期有皮肤上架」的标记。 */
+    /* 皮肤 / 密录 / 模组都是**可选**的（2026-10-04 才产出）—— 线上 CDN 上还没有时要能降级，
+       不能因为缺它们整站加载失败。缺了只是 UP 历史页不显示对应的标记。 */
     getJSONOptional('skins.json'),
+    getJSONOptional('memoirs.json'),
+    getJSONOptional('modules.json'),
   ]);
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），
@@ -49,11 +53,25 @@ export async function loadSiteData() {
   const operators = {};
   for (const op of Object.values(rawOperators)) operators[op.name] = op;
 
-  /* 皮肤**不分服**（只做国服），按干员名索引即可。
-     用途：UP 历史页判断「该期卡池的开放窗口与该干员的皮肤上架窗口是否重叠」。 */
+  /* 皮肤**不分服**（文件本身不带 _sc 后缀，这三份都只做国服），按干员名索引即可。
+     用途：UP 历史页判断「该期卡池的开放窗口与该干员的皮肤上架窗口是否重叠」。
+     ⚠️ **只在国服判定**（非 `sc` 时不显示标记）—— 这层门控在 `lib/upHistory.js`，不在这里。 */
   const skinsByOperator = {};
   for (const s of rawSkins?.skins || []) {
     if (s?.char) (skinsByOperator[s.char] ||= []).push(s);
+  }
+
+  /* 密录 / 模组同上一律按干员名索引，但**只留日期**（判定只要日期）。
+     密录一位可能有多批（`batches[].date`），模组一位可能有好几个（每条一个 `date`）。 */
+  const memoirsByOperator = {};
+  for (const m of rawMemoirs?.memoirs || []) {
+    if (!m?.char) continue;
+    const dates = (m.batches || []).map((b) => b.date).filter(Boolean);
+    if (dates.length) (memoirsByOperator[m.char] ||= []).push(...dates);
+  }
+  const modulesByOperator = {};
+  for (const m of rawModules?.modules || []) {
+    if (m?.char && m.date) (modulesByOperator[m.char] ||= []).push(m.date);
   }
 
   const declared = meta.servers || [];
@@ -86,6 +104,8 @@ export async function loadSiteData() {
     categories: BANNER_CATEGORIES,
     bannersByServer,
     skinsByOperator,
+    memoirsByOperator,
+    modulesByOperator,
   };
 }
 
