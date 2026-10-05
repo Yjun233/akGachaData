@@ -13,6 +13,7 @@
  *   banners_<server>.json  各服卡池表（**不含中坚**）
  *   banners_cla_<server>.json  中坚系列（常驻中坚寻访 + 中坚甄选，**可选**）
  *                              —— 来自官方解包数据，单独一个文件，加载后合并进上面那份
+ *   metadata.cla              中坚系列的元信息（按服 `{ generatedAt, count }`），左栏展示用
  *
  * 卡池文件按服务器拆开：metadata.servers 里 available:true 的服务器才会被加载，
  * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
@@ -37,6 +38,18 @@ async function getJSONOptional(name) {
   }
 }
 
+/**
+ * 数据文件有**两种形态**，这里统一解一层，两种都能吃：
+ *   - **裸数据**：`operators.json` / `banners_<server>.json` —— 顶层直接就是数据
+ *   - **带元信息的包装**：`{ generatedAt, source, <key> }` —— extras 三个与中坚文件是这种
+ * 之所以允许两种并存、而不是统一成一种：这几个裸数据的文件是**站点启动必读**，而站点
+ * build 走 CDN、与数据仓库**分开部署** —— 改结构就得强制「站点先上线兼容版、再推数据」
+ * 的发布顺序，风险不划算。详见 `akGachaDocs/resource/资源仓库说明.md`。
+ */
+function unwrap(json, key) {
+  return json && typeof json === 'object' && json[key] !== undefined ? json[key] : json;
+}
+
 export async function loadSiteData() {
   /* ⚠️ 大类映射 `BANNER_CATEGORIES` 已从 `banner-categories.json` 移入 `constants.js`
      （各服共用、不随数据更新），这里不再额外发一个请求。 */
@@ -53,51 +66,59 @@ export async function loadSiteData() {
   /* operators.json 以 charId 为键（如 char_4179_monstr），
      前端一律按干员名索引（卡池数据里的 upOperators 只有 name）。 */
   const operators = {};
-  for (const op of Object.values(rawOperators)) operators[op.name] = op;
+  for (const op of Object.values(unwrap(rawOperators, 'operators') || {})) operators[op.name] = op;
 
   /* 皮肤**不分服**（文件本身不带 _sc 后缀，这三份都只做国服），按干员名索引即可。
      用途：UP 历史页判断「该期卡池的开放窗口与该干员的皮肤上架窗口是否重叠」。
      ⚠️ **只在国服判定**（非 `sc` 时不显示标记）—— 这层门控在 `lib/upHistory.js`，不在这里。 */
   const skinsByOperator = {};
-  for (const s of rawSkins?.skins || []) {
+  for (const s of unwrap(rawSkins, 'skins') || []) {
     if (s?.char) (skinsByOperator[s.char] ||= []).push(s);
   }
 
   /* 密录 / 模组同上一律按干员名索引，但**只留日期**（判定只要日期）。
      密录一位可能有多批（`batches[].date`），模组一位可能有好几个（每条一个 `date`）。 */
   const memoirsByOperator = {};
-  for (const m of rawMemoirs?.memoirs || []) {
+  for (const m of unwrap(rawMemoirs, 'memoirs') || []) {
     if (!m?.char) continue;
     const dates = (m.batches || []).map((b) => b.date).filter(Boolean);
     if (dates.length) (memoirsByOperator[m.char] ||= []).push(...dates);
   }
   const modulesByOperator = {};
-  for (const m of rawModules?.modules || []) {
+  for (const m of unwrap(rawModules, 'modules') || []) {
     if (m?.char && m.date) (modulesByOperator[m.char] ||= []).push(m.date);
   }
 
   const declared = meta.servers || [];
   const bannersByServer = {};
   const servers = [];
+  /** 中坚文件自带的元信息（仅作 `metadata.cla` 的兜底，见下） */
+  const claFromFile = {};
 
   for (const s of declared) {
     if (!s.available) {
       servers.push({ ...s });
       continue;
     }
-    const banners = await getJSONOptional(`banners_${s.id}.json`);
+    let banners = await getJSONOptional(`banners_${s.id}.json`);
     if (!banners) {
       // 声明可用但文件缺失：降级为不可用，避免前端拿到空数据
       servers.push({ ...s, available: false, missing: true });
       continue;
     }
+    banners = unwrap(banners, 'banners');
     /* 「常驻中坚寻访 + 中坚甄选」在**单独一个文件**里 —— 它们来自**官方解包数据**
        （`akGachaDocs/resource/官方解包数据（ArknightsGamedata）预研.md`），不再由
        PRTS / wiki.gg / 金山 那几个脚本产出（那三个源在这两块上会漏写 / 记错进店位）。
        ⚠️ 卡池 id 用的是同一套规则，所以**直接合并**即可；万一同 id 撞上，**以中坚文件为准**。
        ⚠️ 同样**缺失不报错**（线上 CDN 上还没有这个文件时不能整站失败）。 */
     const mid = await getJSONOptional(`banners_cla_${s.id}.json`);
-    if (mid && mid.banners) Object.assign(banners, mid.banners);
+    const midBanners = unwrap(mid, 'banners');
+    if (midBanners) Object.assign(banners, midBanners);
+    claFromFile[s.id] = {
+      generatedAt: mid?.generatedAt ?? null,
+      count: midBanners ? Object.keys(midBanners).length : null,
+    };
     bannersByServer[s.id] = banners;
     servers.push({ ...s, available: true });
   }
@@ -107,8 +128,17 @@ export async function loadSiteData() {
     ? meta.defaultServer
     : (available[0]?.id ?? meta.defaultServer);
 
+  /* 中坚系列的元信息（左栏「中坚数据更新」展示用）：
+     `metadata.cla` 是**权威镜像**（数据仓库产出时写进去的，见 `fetch-gamedata.mjs`）；
+     万一线上 metadata 还是旧的、没有这个键，就退回用中坚文件自带的日期 ——
+     少一个数字总比整块 `—` 好。 */
+  const cla = { ...(meta.cla || {}) };
+  for (const [id, v] of Object.entries(claFromFile)) {
+    if (!cla[id]?.generatedAt) cla[id] = v;
+  }
+
   return {
-    meta: { ...meta, servers, defaultServer },
+    meta: { ...meta, servers, defaultServer, cla },
     operators,
     categories: BANNER_CATEGORIES,
     bannersByServer,

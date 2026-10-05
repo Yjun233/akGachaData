@@ -89,6 +89,15 @@ check('干员总数', Object.keys(operators).length, meta.operatorCount);
 check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount + claCountOf('sc'));
 check('参与统计干员数', rows.length, 204);
 
+/* `metadata.cla` = 中坚文件元信息的**镜像**（站点左栏「中坚数据更新」读它，由
+   `fetch-gamedata.mjs` 写）—— 顺手对账，防止镜像与实际文件漂移。
+   ⚠️ 缺这个键就跳过（旧快照 / 镜像还没产出时不报错）。 */
+for (const srv of ['sc', 'en', 'tc']) {
+  const cla = meta.cla?.[srv];
+  if (!cla) continue;
+  check(`metadata.cla.${srv}.count = banners_cla_${srv}.json 条数`, cla.count, claCountOf(srv));
+}
+
 /* ---------------- 卡池的三个名字字段（name / scName / enName） ----------------
    三服卡池的 `name` 都是**国服中文名**（`scName` 是同值的显式一列，便于跨服对齐）；
    国际服专有的英文名放在 `enName`，只有「限定寻访 / 单六寻访 / 双五寻访」三类有

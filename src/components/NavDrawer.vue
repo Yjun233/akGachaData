@@ -106,9 +106,9 @@ function onServerChange(e) {
 
     <div class="drawer-note">
       干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.banners.length }}</b> 个<br />
-      国服数据更新 <b>{{ site.updateDates.sc }}</b><br />
-      国际服数据更新 <b>{{ site.updateDates.en }}</b><br />
-      繁中服数据更新 <b>{{ site.updateDates.tc }}</b><br />
+      国服数据更新 <b>{{ site.updateDates.sc }}</b>（中坚 <b>{{ site.claUpdateDates.sc }}</b>）<br />
+      国际服数据更新 <b>{{ site.updateDates.en }}</b>（中坚 <b>{{ site.claUpdateDates.en }}</b>）<br />
+      繁中服数据更新 <b>{{ site.updateDates.tc }}</b>（中坚 <b>{{ site.claUpdateDates.tc }}</b>）<br />
       卡池信息来源 <a v-if="bannerSource.url" :href="bannerSource.url" target="_blank" rel="noreferrer">{{ bannerSource.label }}</a><span v-else>{{ bannerSource.label }}</span><br /><br />
       网站内使用的游戏图片、文本原文等，仅用于更好地辅助数据查询，其版权属于鹰角网络。本网站与鹰角网络无关。
     </div>

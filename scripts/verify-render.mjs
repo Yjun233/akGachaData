@@ -1456,6 +1456,20 @@ try {
   check('左栏：繁中服数据更新日 = metadata.tcGeneratedAt',
     bh.includes(`繁中服数据更新 <b>${UPD.tc}</b>`), true);
 
+  /* 中坚系列（官方解包）另有一套日期 —— 与上面三个**口径不同**（来源不同），所以分行展示。
+     期望值同样从数据派生（`metadata.cla[服].generatedAt`，缺失时 store 会退回 '—'）。 */
+  const CLAD = {
+    sc: banners.store.meta.cla?.sc?.generatedAt || '—',
+    en: banners.store.meta.cla?.en?.generatedAt || '—',
+    tc: banners.store.meta.cla?.tc?.generatedAt || '—',
+  };
+  check('左栏：国服中坚数据更新日 = metadata.cla.sc.generatedAt',
+    bh.includes(`国服数据更新 <b>${UPD.sc}</b>（中坚 <b>${CLAD.sc}</b>）`), true);
+  check('左栏：国际服中坚数据更新日 = metadata.cla.en.generatedAt',
+    bh.includes(`国际服数据更新 <b>${UPD.en}</b>（中坚 <b>${CLAD.en}</b>）`), true);
+  check('左栏：繁中服中坚数据更新日 = metadata.cla.tc.generatedAt',
+    bh.includes(`繁中服数据更新 <b>${UPD.tc}</b>（中坚 <b>${CLAD.tc}</b>）`), true);
+
   /* ---------------- 繁中服：切服务器后各页面要能正常渲染 ----------------
      数据来自本地人工表格（fetch-data-tc.mjs），期望值同样全部从 metadata 派生。 */
   const TC = banners.store.meta.servers.find((x) => x.id === 'tc');

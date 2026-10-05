@@ -11,6 +11,9 @@
  *                    还是 UP 历史 / 首次UP间隔**结束日期的默认值**（2026-10-04，见 fullUpRange）
  *  - `updateDates` = 三个服务器各自的**数据更新日**（纯展示，不参与计算）：
  *                    国服 = metadata.generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt
+ *                    ⚠️ 口径是 **wiki 抓来的卡池**数据的更新日，**不含中坚**（中坚见 `claUpdateDates`）
+ *  - `claUpdateDates` = 三个服务器各自的**中坚系列**（官方解包）数据更新日：
+ *                    取自 `metadata.cla[服].generatedAt`（镜像），缺失时退回中坚文件自带的日期
  */
 import { defineStore } from 'pinia';
 import { BANNER_CATEGORIES } from '../lib/constants.js';
@@ -40,7 +43,7 @@ export const useSiteStore = defineStore('site', {
     ready: false,
     loading: false,
     error: '',
-    meta: { servers: [], defaultServer: 'sc', generatedAt: '' },
+    meta: { servers: [], defaultServer: 'sc', generatedAt: '', cla: {} },
     operators: {},
     /* 干员名 → 该干员的时装数组（来自 skins.json，**只做国服、不分服**）。
        缺文件时是空对象 → UP 历史页只是不显示**对应的**标记。 */
@@ -82,11 +85,19 @@ export const useSiteStore = defineStore('site', {
     availableServers: (s) => (s.meta.servers ?? []).filter((x) => x.available),
     serverMeta: (s) => (s.meta.servers ?? []).find((x) => x.id === s.server) ?? {},
 
-    /** 三个服务器各自的「数据更新日」（左栏展示用；缺值显示 —） */
+    /** 三个服务器各自的「数据更新日」（左栏展示用；缺值显示 —）
+     *  ⚠️ 口径 = **wiki 抓来的卡池**数据，**不含中坚** —— 中坚另有来源、另有日期，见下面 */
     updateDates: (s) => ({
       sc: s.meta.generatedAt || '—',
       en: s.meta.enGeneratedAt || '—',
       tc: s.meta.tcGeneratedAt || '—',
+    }),
+
+    /** 三个服务器各自的**中坚系列**（官方解包）数据更新日（左栏展示用；缺值显示 —） */
+    claUpdateDates: (s) => ({
+      sc: s.meta.cla?.sc?.generatedAt || '—',
+      en: s.meta.cla?.en?.generatedAt || '—',
+      tc: s.meta.cla?.tc?.generatedAt || '—',
     }),
     operatorCount: (s) => s.meta.operatorCount ?? Object.keys(s.operators).length,
 
