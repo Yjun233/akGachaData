@@ -17,7 +17,17 @@ const META = JSON.parse(fs.readFileSync(path.resolve(
   'akGachaResource', 'data', 'metadata.json',
 ), 'utf8'));
 const RES_DATA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'akGachaResource', 'data');
-const BANNER_N = META.servers.find((s) => s.id === 'sc').bannerCount;
+/* ⚠️ 中坚（常驻中坚寻访 + 中坚甄选）在**单独一个文件**里（`banners_cla_<srv>.json`，来自官方解包
+   数据），站点与原型都会把它合并进来 —— 所以期望条数 = `metadata.bannerCount`（不含中坚）+ 中坚条数。 */
+const claCount = (srv) => {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(RES_DATA, `banners_cla_${srv}.json`), 'utf8'));
+    return Object.keys(j.banners || {}).length;
+  } catch {
+    return 0;
+  }
+};
+const BANNER_N = META.servers.find((s) => s.id === 'sc').bannerCount + claCount('sc');
 const SNAP = META.generatedAt;
 /* 可用 / 不可用的服务器也从 metadata 派生（2026-10-01 起国际服已接入，
    以前写死「只有国服可用」的断言会随着数据变化而失效）。 */

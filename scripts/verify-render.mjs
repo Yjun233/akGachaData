@@ -142,7 +142,18 @@ try {
   /* ⚠️ 卡池数 / 快照日会随每次数据更新而变，**不要写死** —— 写成从 metadata 派生的期望值。
      （曾写死 430 / 2026-09-29，2026-09-30 数据更新到 431 后一堆断言集体变红。） */
   const META = banners.store.meta;
-  const BANNER_N = META.servers.find((x) => x.id === 'sc').bannerCount;
+  /* ⚠️ 「常驻中坚寻访 + 中坚甄选」现在放在**单独一个文件**里（`banners_cla_<server>.json`，
+     来自官方解包数据），由站点侧 `loadData.js` 合并 —— 所以「卡池列表行数」的期望值
+     = `metadata.bannerCount`（各脚本抓到的条数，**不含中坚**）+ 该文件里的中坚条数。 */
+  const claCount = (srv) => {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data', `banners_cla_${srv}.json`), 'utf8'));
+      return Object.keys(j.banners || {}).length;
+    } catch {
+      return 0;
+    }
+  };
+  const BANNER_N = META.servers.find((x) => x.id === 'sc').bannerCount + claCount('sc');
   const SNAP = META.generatedAt;
   /* 参考日期的初始值 = 打开页面的**真实当天**（2026-10-01 口径调整；以前取数据快照日 SNAP）。
      三个服务器的「数据更新日」只用于左栏展示，不再参与计算。 */
@@ -1405,9 +1416,9 @@ try {
   if (EN?.available) {
     const enHome = await renderRoute('/', (s) => s.setServer('en'));
     check('国际服：当前服务器切到 en', enHome.store.server, 'en');
-    check('国际服：卡池行数 = metadata.en.bannerCount',
+    check('国际服：卡池行数 = metadata.en.bannerCount + 中坚条数',
       count(enHome.html.slice(enHome.html.indexOf('<tbody>'), enHome.html.indexOf('</tbody>')), /<tr>/g),
-      EN.bannerCount);
+      EN.bannerCount + claCount('en'));
     /* ⚠️ 国际服卡池的 `name` 现在也是**国服中文名**（英文名挪到 `enName`、本站暂不展示），
        所以这里不能再断言「渲染出英文卡池名」。 */
     check('国际服：卡池名已是国服中文名（name === scName）',
@@ -1455,9 +1466,9 @@ try {
     check('繁中服：当前服务器切到 tc', tcHome.store.server, 'tc');
     /* ⚠️ 繁中服有 2 个「已公布但还没开始」的池子（最新到 10-22）—— 卡池列表的结束日期默认取
        数据上界，所以它们照常显示、行数 = bannerCount；只有**统计页**按参考日期过滤。 */
-    check('繁中服：卡池行数 = metadata.tc.bannerCount',
+    check('繁中服：卡池行数 = metadata.tc.bannerCount + 中坚条数',
       count(tcHome.html.slice(tcHome.html.indexOf('<tbody>'), tcHome.html.indexOf('</tbody>')), /<tr>/g),
-      TC.bannerCount);
+      TC.bannerCount + claCount('tc'));
     check('繁中服：序号类卡池名（常驻标准寻访 / 常驻中坚寻访 / 中坚甄选 / 联合行动…）',
       tcNames.some((n) => /^常驻标准寻访\d+$/.test(n))
       && tcNames.some((n) => /^常驻中坚寻访\d+$/.test(n))

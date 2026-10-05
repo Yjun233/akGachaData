@@ -105,7 +105,7 @@ function onServerChange(e) {
     </div>
 
     <div class="drawer-note">
-      干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.serverMeta.bannerCount ?? 0 }}</b> 个<br />
+      干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.banners.length }}</b> 个<br />
       国服数据更新 <b>{{ site.updateDates.sc }}</b><br />
       国际服数据更新 <b>{{ site.updateDates.en }}</b><br />
       繁中服数据更新 <b>{{ site.updateDates.tc }}</b><br />

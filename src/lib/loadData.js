@@ -10,7 +10,9 @@
  *   memoirs.json           干员密录（只做国服；**可选**）
  *   modules.json           干员模组（只做国服；**可选**）
  *   卡池类型 → 大类：见 `constants.js` 的 `BANNER_CATEGORIES`（不再用 JSON 数据文件）
- *   banners_<server>.json  各服卡池表
+ *   banners_<server>.json  各服卡池表（**不含中坚**）
+ *   banners_cla_<server>.json  中坚系列（常驻中坚寻访 + 中坚甄选，**可选**）
+ *                              —— 来自官方解包数据，单独一个文件，加载后合并进上面那份
  *
  * 卡池文件按服务器拆开：metadata.servers 里 available:true 的服务器才会被加载，
  * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
@@ -89,6 +91,13 @@ export async function loadSiteData() {
       servers.push({ ...s, available: false, missing: true });
       continue;
     }
+    /* 「常驻中坚寻访 + 中坚甄选」在**单独一个文件**里 —— 它们来自**官方解包数据**
+       （`akGachaDocs/resource/官方解包数据（ArknightsGamedata）预研.md`），不再由
+       PRTS / wiki.gg / 金山 那几个脚本产出（那三个源在这两块上会漏写 / 记错进店位）。
+       ⚠️ 卡池 id 用的是同一套规则，所以**直接合并**即可；万一同 id 撞上，**以中坚文件为准**。
+       ⚠️ 同样**缺失不报错**（线上 CDN 上还没有这个文件时不能整站失败）。 */
+    const mid = await getJSONOptional(`banners_cla_${s.id}.json`);
+    if (mid && mid.banners) Object.assign(banners, mid.banners);
     bannersByServer[s.id] = banners;
     servers.push({ ...s, available: true });
   }

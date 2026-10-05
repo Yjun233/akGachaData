@@ -30,12 +30,28 @@ if (!fs.existsSync(RES_DIR)) {
   process.exit(1);
 }
 const read = (p) => JSON.parse(fs.readFileSync(path.join(RES_DIR, p), 'utf8'));
+/** 「中坚」条数（`banners_cla_<server>.json`）—— 站点与原型都会把它合并进来，本脚本同理 */
+const claCountOf = (srv) => {
+  try {
+    return Object.keys(read(`banners_cla_${srv}.json`).banners || {}).length;
+  } catch {
+    return 0;
+  }
+};
 
 const meta = read('metadata.json');
 const rawOperators = read('operators.json');
 /* type → 大类已移入 src/lib/constants.js（BANNER_CATEGORIES），不再读 JSON 数据文件 */
 const categories = BANNER_CATEGORIES;
 const bannerMap = read('banners_sc.json');
+/* ⚠️ 中坚（常驻中坚寻访 + 中坚甄选）现在放在**单独一个文件**里（`banners_cla_sc.json`，
+   来自官方解包数据），站点 `loadData.js` 与 `build-prototype` 都会合并 ——
+   本脚本要统计中坚相关的格子，所以**也得合并**，否则「原型 vs 计算」会整片对不上。 */
+try {
+  Object.assign(bannerMap, read('banners_cla_sc.json').banners);
+} catch {
+  /* 没有中坚文件（旧快照）就不合并 */
+}
 
 /* 与 src/lib/loadData.js 保持一致：operators.json 以 charId 为键，前端按 name 索引 */
 const operators = {};
@@ -70,7 +86,7 @@ const check = (label, actual, expected) => {
 
 // ---- 站点级 ----
 check('干员总数', Object.keys(operators).length, meta.operatorCount);
-check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount);
+check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount + claCountOf('sc'));
 check('参与统计干员数', rows.length, 204);
 
 /* ---------------- 卡池的三个名字字段（name / scName / enName） ----------------
@@ -207,10 +223,17 @@ check('banners_tc.json 已产出', fs.existsSync(path.join(RES_DIR, 'banners_tc.
 
 if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
   const tcMap = read('banners_tc.json');
+  /* ⚠️ 中坚（classic / clafes）在**单独一个文件**里、站点会合并 —— 这里也要合并，
+     否则下面「序号类编号从 1 连续」「进店标记只出现在 double / classic」等断言会误判。 */
+  try {
+    Object.assign(tcMap, read('banners_cla_tc.json').banners);
+  } catch {
+    /* 没有中坚文件就不合并 */
+  }
   const tcBanners = Object.entries(tcMap).map(([id, b]) => ({ id, ...b }));
   const ofType = (t) => tcBanners.filter((b) => b.type === t);
 
-  check('繁中服卡池数 = metadata.tc.bannerCount', tcBanners.length, tcMeta.bannerCount);
+  check('繁中服卡池数 = metadata.tc.bannerCount + 中坚条数', tcBanners.length, tcMeta.bannerCount + claCountOf('tc'));
   check('繁中服卡池的开头 = metadata.tc.earliestBanner',
     tcBanners.map((b) => b.startDate).sort()[0], tcMeta.earliestBanner);
   check('繁中服 type 都在本站 11 种之内', tcBanners.every((b) => b.type in TYPE_LABEL), true);
@@ -228,10 +251,13 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
   check('繁中服没有联动干员（6 个联动卡池整行被跳过）',
     tcBanners.every((b) => b.upOperators.every((o) => !COLLAB_OPS.includes(o.name))), true);
   check('繁中服卡池按 (开始日, id) 升序', (() => {
-    const ks = Object.keys(tcMap);
+    /* ⚠️ 判的是**文件本身的键序**（`fetch-data-tc.mjs` 按 (开始日, id) 写入）——
+       所以用**未合并中坚**的原始表，别用上面合并过的 `tcMap`（中坚是拼在末尾的）。 */
+    const raw = read('banners_tc.json');
+    const ks = Object.keys(raw);
     for (let i = 1; i < ks.length; i++) {
-      const a = tcMap[ks[i - 1]];
-      const b = tcMap[ks[i]];
+      const a = raw[ks[i - 1]];
+      const b = raw[ks[i]];
       const d = a.startDate.localeCompare(b.startDate);
       if (d > 0 || (d === 0 && ks[i - 1].localeCompare(ks[i]) > 0)) return false;
     }
@@ -754,11 +780,17 @@ check('干员搜索：候选数量有上限',
    UP 历史里「进店绿点」与「中坚甄选菱形」画在**同一个位置**（左上角），依据就是两者互斥
    —— `clafes` 池永远不带进店标记。哪天上游给中坚甄选也加上进店位，两个标记就会叠在一起；
    这条断言会立刻红，提醒重新安排位置（而不是等用户看图才发现）。 */
-for (const [file, label] of [
-  ['banners_sc.json', '国服'], ['banners_en.json', '国际服'], ['banners_tc.json', '繁中服'],
+for (const [file, label, srv] of [
+  ['banners_sc.json', '国服', 'sc'], ['banners_en.json', '国际服', 'en'], ['banners_tc.json', '繁中服', 'tc'],
 ]) {
   if (!fs.existsSync(path.join(RES_DIR, file))) continue;
   const map = read(file);
+  /* ⚠️ 中坚（classic）在**单独一个文件**里、站点会合并 —— 这条不变量要在**合并后**的集合上判。 */
+  try {
+    Object.assign(map, read(`banners_cla_${srv}.json`).banners);
+  } catch {
+    /* 没有中坚文件就只判主文件 */
+  }
   const shopTypes = new Set();
   let clafesShop = 0;
   for (const b of Object.values(map)) {

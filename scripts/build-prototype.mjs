@@ -41,9 +41,21 @@ const { BANNER_CATEGORIES: categories } = await import('../src/lib/constants.js'
 const availableServers = (meta.servers || []).filter((s) => s.available);
 const bannersByServer = {};
 for (const s of availableServers) {
-  bannersByServer[s.id] = await readJson(`banners_${s.id}.json`);
+  const map = await readJson(`banners_${s.id}.json`);
+  /* ⚠️ 中坚（常驻中坚寻访 + 中坚甄选）在**单独一个文件**里（`banners_cla_<id>.json`，
+     来自官方解包数据），站点侧 `loadData.js` 会把它合并进来 —— 原型这里照做，
+     否则原型的卡池行数会比站点少一截。文件缺失就跳过（旧快照 / 首次跑都可能没有）。 */
+  try {
+    const mid = (await readJson(`banners_cla_${s.id}.json`)).banners;
+    if (mid) Object.assign(map, mid);
+  } catch {
+    /* 没有中坚文件就不合并 */
+  }
+  bannersByServer[s.id] = map;
 }
 const curServer = (meta.servers || []).find((s) => s.id === meta.defaultServer) || {};
+/** 左栏「卡池 N 个」—— 用**合并后**的条数，与站点口径一致 */
+const bannerCount = Object.keys(bannersByServer[curServer.id] || {}).length;
 
 const payload = { operators, bannersByServer, categories, meta };
 let template = await fs.readFile(TEMPLATE, 'utf8');
@@ -67,7 +79,7 @@ html = put(html, '<!--__SERVEROPTIONS__-->', serverOptions);
 html = put(html, '<!--__REFDATE__-->', meta.generatedAt);
 html = put(html, '<!--__GENDATE__-->', meta.generatedAt);
 html = put(html, '<!--__OPCOUNT__-->', String(meta.operatorCount));
-html = put(html, '<!--__BANNERCOUNT__-->', String(curServer.bannerCount ?? 0));
+html = put(html, '<!--__BANNERCOUNT__-->', String(bannerCount));
 
 const leftovers = html.match(/<!--__[A-Z]+__-->/g);
 if (leftovers) throw new Error('仍有未替换的占位符: ' + [...new Set(leftovers)].join(', '));
@@ -76,6 +88,6 @@ await fs.writeFile(OUT, html, 'utf8');
 
 const kb = (Buffer.byteLength(html, 'utf8') / 1024).toFixed(0);
 console.log('✓ 原型已生成（含无 JS 预渲染内容）');
-console.log(`  干员 ${meta.operatorCount} 位 / 卡池 ${curServer.bannerCount ?? 0} 个（服务器：${curServer.label || meta.defaultServer}）`);
+console.log(`  干员 ${meta.operatorCount} 位 / 卡池 ${bannerCount} 个（服务器：${curServer.label || meta.defaultServer}）`);
 console.log(`  预渲染：卡池视图 ${(pre.banners.length / 1024).toFixed(0)} KB · 统计视图 ${(pre.stats.length / 1024).toFixed(0)} KB`);
 console.log(`  输出 ${path.relative(ROOT, OUT)} (${kb} KB)`);
