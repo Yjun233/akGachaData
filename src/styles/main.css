@@ -965,6 +965,10 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   font-size:12px;color:var(--muted);line-height:1.7;
 }
 .cbd-dropped .row > span{flex:1 1 auto}
+/* 加载时**已被自动删除**的那段（只作告知、没有操作按钮）—— 比「已忽略」更淡一档，
+   一眼能看出「这是已经处理过的历史记录」而不是待办。 */
+.cbd-auto-removed .cbd-subhd{color:var(--muted)}
+.cbd-auto-removed .row{opacity:.85}
 /* JSON 编辑框（2026-10-06 取代原来的「导出文件 / 导入文件」那对按钮）——
    框里就是**全部自设**；`white-space:pre` + `wrap="off"`，让长数组横向滚而不是折成一团。 */
 .cbd-json{

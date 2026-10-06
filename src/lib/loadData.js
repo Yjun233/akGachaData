@@ -26,7 +26,7 @@
  */
 import { dataUrl } from './resource.js';
 import { BANNER_CATEGORIES } from './constants.js';
-import { dedupe, loadEntries } from './customBanners.js';
+import { dedupe, loadEntries, saveEntries } from './customBanners.js';
 
 async function getJSON(name) {
   const res = await fetch(dataUrl(name));
@@ -155,19 +155,38 @@ export async function loadSiteData() {
         恰好有 `classic` / `clafes` 两类 —— 只比主表的话，自设的中坚池**永远撞不上**
         已公布的中坚池，去重会静默失效（见预研 §3.2）。
      ⚠️ 撞上就**丢自定义**（优先级 `wiki > 自定义`）。
+
+     ⚠️⚠️ **加载时会把撞车的自设从存储里真正删掉**（用户 2026-10-06 定：希望自动删除）——
+        因为「撞上」意味着这个池子已经被**正式公布**，自设已经没有存在意义，留着只会堆在
+        「已忽略」里当垃圾。删掉的记进 `customAutoRemoved`，弹窗里会提示一声。
+        ⚠️ **只在加载时删**（= 新数据刚到），**不在用户刚添加时删** —— 用户点保存后
+        得先看见「已忽略，撞了哪个池」，立刻静默删掉会让人以为没保存成功（见 store 的
+        `_syncCustom`，那里只算不删）。
      ⚠️ 自设**不并进 `bannersByServer`** —— 「进不进统计 / 图表」由 store 的全局开关决定，
         这里只按服整理好交给 store 去拼。 */
-  const customEntries = loadEntries();
+  const stored = loadEntries();
   const customByServer = {};
   /** 每服**真正生效**的那些自设的 `uid`（去重后被吃掉的**不在**里面）—— 弹窗的「已生效」列表用 */
   const customActiveUids = {};
-  const customDropped = [];
+  /** 本次加载**自动删除**掉的自设（原始输入 + 撞上了谁 + 差几天），弹窗里提示用 */
+  const customAutoRemoved = [];
+  const covered = new Set();
   for (const s of available) {
-    const mine = customEntries.filter((e) => e.server === s.id);
+    const mine = stored.filter((e) => e.server === s.id);
     const { kept, dropped } = dedupe(mine, toBannerList(bannersByServer[s.id]));
     customByServer[s.id] = kept.map((x) => x.banner);
     customActiveUids[s.id] = kept.map((x) => x.entry.uid);
-    for (const d of dropped) customDropped.push({ ...d, server: s.id });
+    for (const d of dropped) {
+      covered.add(d.entry.uid);
+      customAutoRemoved.push({ ...d, server: s.id });
+    }
+  }
+  const customEntries = stored.filter((e) => !covered.has(e.uid));
+  if (customEntries.length !== stored.length) {
+    saveEntries(customEntries);
+    console.info(
+      `[data] 已自动删除 ${stored.length - customEntries.length} 条自设卡池（对应卡池已被正式公布）`
+    );
   }
 
   return {
@@ -179,7 +198,7 @@ export async function loadSiteData() {
     customEntries,
     customByServer,
     customActiveUids,
-    customDropped,
+    customAutoRemoved,
   };
 }
 

@@ -43,6 +43,8 @@ const serverLabel = computed(() => site.serverMeta.label || site.server);
    否则被去重吃掉的条目会同时出现在「已生效」和「已忽略」两段里。 */
 const myList = computed(() => site.myActiveEntries);
 const dropped = computed(() => site.myDroppedCustom);
+/** 加载时**已被自动删除**的自设（撞上已公布的池 → 从存储删掉了，这里只作告知） */
+const autoRemoved = computed(() => site.myAutoRemovedCustom);
 
 /** 实时校验（与「保存」用的是同一套规则） */
 const preview = computed(() => site.validateCustom({ ...form }));
@@ -203,11 +205,20 @@ const showJson = ref(false);
       </ul>
 
       <div v-if="dropped.length" class="cbd-dropped">
-        <div class="cbd-subhd">已忽略（与已公布卡池重复，不会生效）</div>
+        <div class="cbd-subhd">已忽略（与已公布卡池重复，不会生效 —— 下次打开页面会自动删除）</div>
         <div v-for="d in dropped" :key="d.entry.uid" class="row">
           <span>{{ d.entry.startDate }} {{ d.entry.name || '(自动命名)' }}
             —— 与「{{ d.hit.name }}」重复（开始日相差 {{ d.gap }} 天）</span>
           <button class="cbd-mini" type="button" @click="remove(d.entry.uid)">删除</button>
+        </div>
+      </div>
+
+      <!-- 加载时**已经**被自动删掉的那些：说一声「为什么不见了」，否则用户会以为自设丢了 -->
+      <div v-if="autoRemoved.length" class="cbd-dropped cbd-auto-removed">
+        <div class="cbd-subhd">已自动删除（{{ autoRemoved.length }} 条 · 对应卡池已被正式公布）</div>
+        <div v-for="d in autoRemoved" :key="d.entry.uid" class="row">
+          <span>{{ d.entry.startDate }} {{ d.entry.name || '(自动命名)' }}
+            —— 与「{{ d.hit.name }}」重复（开始日相差 {{ d.gap }} 天）</span>
         </div>
       </div>
 

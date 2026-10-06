@@ -61,12 +61,15 @@ export const useSiteStore = defineStore('site', {
     bannersByServer: {},
     /* ---- 自定义卡池（浏览器本地自设）----
        `customEntries` = 用户填的**原始字段**（三服混在一起，每条自带 server）；
-       `customByServer` / `customDropped` = 与已公布卡池**去重后**的结果（在 loadData 里算好）。
+       `customByServer` / `customActiveUids` = 与已公布卡池**去重后**的结果（在 loadData 里算好）；
+       `customDropped` = 「撞了但还没清理」的（= 用户**本次会话刚添加**的那种，见 `_syncCustom`）；
+       `customAutoRemoved` = **加载时已被自动删除**的（撞上的自设在加载时就从存储里删掉了）。
        ⚠️ **绝不并进 `bannersByServer`** —— 那样就分不出「哪些是自设」了。 */
     customEntries: [],
     customByServer: {},
     customActiveUids: {},
     customDropped: [],
+    customAutoRemoved: [],
 
     // ---- 界面 ----
     server: 'sc',
@@ -143,8 +146,13 @@ export const useSiteStore = defineStore('site', {
     /** 左栏计数用：当前服**生效的**自定义条数（被去重吃掉的不算） */
     customCount: (s) => (s.customByServer[s.server] ?? []).length,
 
-    /** 当前服「被去重吃掉」的自定义（弹窗要单列提醒，否则用户以为没保存成功） */
+    /** 当前服「被去重吃掉、**但还没清理**」的自定义（= 用户本次会话刚添加的）
+        —— 弹窗要单列提醒，否则用户以为没保存成功。⚠️ **下次打开页面就会被自动删除** */
     myDroppedCustom: (s) => s.customDropped.filter((d) => d.server === s.server),
+
+    /** 当前服**加载时已被自动删除**的自定义（撞上的自设已在 `loadData` 里从存储删掉）
+        —— 弹窗提示一声「这几条为什么不见了」 */
+    myAutoRemovedCustom: (s) => s.customAutoRemoved.filter((d) => d.server === s.server),
 
     /** 当前服的自定义**原始输入**（弹窗的编辑列表用；顺序 = 添加顺序） */
     myCustomEntries: (s) => s.customEntries.filter((e) => e.server === s.server),
@@ -339,11 +347,14 @@ export const useSiteStore = defineStore('site', {
         this.extrasByServer = data.extrasByServer || {};
         this.categories = data.categories;
         this.bannersByServer = data.bannersByServer;
-        /* 自定义卡池：原始输入 + 按服去重后的结果（都在 loadData 里读/算好） */
+        /* 自定义卡池：原始输入 + 按服去重后的结果（都在 loadData 里读/算好）
+           ⚠️ `customEntries` 已经是**清理过**的那份 —— 撞上已公布卡池的自设在 loadData 里
+              就被删掉并写回存储了，删掉的那些记在 `customAutoRemoved` 里（弹窗提示用） */
         this.customEntries = data.customEntries || [];
         this.customByServer = data.customByServer || {};
         this.customActiveUids = data.customActiveUids || {};
-        this.customDropped = data.customDropped || [];
+        this.customDropped = [];
+        this.customAutoRemoved = data.customAutoRemoved || [];
         this.server = data.meta.defaultServer;
         /* 参考日期初始值 = 打开页面的真实当天（2026-10-01 口径调整；以前取数据快照日） */
         this.refDate = this.today;
@@ -366,9 +377,12 @@ export const useSiteStore = defineStore('site', {
        · **去重**（撞上已公布的就丢自设）在 loadData / _syncCustom 里统一做；
        · 增删改一律「先校验、再写盘、再重算」，校验不过**不写盘**；
        · `customInStats`（是否计入统计与图表）是**界面状态**，不持久化 ——
-         与全站其它界面状态一样，刷新即回默认（默认关）。 */
+         与全站其它界面状态一样，刷新即回默认（默认关）。
+       ⚠️ **自动删除只发生在 `loadData`（页面加载）里**：那里撞上的自设会被真的从存储删掉
+          （用户 2026-10-06 定）。本文件里的 `_syncCustom` **只算不删** —— 用户刚添加就撞车时
+          得先看见「已忽略，撞了哪个池」，立刻静默删掉会让人以为没保存成功。 */
 
-    /** 本地存储里的自设变了之后，重算「按服去重后的结果」 */
+    /** 本地存储里的自设变了之后，重算「按服去重后的结果」（**只算不删**，见上） */
     _syncCustom() {
       const entries = this.customEntries;
       const byServer = {};

@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 /* 纯函数工具可以直接 import（无 import.meta.env / .vue 依赖），不必绕 vite */
-import { shiftYears, localToday } from '../src/lib/date.js';
+import { shiftDays, shiftYears, localToday } from '../src/lib/date.js';
 /* 配色常量（纯模块，可直接 import）—— 断言的期望值直接引用它，避免抄错色值；
    同理排序标签也从 `UP_SORT_ROWS` 取，别写死文案 */
 import { CAT_COLOR, SHOP, UP_SORT_ROWS } from '../src/lib/constants.js';
@@ -1542,6 +1542,10 @@ try {
     store.customDropped = [
       { entry: eaten, banner: {}, hit: { id: 'w', name: '某个已公布的池' }, gap: 2, server: 'sc' },
     ];
+    /* 加载时**已被自动删除**的那段也要能渲出来（说一声「为什么不见了」） */
+    store.customAutoRemoved = [
+      { entry: { ...eaten, uid: 3 }, banner: {}, hit: { id: 'w2', name: '已被公布的那个池' }, gap: 5, server: 'sc' },
+    ];
     const html = await renderToString(app);
 
     check('自定义卡池弹窗：六个表单字段都在（**没有结束日期**，它是派生值）',
@@ -1558,6 +1562,9 @@ try {
       html.includes('已生效（1 个）'), true);
     check('自定义卡池弹窗：「已忽略」写明撞上了谁 + 差几天',
       html.includes('已忽略') && html.includes('某个已公布的池') && html.includes('相差 2 天'), true);
+    check('自定义卡池弹窗：「已自动删除」单列一段（告知「为什么不见了」）+ 提示下次会自动清理',
+      html.includes('已自动删除（1 条') && html.includes('已被公布的那个池')
+      && html.includes('下次打开页面会自动删除'), true);
     check('自定义卡池弹窗：底部是「编辑 JSON…」**按钮**（编辑框另开窗，不在主窗里）',
       count(html, /class="cbd-json/g) === 0
       && count(html, /type="file"/g) === 0
@@ -1645,6 +1652,53 @@ try {
       /class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8'))
       && /ref="opBoxEl" class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8')),
       true);
+  }
+
+  /* ---------------- 自定义卡池：**加载时自动删除**被覆盖的自设 ----------------
+     用户 2026-10-06 定：撞上已公布卡池的自设要**自动删掉**（别一直堆在「已忽略」里）。
+     做法：给一个假的 `localStorage`，塞两条 —— 一条**必然撞车**（照抄某个真实已公布池的
+     六星集合、把开始日挪 3 天）、一条不撞 —— 然后跑一次 `loadSiteData()`，
+     看存储里是不是只剩不撞的那条、删掉的那条有没有出现在 `customAutoRemoved` 里。
+     ⚠️ 这段会临时替换 `globalThis.localStorage`，所以**必须放在最后**（用完立刻还原）。 */
+  {
+    const { loadSiteData } = await vite.ssrLoadModule('/src/lib/loadData.js');
+    const real = banners.store.publishedBanners.find(
+      (b) => b.type === 'double' && b.upOperators?.some((o) => o.rarity === 6)
+    );
+    /* 照抄真实池的六星 / 五星 / 进店 —— 去重只比「六星集合相等 + 开始日相差 ≤15 天」，
+       而**进店数量是硬校验**（`double` 必须恰好 1 六星 + 1 五星），所以三个都得对上 */
+    const names = (r) => real.upOperators.filter((o) => o.rarity === r).map((o) => o.name);
+    const covered = {
+      uid: 901, server: 'sc', name: '', type: 'double',
+      startDate: shiftDays(real.startDate, 3),
+      star6: names(6), star5: names(5),
+      shop: real.upOperators.filter((o) => o.isShop).map((o) => o.name),
+    };
+    const alive = {
+      uid: 902, server: 'sc', name: '', type: 'double', startDate: '2099-05-01',
+      star6: ['玛恩纳'], star5: ['德克萨斯'], shop: ['玛恩纳', '德克萨斯'],
+    };
+    const fake = {
+      map: new Map(),
+      getItem(k) { return this.map.has(k) ? this.map.get(k) : null; },
+      setItem(k, v) { this.map.set(k, String(v)); },
+      removeItem(k) { this.map.delete(k); },
+    };
+    const KEY = 'akgacha:custom-banners';
+    const prevLS = globalThis.localStorage;
+    globalThis.localStorage = fake;
+    fake.setItem(KEY, JSON.stringify({ version: 1, banners: [covered, alive] }));
+    const data = await loadSiteData();
+    globalThis.localStorage = prevLS;
+
+    check('自设卡池：加载时**自动删除**被正式公布覆盖的那条',
+      data.customAutoRemoved.length === 1 && data.customAutoRemoved[0].entry.uid === 901, true);
+    check('自设卡池：没被覆盖的那条留着（不是一刀切清空）',
+      data.customEntries.length === 1 && data.customEntries[0].uid === 902, true);
+    check('自设卡池：删除**写回了本地存储**（不是只在内存里剔除）',
+      JSON.parse(fake.getItem(KEY)).banners.length === 1, true);
+    check('自设卡池：返回时不再带 `customDropped`（加载时该删的都删了，那段只留给「刚添加就撞」）',
+      data.customDropped === undefined, true);
   }
 } finally {
   await vite.close();
