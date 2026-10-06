@@ -24,6 +24,8 @@ const totalWidth = computed(() => BANNER_COLS.reduce((a, b) => a + b, 0));
 
 /** 进行中 = 参考日期落在 [开始日, 结束日) —— **结束日当天算已关闭**（2026-10-01 口径） */
 const isLive = (b) => b.startDate <= site.today && site.today < b.endDate;
+/** 未开始 = 开始日**晚于今天**（按日期判、不按来源，见 main.css 的 .pill-pending 注释） */
+const isPending = (b) => b.startDate > site.today;
 
 /** 某星级的 UP 干员 */
 const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
@@ -66,7 +68,7 @@ const sortClass = (key) =>
           </td>
         </tr>
         <tr v-for="b in rows" :key="b.id">
-          <td class="wrapcell"><span :class="{'pill-live':isLive(b)}"><b>{{ b.name }}</b>{{ ' ' }}</span></td>
+          <td class="wrapcell"><span :class="{ 'pill-live': isLive(b), 'pill-pending': isPending(b) }"><b>{{ b.name }}</b>{{ ' ' }}</span></td>
           <td class="wrapcell"><span class="badge">{{ TYPE_LABEL[b.type] }}</span></td>
           <td class="wrapcell"><span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{
             site.categories[b.type] }}</span></td>

@@ -15,7 +15,7 @@
  * 「全部 / 重置」也回到它 —— 这两个标签因此都带一句「默认今天」。
  * ⚠️ **卡池列表**不在此列：结束日期仍取数据的最晚结束日（列表要照常列出预告池）。
  */
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { FIRST_UP_MODES, FIRST_UP_MODE_LABEL, UP_SORT_ROWS } from '../lib/constants.js';
 import { modeWord } from '../lib/firstUp.js';
@@ -159,6 +159,23 @@ function pickOp(name) {
   opQuery.value = '';
 }
 
+/* 候选列表是**浮层**（`.opbox` 里绝对定位）→ 出现 / 消失**不撑高抽屉**
+   （2026-10-06 用户要求，与自定义卡池弹窗同步改）。下方空间不够就改成向上弹。 */
+const opBoxEl = ref(null);
+const opDropUp = ref(false);
+const OP_SUG_MAX = 200; // ≈ `.opsug` 的 max-height + 一点余量
+
+function opFocusIn() {
+  askPinyin();
+  nextTick(() => {
+    const el = opBoxEl.value;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    opDropUp.value = below < OP_SUG_MAX && r.top > OP_SUG_MAX;
+  });
+}
+
 /* ---------------- UP 历史：卡池类型（同一个按钮组） ---------------- */
 
 /** 右栏顶部的一行摘要（按钮组本身已经很直观，这里只给个计数）。
@@ -215,30 +232,33 @@ function resetUp() {
         <label for="f-op">
           UP 干员<span class="fcount">{{ site.filters.ops.length ? `已选 ${site.filters.ops.length} 位` : '可多选' }}</span>
         </label>
-        <!-- 打字 → 下面出候选；回车取第一个候选、Esc 清空（都得先选进来才算筛选条件） -->
-        <input
-          id="f-op" v-model="opQuery" type="text" autocomplete="off"
-          placeholder="名字 / 全拼 / 首字母，如 银灰 / yinhui / yh"
-          @focus="askPinyin"
-          @keyup.enter="opCandidates.length && pickOp(opCandidates[0])"
-          @keyup.esc="opQuery = ''"
-        />
+        <!-- 打字 → 浮层里出候选；回车取第一个候选、Esc 清空（都得先选进来才算筛选条件） -->
+        <!-- ⚠️ 输入框与候选包在 `.opbox` 里：`.opsug` 绝对定位 → 候选出现不撑高抽屉 -->
+        <div ref="opBoxEl" class="opbox">
+          <input
+            id="f-op" v-model="opQuery" type="text" autocomplete="off"
+            placeholder="名字 / 全拼 / 首字母，如 银灰 / yinhui / yh"
+            @focus="opFocusIn"
+            @keyup.enter="opCandidates.length && pickOp(opCandidates[0])"
+            @keyup.esc="opQuery = ''"
+          />
+          <!-- 候选：点一下加入已选 -->
+          <div v-if="opQuery.trim()" class="opsug" :class="{ up: opDropUp }">
+            <div v-if="!opCandidates.length" class="opsug-empty">没有匹配的干员</div>
+            <button
+              v-for="n in opCandidates" :key="n" class="opsug-item" type="button"
+              @click="pickOp(n)"
+            >
+              {{ n }}
+            </button>
+          </div>
+        </div>
         <!-- 已选：点一下移除 -->
         <div v-if="site.filters.ops.length" class="opchips">
           <button
             v-for="n in site.filters.ops" :key="n" class="opchip" type="button"
             :title="`移除 ${n}`" @click="site.toggleBannerOp(n)"
           >{{ n }}<i>×</i></button>
-        </div>
-        <!-- 候选：点一下加入已选 -->
-        <div v-if="opQuery.trim()" class="opsug">
-          <div v-if="!opCandidates.length" class="opsug-empty">没有匹配的干员</div>
-          <button
-            v-for="n in opCandidates" :key="n" class="opsug-item" type="button"
-            @click="pickOp(n)"
-          >
-            {{ n }}
-          </button>
         </div>
       </div>
       <button class="btn" type="button" @click="site.resetFilters()">重置筛选</button>

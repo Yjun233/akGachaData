@@ -1444,34 +1444,34 @@ try {
       count(enFup.html, /ybar-l/g) + count(enFup.html, /chart-scroll/g), 4);
   }
 
-  /* ---------------- 左栏：三个服务器各自的「数据更新日」（纯展示） ----------------
-     国服 = generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt（= banners_tc.json 的修改日）。
-     参考日期**不再**取这几个日期，它一律是打开页面的当天。 */
+  /* ---------------- 左栏：**只显示当前服务器**的「数据更新日」（纯展示） ----------------
+     用户 2026-10-06 定：不再三服全列 —— 只列**当前服**那一行，中坚**单起一行**
+     （它来源不同、口径不同：卡池来自 PRTS / wiki.gg / 金山，中坚来自官方解包）。
+     国服 = generatedAt、国际服 = enGeneratedAt、繁中服 = tcGeneratedAt。
+     ⚠️ 参考日期**不取**这几个日期，它一律是打开页面的当天。 */
   const UPD = {
     sc: META.generatedAt || '—',
     en: META.enGeneratedAt || '—',
     tc: META.tcGeneratedAt || '—',
   };
-  check('左栏：国服数据更新日 = metadata.generatedAt',
-    bh.includes(`国服数据更新 <b>${UPD.sc}</b>`), true);
-  check('左栏：国际服数据更新日 = metadata.enGeneratedAt',
-    bh.includes(`国际服数据更新 <b>${UPD.en}</b>`), true);
-  check('左栏：繁中服数据更新日 = metadata.tcGeneratedAt',
-    bh.includes(`繁中服数据更新 <b>${UPD.tc}</b>`), true);
-
-  /* 中坚系列（官方解包）另有一套日期 —— 与上面三个**口径不同**（来源不同），所以分行展示。
-     期望值同样从数据派生（`metadata.cla[服].generatedAt`，缺失时 store 会退回 '—'）。 */
   const CLAD = {
     sc: banners.store.meta.cla?.sc?.generatedAt || '—',
     en: banners.store.meta.cla?.en?.generatedAt || '—',
     tc: banners.store.meta.cla?.tc?.generatedAt || '—',
   };
-  check('左栏：国服中坚数据更新日 = metadata.cla.sc.generatedAt',
-    bh.includes(`国服数据更新 <b>${UPD.sc}</b>（中坚 <b>${CLAD.sc}</b>）`), true);
-  check('左栏：国际服中坚数据更新日 = metadata.cla.en.generatedAt',
-    bh.includes(`国际服数据更新 <b>${UPD.en}</b>（中坚 <b>${CLAD.en}</b>）`), true);
-  check('左栏：繁中服中坚数据更新日 = metadata.cla.tc.generatedAt',
-    bh.includes(`繁中服数据更新 <b>${UPD.tc}</b>（中坚 <b>${CLAD.tc}</b>）`), true);
+  /* 这一页是**默认服（国服）**的渲染结果 */
+  check('左栏：只显示当前服的「数据更新日」= metadata.generatedAt',
+    bh.includes(`国服数据更新 <b>${UPD.sc}</b>`), true);
+  check('左栏：中坚**单起一行**（不再缩在括号里）',
+    bh.includes(`中坚数据更新 <b>${CLAD.sc}</b>`) && !/（中坚 <b>/.test(bh), true);
+  check('左栏：不再列出**其它服**的更新日',
+    !bh.includes('国际服数据更新') && !bh.includes('繁中服数据更新'), true);
+  /* 切服后这两行要跟着换（否则「只显示当前服」就退化成了「只显示国服」） */
+  const enLeft = await renderRoute('/', (s) => s.setServer('en'));
+  check('左栏：切到国际服后，那两行跟着变成国际服的',
+    enLeft.html.includes(`国际服数据更新 <b>${UPD.en}</b>`)
+    && enLeft.html.includes(`中坚数据更新 <b>${CLAD.en}</b>`)
+    && !enLeft.html.includes('国服数据更新'), true);
 
   /* ---------------- 繁中服：切服务器后各页面要能正常渲染 ----------------
      数据来自本地人工表格（fetch-data-tc.mjs），期望值同样全部从 metadata 派生。 */
@@ -1509,6 +1509,142 @@ try {
     const tcFup = await renderRoute('/first-up', (s) => s.setServer('tc'));
     check('繁中服：首次UP间隔页两个刻度条 + 两个滚动区',
       count(tcFup.html, /ybar-l/g) + count(tcFup.html, /chart-scroll/g), 4);
+  }
+
+  /* ---------------- 自定义卡池弹窗（单独 SSR 一遍） ----------------
+     弹窗在页面里由 `v-if` 控制、**默认不渲染**（而且自设数据在浏览器本地、测试环境恒为空），
+     所以上面五个页面的核对覆盖不到它。这里把它单独渲染出来：既验证模板本身能跑，
+     也验证「已生效 / 已忽略」两段的划分（`myActiveEntries` 只含去重后活下来的那些）。 */
+  {
+    const { default: Dialog } = await vite.ssrLoadModule('/src/components/CustomBannerDialog.vue');
+    const app = createSSRApp(Dialog);
+    const pinia = createPinia();
+    app.use(pinia);
+    const store = useSiteStore(pinia);
+    await store.load();
+    const alive = {
+      uid: 1, server: 'sc', name: '', type: 'double',
+      startDate: '2099-01-07', endDate: '2099-01-21', star6: '甲、乙', star5: '丙', shop: '',
+    };
+    const eaten = {
+      uid: 2, server: 'sc', name: '被吃掉的', type: 'single',
+      startDate: '2099-02-01', endDate: '2099-02-15', star6: '丁', star5: '', shop: '',
+    };
+    /* 直接按形状塞进去（不必真去写本地存储）—— 这三个字段正是 loadData / _syncCustom 的产物 */
+    store.customEntries = [alive, eaten];
+    store.customByServer = {
+      sc: [{
+        id: '2099-01-07_double_custom_0001', name: '自定义_常驻标准寻访0107', type: 'double',
+        startDate: '2099-01-07', endDate: '2099-01-21', upOperators: [], custom: true,
+      }],
+    };
+    store.customActiveUids = { sc: [1] };
+    store.customDropped = [
+      { entry: eaten, banner: {}, hit: { id: 'w', name: '某个已公布的池' }, gap: 2, server: 'sc' },
+    ];
+    const html = await renderToString(app);
+
+    check('自定义卡池弹窗：六个表单字段都在（**没有结束日期**，它是派生值）',
+      ['寻访名字', '寻访类型', '开始时间', '六星', '五星', '进店'].every((k) => html.includes(k)),
+      true);
+    check('自定义卡池弹窗：三个干员多选（六星 / 五星 / 进店）都在',
+      count(html, /class="oppick"/g), 3);
+    check('自定义卡池弹窗：结束日期**没有输入框**，只在开始时间下写一行小字',
+      count(html, /readonly/g) === 0 && /结束时间将设为/.test(html),
+      true);
+    check('自定义卡池弹窗：不带服务器选择（跟随当前浏览的服）',
+      html.includes('归属服务器跟随当前浏览的服'), true);
+    check('自定义卡池弹窗：「已生效」只数去重后活下来的（1 个）',
+      html.includes('已生效（1 个）'), true);
+    check('自定义卡池弹窗：「已忽略」写明撞上了谁 + 差几天',
+      html.includes('已忽略') && html.includes('某个已公布的池') && html.includes('相差 2 天'), true);
+    check('自定义卡池弹窗：底部是「编辑 JSON…」**按钮**（编辑框另开窗，不在主窗里）',
+      count(html, /class="cbd-json/g) === 0
+      && count(html, /type="file"/g) === 0
+      && html.includes('编辑 JSON…'), true);
+    check('自定义卡池弹窗：没开子窗时不渲染它（`showJson` 默认 false）',
+      !/cbd-mask-top/.test(html), true);
+
+    /* JSON 编辑框背后的 `replaceCustom` —— 顺手验语义：**整体覆盖**（不是追加），
+       非法的逐条跳过而不是整批失败。⚠️ 放在最后：它会改 store，而 `html` 已经是快照。 */
+    check('JSON 编辑框：坏 JSON → 不应用、报错（不抛）',
+      store.replaceCustom('{oops').ok, false);
+    const jsonRes = store.replaceCustom(JSON.stringify({
+      version: 1,
+      banners: [
+        /* 合法：`double` 的**进店硬校验**是「恰好 1 六星 + 1 五星」→ 两边都得对上 */
+        {
+          server: 'sc', name: '', type: 'double', startDate: '2099-03-01',
+          star6: ['玛恩纳'], star5: ['德克萨斯'], shop: ['玛恩纳', '德克萨斯'],
+        },
+        /* 非法：限定池不在白名单 6 个里 → 跳过这条，但不影响上一条 */
+        {
+          server: 'sc', name: '', type: 'limcel', startDate: '2099-03-01',
+          star6: ['陈'], star5: [], shop: [],
+        },
+      ],
+    }));
+    check('JSON 编辑框：合法的应用、非法的跳过（覆盖而非追加）',
+      jsonRes.ok && jsonRes.count === 1 && jsonRes.skipped.length === 1, true);
+    check('JSON 编辑框：应用后 uid 重编为 1 起（免得框里带的 uid 撞车）',
+      store.customEntries.length === 1 && store.customEntries[0].uid === 1, true);
+    /* 说明里那两个「标 / 中」示例本身就在 HTML 里（弹窗的表单初始为空、候选要输入才出，
+       所以**chip / 候选上的标记在这里渲不出来** → 见下面单独渲染 OpPicker 的那一段）。 */
+    check('自定义卡池弹窗：说明里画出了「标 / 中」两个标记示例',
+      count(html, /class="optag/g), 2);
+  }
+
+  /* ---------------- JSON 编辑**子窗**（也是单独 SSR 一遍） ----------------
+     它在主弹窗里由 `showJson` 控制、默认不渲染，上面的核对覆盖不到。
+     用户 2026-10-06 定：编辑框**别挤在主弹窗里**，点了按钮再弹一个窗。 */
+  {
+    const { default: JsonDlg } = await vite.ssrLoadModule('/src/components/CustomJsonDialog.vue');
+    const app = createSSRApp(JsonDlg);
+    const pinia = createPinia();
+    app.use(pinia);
+    const st = useSiteStore(pinia);
+    await st.load();
+    const html = await renderToString(app);
+
+    check('JSON 子窗：大编辑框在、三个按钮（应用 / 放弃修改 / 关闭）都在',
+      count(html, /class="cbd-json cbd-json-big"/g) === 1
+      && html.includes('应用') && html.includes('放弃修改') && html.includes('关闭'), true);
+    check('JSON 子窗：编辑框里预填了当前自设（`serialize` 的 `{ version, exportedAt, banners }`）',
+      html.includes('version') && html.includes('exportedAt') && html.includes('banners'), true);
+    check('JSON 子窗：叠在主弹窗**之上**（`.cbd-mask-top`，z-index 70 > 主弹窗 60）',
+      /class="cbd-mask cbd-mask-top"/.test(html), true);
+    check('JSON 子窗：讲清了「应用」是**整体覆盖**（不是追加）',
+      /整体覆盖/.test(html), true);
+  }
+
+  /* ---------------- 干员多选的「标 / 中」标记 ----------------
+     用户 2026-10-06 定：名字**前面**标一个字，表示该干员**此刻**属标准还是中坚寻访。
+     弹窗那遍渲不出 chip（表单初始为空）→ 这里把 OpPicker 单独渲一遍，钉死
+     「标记在名字**前面**」+「中 / 标 用不同类名」这两件事。 */
+  {
+    const { default: OpPicker } = await vite.ssrLoadModule('/src/components/OpPicker.vue');
+    const app = createSSRApp(OpPicker, {
+      modelValue: ['陈', '玛恩纳'],
+      pool: ['陈', '玛恩纳'],
+      tagOf: (n) => (n === '陈' ? '中' : '标'),
+    });
+    const html = await renderToString(app);
+    check('干员多选：标记画在名字**前面**（不是后面）',
+      /<em class="optag mid">中<\/em>陈/.test(html)
+      && /<em class="optag std">标<\/em>玛恩纳/.test(html), true);
+    check('干员多选：输入框外面包了 `.opbox`（浮层的定位基准）',
+      count(html, /class="opbox"/g), 1);
+
+    /* 候选列表必须是**浮层**（不占流）—— 否则打字时它会撑高容器、选完又缩回去，
+       整个弹窗 / 抽屉跟着跳（2026-10-06 用户要求改掉）。
+       ⚠️ SSR 渲不出（`q` 为空时 `v-if` 为假）→ 只能读 CSS 源码钉住这条契约。 */
+    check('干员多选：候选列表是**绝对定位浮层**，且下方放不下时能向上弹',
+      /\.opbox > \.opsug\{[^}]*position:absolute/.test(cssAll)
+      && /\.opbox > \.opsug\.up\{[^}]*bottom:calc\(100% \+ 4px\)/.test(cssAll), true);
+    check('干员多选：弹窗与右栏筛选**两处**都改成了浮层',
+      /class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8'))
+      && /ref="opBoxEl" class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8')),
+      true);
   }
 } finally {
   await vite.close();

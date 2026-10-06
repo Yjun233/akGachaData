@@ -14,6 +14,10 @@
  *                    ⚠️ 口径是 **wiki 抓来的卡池**数据的更新日，**不含中坚**（中坚见 `claUpdateDates`）
  *  - `claUpdateDates` = 三个服务器各自的**中坚系列**（官方解包）数据更新日：
  *                    取自 `metadata.cla[服].generatedAt`（镜像），缺失时退回中坚文件自带的日期
+ *  - `banners`     = **当前口径**下的卡池（`customInStats` 关 = 只有已公布数据；
+ *                    开 = 再加上本服的自定义卡池）→ **统计页 / 图表**都用它
+ *  - `allBanners`  = **总是**含自定义卡池 → **卡池列表**与左栏计数用它
+ *                    （用户 2026-10-04 定：「默认只显示」= 自定义池只在卡池列表出现）
  */
 import { defineStore } from 'pinia';
 import { BANNER_CATEGORIES } from '../lib/constants.js';
@@ -24,6 +28,9 @@ import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
+import {
+  dedupe, loadEntries, nextUid, parseImport, saveEntries, serialize, validate,
+} from '../lib/customBanners.js';
 
 /**
  * 时间范围的**结束日期默认值** = 访问网站时的**真实今天**（用户 2026-10-04 指定）。
@@ -52,6 +59,14 @@ export const useSiteStore = defineStore('site', {
     /* type → 大类：来自 constants.js（不再由 JSON 数据文件提供） */
     categories: BANNER_CATEGORIES,
     bannersByServer: {},
+    /* ---- 自定义卡池（浏览器本地自设）----
+       `customEntries` = 用户填的**原始字段**（三服混在一起，每条自带 server）；
+       `customByServer` / `customDropped` = 与已公布卡池**去重后**的结果（在 loadData 里算好）。
+       ⚠️ **绝不并进 `bannersByServer`** —— 那样就分不出「哪些是自设」了。 */
+    customEntries: [],
+    customByServer: {},
+    customActiveUids: {},
+    customDropped: [],
 
     // ---- 界面 ----
     server: 'sc',
@@ -74,6 +89,7 @@ export const useSiteStore = defineStore('site', {
     avatarMode: 'text',                // 干员展示：text 简洁（名字）| image 图片（头像）
     bannerSort: { key: 'startDate', dir: 'desc' },
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
+    customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
   getters: {
@@ -98,9 +114,49 @@ export const useSiteStore = defineStore('site', {
     }),
     operatorCount: (s) => s.meta.operatorCount ?? Object.keys(s.operators).length,
 
-    /** 当前服务器的卡池（数组，带 id） */
-    banners(s) {
+    /** 当前服务器的**已公布**卡池（数组，带 id）—— 主表 + 中坚，**不含**自定义 */
+    publishedBanners(s) {
       return toBannerList(s.bannersByServer[s.server]);
+    },
+
+    /** 当前服务器的自定义卡池（**已去重**；被吃掉的在 `myDroppedCustom`） */
+    myCustomBanners: (s) => s.customByServer[s.server] ?? [],
+
+    /**
+     * **当前口径**下的卡池 —— **统计页与图表**用它。
+     * 全局开关 `customInStats` 关（默认）= 只有已公布数据；开 = 再加上自定义。
+     */
+    banners(s) {
+      return s.customInStats
+        ? [...this.publishedBanners, ...this.myCustomBanners]
+        : this.publishedBanners;
+    },
+
+    /**
+     * **总是**含自定义 —— **卡池列表**与左栏计数用它。
+     * 用户 2026-10-04 定「默认只显示」= 自定义池**只在卡池列表出现**，不进统计 / 图表。
+     */
+    allBanners() {
+      return [...this.publishedBanners, ...this.myCustomBanners];
+    },
+
+    /** 左栏计数用：当前服**生效的**自定义条数（被去重吃掉的不算） */
+    customCount: (s) => (s.customByServer[s.server] ?? []).length,
+
+    /** 当前服「被去重吃掉」的自定义（弹窗要单列提醒，否则用户以为没保存成功） */
+    myDroppedCustom: (s) => s.customDropped.filter((d) => d.server === s.server),
+
+    /** 当前服的自定义**原始输入**（弹窗的编辑列表用；顺序 = 添加顺序） */
+    myCustomEntries: (s) => s.customEntries.filter((e) => e.server === s.server),
+
+    /**
+     * 当前服**真正生效**的自设原始输入（= 去重后活下来的那些）。
+     * ⚠️ 与 `myCustomEntries` 的区别就在这 —— 弹窗的「已生效」列表必须用这个，
+     *    否则被去重吃掉的条目也会混进去（用户 2026-10-04 定：那个列表只列生效的）。
+     */
+    myActiveEntries(s) {
+      const uids = new Set(s.customActiveUids[s.server] || []);
+      return s.customEntries.filter((e) => e.server === s.server && uids.has(e.uid));
     },
 
     /** 干员名 → { rarity, isLimited }，统计计算用 */
@@ -129,11 +185,14 @@ export const useSiteStore = defineStore('site', {
       return m;
     },
 
-    /** 当前服务器卡池的开始 / 结束日边界（右栏日期输入的 min 用；也是卡池列表默认值的上界） */
+    /** 当前服务器卡池的开始 / 结束日边界（右栏日期输入的 min 用；也是卡池列表默认值的上界）
+     *  ⚠️ 用 `allBanners`（**含自定义**）—— 否则日期上界盖不住自设的池子，
+     *     卡池列表的默认范围会把它筛掉、看起来像「加了没生效」。
+     *     UP 历史 / 首次UP间隔的默认下界另用 `earliestDate`（当前口径），见 `fullUpRange`。 */
     bannerBounds() {
       let min = null;
       let max = null;
-      for (const b of this.banners) {
+      for (const b of this.allBanners) {
         if (!min || b.startDate < min) min = b.startDate;
         if (!max || b.endDate > max) max = b.endDate;
       }
@@ -161,7 +220,10 @@ export const useSiteStore = defineStore('site', {
      * 时间轴右端因此不再伸到未来，数据里「已预告但还没开始」的卡池默认不参与（要看得往后调）。
      */
     fullUpRange() {
-      const { min } = this.bannerBounds;
+      /* ⚠️ 下界用 `earliestDate`（**当前口径**的最早开始日），不是 `bannerBounds.min` ——
+         后者含自定义池、是给卡池列表用的；跟着它走的话，开关关着时 UP 历史的横轴
+         也会被自设池拉早（而图上并没有对应标记）。 */
+      const min = this.earliestDate;
       return { from: min || '', to: endDefault(min, this.today) };
     },
 
@@ -171,9 +233,9 @@ export const useSiteStore = defineStore('site', {
       return { from: min || '', to: endDefault(min, this.today) };
     },
 
-    /** 卡池列表：筛选 + 排序后的行（与参考日期无关） */
+    /** 卡池列表：筛选 + 排序后的行（**含自定义**，见 `allBanners`；与参考日期无关） */
     bannerRows(s) {
-      return bannerRows(s.banners, s.filters, s.categories, s.bannerSort);
+      return bannerRows(this.allBanners, s.filters, s.categories, s.bannerSort);
     },
 
     /** 统计页：参考日期下的可见卡池与统计表 */
@@ -277,6 +339,11 @@ export const useSiteStore = defineStore('site', {
         this.extrasByServer = data.extrasByServer || {};
         this.categories = data.categories;
         this.bannersByServer = data.bannersByServer;
+        /* 自定义卡池：原始输入 + 按服去重后的结果（都在 loadData 里读/算好） */
+        this.customEntries = data.customEntries || [];
+        this.customByServer = data.customByServer || {};
+        this.customActiveUids = data.customActiveUids || {};
+        this.customDropped = data.customDropped || [];
         this.server = data.meta.defaultServer;
         /* 参考日期初始值 = 打开页面的真实当天（2026-10-01 口径调整；以前取数据快照日） */
         this.refDate = this.today;
@@ -291,6 +358,129 @@ export const useSiteStore = defineStore('site', {
       } finally {
         this.loading = false;
       }
+    },
+
+    /* ---------------- 自定义卡池（浏览器本地自设） ----------------
+       口径见 akGachaDocs/site/自定义卡池功能预研.md。四条约定：
+       · 存的是**用户填的原始字段**，由 lib/customBanners.js 负责读写与容错；
+       · **去重**（撞上已公布的就丢自设）在 loadData / _syncCustom 里统一做；
+       · 增删改一律「先校验、再写盘、再重算」，校验不过**不写盘**；
+       · `customInStats`（是否计入统计与图表）是**界面状态**，不持久化 ——
+         与全站其它界面状态一样，刷新即回默认（默认关）。 */
+
+    /** 本地存储里的自设变了之后，重算「按服去重后的结果」 */
+    _syncCustom() {
+      const entries = this.customEntries;
+      const byServer = {};
+      const active = {};
+      const dropped = [];
+      for (const s of this.availableServers) {
+        const mine = entries.filter((e) => e.server === s.id);
+        const { kept, dropped: gone } = dedupe(mine, toBannerList(this.bannersByServer[s.id] || {}));
+        byServer[s.id] = kept.map((x) => x.banner);
+        active[s.id] = kept.map((x) => x.entry.uid);
+        for (const d of gone) dropped.push({ ...d, server: s.id });
+      }
+      this.customByServer = byServer;
+      this.customActiveUids = active;
+      this.customDropped = dropped;
+    },
+
+    /** 校验一条原始输入（弹窗的「保存」与实时提示都走这里，保证同一套口径） */
+    validateCustom(entry) {
+      return validate(entry, (name) => this.operators[name]);
+    },
+
+    /**
+     * 新增一条。`ok:false` 时**什么都不写**。
+     * @returns {{ok:boolean, errors:string[], warnings:string[]}}
+     */
+    addCustom(entry) {
+      const res = this.validateCustom(entry);
+      if (!res.ok) return res;
+      const next = [...this.customEntries, { ...entry, uid: nextUid(this.customEntries) }];
+      saveEntries(next);
+      this.customEntries = next;
+      this._syncCustom();
+      return res;
+    },
+
+    /** 改写一条 —— **uid 不变**（id 就不变，列表里排序位置也稳定） */
+    updateCustom(uid, entry) {
+      const res = this.validateCustom(entry);
+      if (!res.ok) return res;
+      const next = this.customEntries.map((e) => (e.uid === uid ? { ...entry, uid } : e));
+      saveEntries(next);
+      this.customEntries = next;
+      this._syncCustom();
+      return res;
+    },
+
+    /** 删除一条 */
+    removeCustom(uid) {
+      const next = this.customEntries.filter((e) => e.uid !== uid);
+      saveEntries(next);
+      this.customEntries = next;
+      this._syncCustom();
+    },
+
+    /** 导出**全部**自设（三服一份文件）—— 清缓存前的唯一备份手段 */
+    exportCustom() {
+      return serialize(this.customEntries);
+    },
+
+    /**
+     * 导入：逐条走**同一套校验**，合法的进来（**重新分配 uid**），非法的汇总返回给界面。
+     * ⚠️ 文件里带的 uid 可能与现有的撞，所以一律丢掉重编。
+     * ⚠️ 2026-10-06 起**界面已不用它**了 —— 弹窗底部改成了 JSON 编辑框（走下面的
+     *    `replaceCustom`，语义是**覆盖**）。保留是因为它俩语义不同（这个是**追加**），
+     *    以后若要「把一段 JSON 合并进来」直接可用；别在当前 UI 里找它的调用点。
+     * @returns {{ok:boolean, error:string|null, added:number, skipped:Array<{entry:object,errors:string[]}>}}
+     */
+    importCustom(text) {
+      const parsed = parseImport(text);
+      if (!parsed.ok) return { ok: false, error: parsed.error, added: 0, skipped: [] };
+      const add = [];
+      const skipped = [];
+      let uid = nextUid(this.customEntries);
+      for (const raw of parsed.entries) {
+        const { uid: _ignored, ...entry } = raw;
+        const res = this.validateCustom(entry);
+        if (!res.ok) { skipped.push({ entry: raw, errors: res.errors }); continue; }
+        add.push({ ...entry, uid });
+        uid += 1;
+      }
+      if (add.length) {
+        const next = [...this.customEntries, ...add];
+        saveEntries(next);
+        this.customEntries = next;
+        this._syncCustom();
+      }
+      return { ok: true, error: null, added: add.length, skipped };
+    },
+
+    /**
+     * **整体替换**成 JSON 编辑框里的内容（弹窗底部那个框，2026-10-06 起取代了
+     * 「导出文件 / 导入文件」那对按钮）。
+     * ⚠️ 与 `importCustom`（**追加**）不同：这里是**覆盖** —— 框里就是全部自设，
+     *    删掉的行就等于删掉那条。uid 一律**重编**（从 1 开始），免得框里带的 uid 撞车。
+     * @returns {{ok:boolean, error:string|null, count:number, skipped:Array}}
+     */
+    replaceCustom(text) {
+      const parsed = parseImport(text);
+      if (!parsed.ok) return { ok: false, error: parsed.error, count: 0, skipped: [] };
+      const kept = [];
+      const skipped = [];
+      for (const raw of parsed.entries) {
+        const { uid: _ignored, ...entry } = raw;
+        const res = this.validateCustom(entry);
+        if (!res.ok) { skipped.push({ entry: raw, errors: res.errors }); continue; }
+        kept.push({ ...entry, uid: kept.length + 1 });
+      }
+      saveEntries(kept);
+      this.customEntries = kept;
+      this._syncCustom();
+      return { ok: true, error: null, count: kept.length, skipped };
     },
 
     /** 切换服务器：重置参考日期与全部筛选条件（见 akGachaDocs/site/工作指令.md 5.5） */

@@ -16,12 +16,17 @@
  *                              —— 来自官方解包数据，单独一个文件，加载后合并进上面那份
  *   metadata.cla              中坚系列的元信息（按服 `{ generatedAt, count }`），左栏展示用
  *
+ * 另外还读**浏览器本地自设**的自定义卡池（`lib/customBanners.js`，不是 JSON 文件）——
+ * 与 **已公布的全量卡池**去重后按服拆好交给 store；「进不进统计/图表」由 store 的全局开关决定。
+ * 口径见 `akGachaDocs/site/自定义卡池功能预研.md`。
+ *
  * 卡池文件按服务器拆开：metadata.servers 里 available:true 的服务器才会被加载，
  * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
  * banners_<id>.json 并把 available 改成 true 即可，前端无需改动。
  */
 import { dataUrl } from './resource.js';
 import { BANNER_CATEGORIES } from './constants.js';
+import { dedupe, loadEntries } from './customBanners.js';
 
 async function getJSON(name) {
   const res = await fetch(dataUrl(name));
@@ -145,12 +150,36 @@ export async function loadSiteData() {
     if (!cla[id]?.generatedAt) cla[id] = v;
   }
 
+  /* ---- 自定义卡池（浏览器本地自设，**可选**）----
+     ⚠️ 去重必须在**中坚合并之后**：中坚 2026-10-06 起在单独文件里，而本功能的白名单里
+        恰好有 `classic` / `clafes` 两类 —— 只比主表的话，自设的中坚池**永远撞不上**
+        已公布的中坚池，去重会静默失效（见预研 §3.2）。
+     ⚠️ 撞上就**丢自定义**（优先级 `wiki > 自定义`）。
+     ⚠️ 自设**不并进 `bannersByServer`** —— 「进不进统计 / 图表」由 store 的全局开关决定，
+        这里只按服整理好交给 store 去拼。 */
+  const customEntries = loadEntries();
+  const customByServer = {};
+  /** 每服**真正生效**的那些自设的 `uid`（去重后被吃掉的**不在**里面）—— 弹窗的「已生效」列表用 */
+  const customActiveUids = {};
+  const customDropped = [];
+  for (const s of available) {
+    const mine = customEntries.filter((e) => e.server === s.id);
+    const { kept, dropped } = dedupe(mine, toBannerList(bannersByServer[s.id]));
+    customByServer[s.id] = kept.map((x) => x.banner);
+    customActiveUids[s.id] = kept.map((x) => x.entry.uid);
+    for (const d of dropped) customDropped.push({ ...d, server: s.id });
+  }
+
   return {
     meta: { ...meta, servers, defaultServer, cla },
     operators,
     categories: BANNER_CATEGORIES,
     bannersByServer,
     extrasByServer,
+    customEntries,
+    customByServer,
+    customActiveUids,
+    customDropped,
   };
 }
 

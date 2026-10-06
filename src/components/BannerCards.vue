@@ -15,6 +15,8 @@ const site = useSiteStore();
 
 /** 进行中 = 参考日期落在 [开始日, 结束日) —— **结束日当天算已关闭**（2026-10-01 口径） */
 const isLive = (b) => b.startDate <= site.today && site.today < b.endDate;
+/** 未开始 = 开始日**晚于今天**（按日期判、不按来源，见 main.css 的 .pill-pending 注释） */
+const isPending = (b) => b.startDate > site.today;
 const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
 </script>
 
@@ -25,6 +27,7 @@ const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
       <div class="bcard-hd">
         <span class="bcard-name">{{ b.name }}</span>
         <span v-if="isLive(b)" class="pill-live">进行中</span>
+        <span v-else-if="isPending(b)" class="pill-pending">未开始</span>
         <span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{ site.categories[b.type] }}</span>
       </div>
       <div class="bcard-meta">

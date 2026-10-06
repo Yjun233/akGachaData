@@ -253,6 +253,15 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .opchip > i{font-style:normal;font-size:13px;line-height:1;opacity:.6}
 .opchip:hover > i{opacity:1}
 
+/* 候选列表是**浮层**：包在 `.opbox`（定位基准）里、绝对定位 → **不占流**，
+   打字 / 选完不再把容器（右栏抽屉、自定义卡池弹窗）撑高又缩回（2026-10-06 用户要求）。
+   下方空间不足时 `js` 会给它加 `.up` 改成向上弹，免得被父级 `overflow` 裁掉。 */
+.opbox{position:relative}
+.opbox > .opsug{
+  position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:40;
+  box-shadow:0 10px 24px rgba(15,23,42,.14);
+}
+.opbox > .opsug.up{top:auto;bottom:calc(100% + 4px)}
 /* 候选：限高 + 自己滚，免得搜「a」把整个抽屉撑长（列表本身已被 searchOperators 截到 30 条） */
 .opsug{max-height:190px;overflow:auto;border:1px solid var(--blue-100);border-radius:9px;background:#fff}
 .opsug-item{
@@ -264,6 +273,18 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .opsug-item:hover{background:var(--blue-50)}
 .opsug-item > small{color:var(--muted);font-size:11px;font-weight:400}
 .opsug-empty{padding:7px 9px;font-size:12px;color:var(--muted)}
+
+/* 干员名前面那个「标 / 中」一字标记（只用在自定义卡池弹窗，右栏不传 `tagOf` 就不画）——
+   表示该干员**此刻**属标准还是中坚寻访。**只作提醒**，不限制你选谁。
+   取项目那对类型色（标准黄 / 中坚蓝）的「浅底 + 深字」版：小面积、不抢眼。 */
+.optag{
+  display:inline-block;margin-right:3px;padding:0 3px;border-radius:3px;
+  font-size:10px;font-style:normal;font-weight:700;line-height:1.7;vertical-align:1px;
+}
+.optag.std{color:#6b5400;background:#fff3c4}
+.optag.mid{color:#00629b;background:#dceffb}
+/* chip 本身是 `inline-flex + gap`，再留 margin 会显得标记离名字太远 */
+.opchip .optag{margin-right:0}
 
 /* ---------------- 右栏：卡池类型按钮组（UP 历史） ----------------
    两级：大类按钮（全选 / 取消该大类）+ 其下的类型按钮（点了立刻筛选、选中变蓝）。
@@ -728,6 +749,13 @@ table.grid.fup-tbl td.opcell{position:relative}
   display:inline-block;padding:0 8px;border-radius:999px;font-size:12px;font-weight:700;
   color:var(--ok);background:var(--ok-bg);border:1px solid #b9e6d4;
 }
+/* 「未开始」（开始日 > 今天）—— 与上面同形同字号，**只把底色换成灰**（用户 2026-10-04 定）。
+   ⚠️ 判据是**日期**、不是来源：繁中服的数据源本身就会带入未开始的预排池，
+   只给自定义卡池打标的话，那些池子明明没开始却没有标记、界面自相矛盾（预研 §2.3）。 */
+.pill-pending{
+  display:inline-block;padding:0 8px;border-radius:999px;font-size:12px;font-weight:700;
+  color:#5f6b7a;background:#eef1f5;border:1px solid #d7dde5;
+}
 .dash{color:#b6c2d1}
 .warn{color:var(--warn);font-weight:600}   /* 距今天数 ≥180 天：标黄 */
 .hot{color:var(--danger);font-weight:700}  /* 距今天数 ≥365 天：标红 */
@@ -874,3 +902,84 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .ybar .unit{position:absolute;top:6px;font-size:11px;color:var(--muted)}
 .ybar-l .unit{right:14px}
 .ybar-r .unit{left:14px}
+
+/* ---------------- 自定义卡池：添加 / 编辑弹窗 ---------------- */
+/* 抽屉太窄放不下这些字段，所以用弹窗（宽度自由）；样式与左栏那几块卡片同色系 */
+.cbd-mask{
+  position:fixed;inset:0;z-index:60;padding:24px;
+  background:rgba(15,23,42,.42);
+  display:flex;align-items:center;justify-content:center;
+}
+.cbd-box{
+  width:min(740px,100%);max-height:calc(100vh - 48px);overflow:auto;
+  background:#fff;border:1px solid var(--blue-200);border-radius:14px;
+  padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px;
+}
+.cbd-hd{display:flex;align-items:center;justify-content:space-between}
+.cbd-hd .h{font-size:14px;font-weight:700;color:var(--blue-700)}
+.cbd-tip{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
+.cbd-tip b{color:var(--blue-700)}
+.cbd-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 10px}
+.cbd-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--blue-700)}
+.cbd-form input,.cbd-form select{
+  width:100%;border:1px solid var(--blue-200);border-radius:8px;padding:7px 9px;
+  font-size:13px;background:#fff;color:var(--ink);font-family:inherit;
+}
+.cbd-form input:focus,.cbd-form select:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+/* 「结束日期」**不给输入框**（恒为开始日 + 14 天），只在开始时间下面写一行小字 */
+.cbd-form .cbd-endnote{font-size:11.5px;font-weight:400;color:var(--muted);line-height:1.6}
+.cbd-form .cbd-endnote b{color:var(--blue-700);font-weight:700}
+/* 干员多选那三行占满整行（chip 会换行，窄列放不下） */
+.cbd-form label.cbd-wide{grid-column:1 / -1}
+.cbd-form .cbd-sub{margin-left:6px;font-size:11.5px;font-weight:400;color:var(--muted)}
+/* 干员多选（OpPicker）—— 内部复用右栏那套 .opchips / .opsug 样式 */
+.oppick{display:flex;flex-direction:column;gap:6px}
+.cbd-hint{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
+/* 提示框：**左黄（提醒）右红（错误）并列**；只有一类时占满整行 */
+.cbd-msgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cbd-msgs > .cbd-msg:only-child{grid-column:1 / -1}
+.cbd-msg{margin:0;padding:8px 10px 8px 26px;border-radius:8px;font-size:12px;line-height:1.7}
+.cbd-msg.err{background:#fdecec;color:#8a1f1f;border:1px solid #f2c0c0}
+.cbd-msg.warn{background:#fff7e6;color:#7a5300;border:1px solid #f0d9a8}
+.cbd-subhd{font-size:12px;font-weight:700;color:var(--blue-700);border-top:1px solid var(--border);padding-top:10px}
+.cbd-list{
+  list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;
+  max-height:220px;overflow:auto;
+}
+.cbd-list li{
+  display:flex;align-items:center;gap:8px;font-size:12px;
+  padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:#fcfdff;
+}
+.cbd-list li.editing{border-color:var(--blue-500);background:var(--blue-50)}
+.cbd-list .d{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cbd-list .n{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbd-list .t{color:var(--blue-700);white-space:nowrap}
+.cbd-mini{
+  border:1px solid var(--blue-200);background:#fff;color:var(--blue-700);
+  border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;font-family:inherit;
+}
+.cbd-mini:hover{background:var(--blue-100)}
+.cbd-dropped{display:flex;flex-direction:column;gap:6px}
+.cbd-dropped .row{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--muted);line-height:1.7;
+}
+.cbd-dropped .row > span{flex:1 1 auto}
+/* JSON 编辑框（2026-10-06 取代原来的「导出文件 / 导入文件」那对按钮）——
+   框里就是**全部自设**；`white-space:pre` + `wrap="off"`，让长数组横向滚而不是折成一团。 */
+.cbd-json{
+  width:100%;min-height:150px;max-height:280px;resize:vertical;
+  border:1px solid var(--blue-200);border-radius:8px;padding:8px 10px;
+  font-family:ui-monospace,SFMono-Regular,Consolas,'Courier New',monospace;
+  font-size:12px;line-height:1.6;background:#fcfdff;color:var(--ink);
+  white-space:pre;overflow:auto;
+}
+.cbd-json:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+/* JSON 编辑是**另一个窗**（2026-10-06 用户定：编辑框别挤在主弹窗里）——
+   同一个 `.cbd-mask` 只是层级更高 → 叠在主弹窗上面；窗更窄、编辑框更高（独立窗不缺地方）。 */
+.cbd-mask-top{z-index:70}
+.cbd-box-json{width:min(620px,100%)}
+.cbd-json-big{min-height:320px;max-height:56vh}
+.cbd-iorow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cbd-iorow .btn{flex:0 0 auto}
+.btn:disabled{opacity:.45;cursor:not-allowed}

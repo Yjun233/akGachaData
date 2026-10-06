@@ -6,11 +6,15 @@
  * 导航条目与路由一一对应；**「首次UP间隔」带一个二级菜单**（图表版 / 表格版）——
  * 同一份 `firstUp` 数据的两种呈现，路由是两条并列路由（`/first-up` 与 `/first-up/table`，
  * 见 router/index.js）。父项在两个子页面都高亮，子项各自高亮当前那个。
+ *
+ * 底部还挂一块**自定义卡池**（全局开关 + 添加弹窗入口）—— 口径见
+ * `akGachaDocs/site/自定义卡池功能预研.md`。开关是**界面状态**、不持久化（刷新回默认「只显示」）。
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
+import CustomBannerDialog from './CustomBannerDialog.vue';
 
 /**
  * 卡池数据的来源**按服务器不同**：
@@ -44,6 +48,9 @@ function go(name) {
 function onServerChange(e) {
   site.setServer(e.target.value);
 }
+
+/** 自定义卡池的「添加 / 编辑」弹窗开关 */
+const showCustom = ref(false);
 </script>
 
 <template>
@@ -102,15 +109,37 @@ function onServerChange(e) {
           <option v-for="s in site.availableServers" :key="s.id" :value="s.id">{{ s.label }}</option>
         </select>
       </div>
+
+      <div class="avgroup">
+        <label>自定义卡池<template v-if="site.customCount">（{{ site.customCount }} 个）</template></label>
+        <div class="seg">
+          <button
+            type="button" :class="{ on: !site.customInStats }" title="自定义卡池只出现在卡池列表里"
+            @click="site.customInStats = false"
+          >只显示</button>
+          <button
+            type="button" :class="{ on: site.customInStats }" title="自定义卡池也计入统计与图表"
+            @click="site.customInStats = true"
+          >计入统计</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" type="button" @click="showCustom = true">＋ 添加自定义卡池…</button>
+        </div>
+      </div>
     </div>
 
     <div class="drawer-note">
-      干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.banners.length }}</b> 个<br />
-      国服数据更新 <b>{{ site.updateDates.sc }}</b>（中坚 <b>{{ site.claUpdateDates.sc }}</b>）<br />
-      国际服数据更新 <b>{{ site.updateDates.en }}</b>（中坚 <b>{{ site.claUpdateDates.en }}</b>）<br />
-      繁中服数据更新 <b>{{ site.updateDates.tc }}</b>（中坚 <b>{{ site.claUpdateDates.tc }}</b>）<br />
+      干员 <b>{{ site.operatorCount }}</b> 位 · 卡池 <b>{{ site.allBanners.length }}</b> 个<template
+        v-if="site.customCount"
+      >（含 <b>{{ site.customCount }}</b> 个自定义）</template><br />
+      <!-- 只显示**当前服务器**的更新日（用户 2026-10-06 定）——
+           中坚另有来源（官方解包），所以**单起一行**，不跟在括号里 -->
+      {{ site.serverMeta.label }}数据更新 <b>{{ site.updateDates[site.server] }}</b><br />
+      中坚数据更新 <b>{{ site.claUpdateDates[site.server] }}</b><br />
       卡池信息来源 <a v-if="bannerSource.url" :href="bannerSource.url" target="_blank" rel="noreferrer">{{ bannerSource.label }}</a><span v-else>{{ bannerSource.label }}</span><br /><br />
       网站内使用的游戏图片、文本原文等，仅用于更好地辅助数据查询，其版权属于鹰角网络。本网站与鹰角网络无关。
     </div>
   </aside>
+
+  <CustomBannerDialog v-if="showCustom" @close="showCustom = false" />
 </template>

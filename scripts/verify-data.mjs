@@ -19,6 +19,10 @@ import { bannerRows, emptyFilters } from '../src/lib/banners.js';
 import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearch.js';
 import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '../src/lib/date.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
+import {
+  CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, buildName, dedupe, endDateOf,
+  entryToBanner, loadEntries, midTag, parseImport, serialize, splitList, stripPrefix, validate,
+} from '../src/lib/customBanners.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /* 数据与头像的真身在**独立资源仓库** ../akGachaResource；
@@ -108,6 +112,110 @@ check('异格：alter 内无重复',
 const altOwners = rawOps.filter((o) => o.alter.length).length;
 check('异格：非空 alter 的干员数落在 15~120（防上游表改结构 → 全空）',
   altOwners >= 15 && altOwners <= 120, true);
+
+/* ---------------- 自定义卡池（浏览器本地自设） ----------------
+   自设数据只存在**浏览器本地** → 测试环境恒为空，**渲染层覆盖不到**
+   （`verify-render` 那几条卡池数断言也因此不受影响）。所以这一段全部落在
+   `src/lib/customBanners.js` 的**纯函数**上。口径见 akGachaDocs/site/自定义卡池功能预研.md。 */
+check('自定义卡池：类型白名单 6 个，且都能在 TYPE_LABEL 里找到',
+  CUSTOM_TYPES.length === 6 && CUSTOM_TYPES.every((t) => TYPE_LABEL[t]), true);
+check('自定义卡池：白名单排除了三种限定 + 前路回响 + 双五寻访',
+  ['limcel', 'limspr', 'limsum', 'mainfes', 'five'].every((t) => !CUSTOM_TYPES.includes(t)), true);
+check('自定义卡池：去重的「时间相近」阈值 = 15 天', NEAR_DAYS, 15);
+check('自定义卡池：名字前缀 = 自定义_', NAME_PREFIX, '自定义_');
+
+check('自定义卡池：单六空名 → 自定义_<第一个六星>池',
+  buildName({ type: 'single', star6: '怒潮凛冬、别人', startDate: '2026-10-08' }), '自定义_怒潮凛冬池');
+check('自定义卡池：其他类型空名 → 自定义_<类型展示名><MMdd>（MMdd 取**开始日**）',
+  buildName({ type: 'double', startDate: '2026-10-08' }), '自定义_常驻标准寻访1008');
+check('自定义卡池：填了名字就用填的（仍加前缀）',
+  buildName({ name: '我猜的池', type: 'double', startDate: '2026-10-08' }), '自定义_我猜的池');
+check('自定义卡池：前缀**先剥再加**（叠两层也只留一个）',
+  buildName({ name: '自定义_自定义_x', type: 'double', startDate: '2026-10-08' }), '自定义_x');
+check('自定义卡池：stripPrefix 循环剥', stripPrefix('自定义_自定义_x'), 'x');
+check('自定义卡池：splitList 容忍顿号 / 逗号 / 分号 / 空白（四种都算分隔符）',
+  splitList('A、B, C；D E').length, 5);
+/* ⚠️ 弹窗改多选后**新数据存数组**，但 2026-10-06 之前的自设是顿号文本 —— 两种都得吃 */
+check('自定义卡池：splitList 数组 / 顿号文本两种形态都吃',
+  splitList(['甲', '乙']).length === 2 && splitList('甲、乙').length === 2, true);
+check('自定义卡池：时长固定 14 天，结束日 = 开始日 + 14（不设结束日期）',
+  DURATION_DAYS === 14 && endDateOf('2026-10-08') === '2026-10-22', true);
+
+const cbEntry = {
+  uid: 7,
+  server: 'sc',
+  name: '',
+  type: 'double',
+  startDate: '2026-10-08',
+  endDate: '2026-10-22',
+  star6: '玛恩纳、涤火杰西卡',
+  star5: '海霓',
+  shop: '玛恩纳、海霓',
+};
+const cbBanner = entryToBanner(cbEntry);
+check('自定义卡池：id = YYYYMMDD_<type>_custom_<uid>', cbBanner.id, '20261008_double_custom_0007');
+check('自定义卡池：打 custom:true 来源标记', cbBanner.custom, true);
+check('自定义卡池：name / scName 同值且带前缀',
+  cbBanner.name === cbBanner.scName && cbBanner.name.startsWith(NAME_PREFIX), true);
+check('自定义卡池：进店打对「跨星级」的 isShop（1 六星 + 1 五星）',
+  cbBanner.upOperators.filter((o) => o.isShop).map((o) => `${o.name}/${o.rarity}`).join(','),
+  '玛恩纳/6,海霓/5');
+
+/* ---- 校验：硬校验（拒存）---- */
+const cbOk = {
+  type: 'double', startDate: '2026-10-08', endDate: '2026-10-22',
+  star6: '甲、乙', star5: '丙、丁、戊', shop: '甲、丙',
+};
+check('自定义卡池：正常的 double 通过', validate(cbOk).ok, true);
+check('自定义卡池：限定类型被拒（不在白名单）', validate({ ...cbOk, type: 'limcel' }).ok, false);
+/* ⚠️ 「结束 > 开始」这条校验**已经删了** —— 结束日是派生的，用户根本没机会填错（2026-10-06 改） */
+check('自定义卡池：结束日由开始日派生，用户传什么 endDate 都不影响判定',
+  validate({ ...cbOk, endDate: '2020-01-01' }).ok, true);
+check('自定义卡池：double 进店只有 1 个被拒（硬校验：必须 1+1）',
+  validate({ ...cbOk, shop: '甲' }).ok, false);
+check('自定义卡池：double 进店填了 2 个六星被拒（同上）',
+  validate({ ...cbOk, shop: '甲、乙' }).ok, false);
+check('自定义卡池：joint 填了进店被拒（该类进店恒为 0）',
+  validate({ ...cbOk, type: 'joint', shop: '甲' }).ok, false);
+check('自定义卡池：single 五星留空 → 通过（复刻单六允许）',
+  validate({ type: 'single', startDate: '2026-10-08', endDate: '2026-10-22', star6: '甲', star5: '', shop: '' }).ok,
+  true);
+check('自定义卡池：six 数量不符只**提醒**、不拦（ok 且 warnings 非空）',
+  (() => { const r = validate({ ...cbOk, star6: '甲', shop: '甲、丙' }); return r.ok && r.warnings.length > 0; })(),
+  true);
+
+/* ---- 去重（两条判据同时成立才算同一场）---- */
+const cbSingle = [{
+  uid: 1, server: 'sc', name: '', type: 'single',
+  startDate: '2026-10-08', endDate: '2026-10-22', star6: '怒潮凛冬', star5: '', shop: '',
+}];
+const existAt = (start, six = '怒潮凛冬') => [{
+  id: 'w', name: '已公布的池', type: 'single', startDate: start, endDate: '2026-12-01',
+  upOperators: [{ name: six, rarity: 6, isLimited: false, isShop: false }],
+}];
+check('自定义卡池：六星一致 + 开始日差 15 天 → 判为同一场（丢自定义）',
+  dedupe(cbSingle, existAt('2026-10-23')).dropped.length, 1);
+check('自定义卡池：差 16 天 → 不算同一场', dedupe(cbSingle, existAt('2026-10-24')).kept.length, 1);
+check('自定义卡池：六星不一致 → 不算同一场',
+  dedupe(cbSingle, existAt('2026-10-09', '别的干员')).kept.length, 1);
+
+/* ---- 导出 / 导入 / 容错 ---- */
+check('自定义卡池：导出 → 导入 往返一致',
+  JSON.stringify(parseImport(serialize(cbSingle)).entries), JSON.stringify(cbSingle));
+check('自定义卡池：导入坏 JSON → 报错（不抛异常）', parseImport('{oops').ok, false);
+check('自定义卡池：导入版本不符 → 报错', parseImport('{"version":9,"banners":[]}').ok, false);
+/* ⚠️ SSR（verify-render 走的那条路）里没有 localStorage，必须静默返回空而不是炸 */
+check('自定义卡池：无本地存储时 loadEntries() 返回空数组、不抛',
+  Array.isArray(loadEntries()) && loadEntries().length === 0, true);
+
+/* ---------------- 弹窗里干员名的「标 / 中」标记 ----------------
+   用户 2026-10-06 定：名字前面标一个字，表示该干员**此刻**属标准还是中坚寻访。
+   ⚠️ 判据时点是**现实今天**（不跟右栏可改的参考日期走），且**只作提醒、不做限制**。 */
+check('标/中：没有进场日期（classicDate = null）→ 标', midTag(null, '2026-10-06'), '标');
+check('标/中：进场日在过去 → 中', midTag('2023-03-30', '2026-10-06'), '中');
+check('标/中：进场日在未来（该服还没轮到）→ 标', midTag('2027-01-01', '2026-10-06'), '标');
+check('标/中：进场日就是当天 → 中（闭区间，与右栏「已属中坚」同口径）',
+  midTag('2026-10-06', '2026-10-06'), '中');
 
 /* `metadata.cla` = 中坚文件元信息的**镜像**（站点左栏「中坚数据更新」读它，由
    `fetch-gamedata.mjs` 写）—— 顺手对账，防止镜像与实际文件漂移。
