@@ -1000,22 +1000,32 @@ if (hasProto) {
    三段判定都在 src/lib/upHistory.js（皮肤 = 区间 ∩ 区间；密录 / 模组 = 推出日 ∈ 区间），
    这里**照站点的接线**把三个数据源喂进去跑一遍（接线 + 判定一起验），
    再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。 */
-const skinsFile = fs.existsSync(path.join(RES_DIR, 'skins.json')) ? read('skins.json') : null;
-check('skins.json 已产出', !!skinsFile, true);
+/* ⚠️ extras 现在**按服分文件**：`skins_<srv>.json` / `memoirs_<srv>.json` / `modules_<srv>.json`。
+   国服皮肤来自 PRTS（含复刻窗口），其余来自官方解包；先断言九个文件齐备。 */
+const EXTRA_FILES = [
+  'skins_sc', 'skins_en', 'skins_tc',
+  'memoirs_sc', 'memoirs_en', 'memoirs_tc',
+  'modules_sc', 'modules_en', 'modules_tc',
+].map((f) => `${f}.json`);
+check('九个 extras 文件都已产出（三服 × 皮肤/密录/模组）',
+  EXTRA_FILES.every((f) => fs.existsSync(path.join(RES_DIR, f))), true);
+
+const skinsFile = fs.existsSync(path.join(RES_DIR, 'skins_sc.json')) ? read('skins_sc.json') : null;
+check('skins_sc.json 已产出', !!skinsFile, true);
 if (skinsFile) {
   const skinList = skinsFile.skins || [];
-  check('skins.json：每套都有 char / name / onShelf / isCrossover',
+  check('skins_sc.json：每套都有 char / name / onShelf / isCrossover',
     skinList.every((s) => s.char && s.name && Array.isArray(s.onShelf)
       && typeof s.isCrossover === 'boolean'), true);
-  check('skins.json：合作款数量 > 0', skinList.filter((s) => s.isCrossover).length > 0, true);
+  check('skins_sc.json：合作款数量 > 0', skinList.filter((s) => s.isCrossover).length > 0, true);
 
   const skinsByOperator = {};
   for (const s of skinList) (skinsByOperator[s.char] ||= []).push(s);
 
   /* 密录 / 模组：同样只留**推出日期**（与 src/lib/loadData.js 同一口径） */
-  const memFile = fs.existsSync(path.join(RES_DIR, 'memoirs.json')) ? read('memoirs.json') : null;
-  const modFile = fs.existsSync(path.join(RES_DIR, 'modules.json')) ? read('modules.json') : null;
-  check('memoirs.json / modules.json 已产出', !!memFile && !!modFile, true);
+  const memFile = fs.existsSync(path.join(RES_DIR, 'memoirs_sc.json')) ? read('memoirs_sc.json') : null;
+  const modFile = fs.existsSync(path.join(RES_DIR, 'modules_sc.json')) ? read('modules_sc.json') : null;
+  check('memoirs_sc.json / modules_sc.json 已产出', !!memFile && !!modFile, true);
   const memoirsByOperator = {};
   for (const m of memFile?.memoirs || []) {
     const ds = (m.batches || []).map((b) => b.date).filter(Boolean);
@@ -1064,23 +1074,39 @@ if (skinsFile) {
   check('时间重合：不传三个数据源时一个都不标（降级正常）',
     [...uhNoExtra.six, ...uhNoExtra.five].flatMap((r) => r.marks)
       .every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
-  /* ⚠️ 这三份数据**只有国服** → 非 `sc` 一律不判、不显示（用户 2026-10-05 定）。
-     即便把国服的数据照传进去，也要一个都不标 —— 否则就是「拿国服的推出日期去比别服的卡池窗口」。 */
+  /* ⚠️ 2026-10-06 起**三服都有 extras**（国服皮肤来自 PRTS，其余来自官方解包）→ 不再按服门控。
+     所以这里反过来验：拿各服**自己的**那三个文件喂进去，**必须能算出非零三角标记** ——
+     否则就是「文件产出了但接线没跟上」（门控没删干净、或文件名对不上）。 */
   for (const srv of ['en', 'tc']) {
+    const srvMap = read(`banners_${srv}.json`);
+    try {
+      Object.assign(srvMap, read(`banners_cla_${srv}.json`).banners);
+    } catch { /* 没有中坚文件 */ }
+    const srvSkins = {};
+    for (const s of read(`skins_${srv}.json`).skins || []) (srvSkins[s.char] ||= []).push(s);
+    const srvMem = {};
+    for (const m of read(`memoirs_${srv}.json`).memoirs || []) {
+      const ds = (m.batches || []).map((x) => x.date).filter(Boolean);
+      if (ds.length) (srvMem[m.char] ||= []).push(...ds);
+    }
+    const srvMod = {};
+    for (const m of read(`modules_${srv}.json`).modules || []) {
+      if (m?.char && m.date) (srvMod[m.char] ||= []).push(m.date);
+    }
     const uhOther = computeUpHistory({
-      banners,
+      banners: Object.entries(srvMap).map(([id, b]) => ({ id, ...b })),
       categories: BANNER_CATEGORIES,
       operatorByName: operators,
-      server: srv,
-      skinsByOperator,
-      memoirsByOperator,
-      modulesByOperator,
+      skinsByOperator: srvSkins,
+      memoirsByOperator: srvMem,
+      modulesByOperator: srvMod,
       relDateOf: () => null,
       today: localToday(),
     });
-    check(`时间重合：非国服（${srv}）即便传了国服数据也一个都不标`,
-      [...uhOther.six, ...uhOther.five].flatMap((r) => r.marks)
-        .every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
+    const triOther = [...uhOther.six, ...uhOther.five]
+      .flatMap((r) => r.marks)
+      .filter((m) => m.skinRelated || m.memoirRelated || m.moduleRelated).length;
+    check(`时间重合：${srv} 用**自己的** extras 能算出非零三角标记`, triOther > 0, true);
   }
   console.log(`· 时间重合：标记 ${allMarks.length} 个 → 三角 ${triTotal} 个（实心·有皮肤 ${skinHit}`
     + ` 含「只皮肤」${onlySkin} / 空心·只密录模组 ${onlyExtra} / 两者都有 ${both}）`);
@@ -1091,7 +1117,9 @@ if (skinsFile) {
    写进 `banners_sc.json`。这里守住最关键的那条**不变量**：
    **`canRerun=true` 的池必须属于「支线故事」** —— 它是整套判定的依据
    （实测：非支线故事的单六寻访 **0 个**复刻过，见 akGachaDocs 的同名预研）。
-   ⚠️ 只做国服（活动页只有 PRTS 有）；另两服的文件不带这些键，所以以下都只看 sc。 */
+   ⚠️ 这套判定的**真值来源只有国服**（活动页只有 PRTS 有）→ 下面全对 `sc` 断。
+   en / tc 的这四个键是 2026-10-06 起**从国服沿用**过去的（`fetch-data-en/tc.mjs` 按池名反查，
+   `rerunKind` / `canRerun` 只加给 `single`），那边只验「沿用没丢字段」，见本段末尾。 */
 const scBanners = banners;
 const scSingles = scBanners.filter((b) => b.type === 'single');
 check('卡池所属活动：所有国服卡池都有 actType / actName 两个键',
@@ -1119,6 +1147,21 @@ check('卡池所属活动：canRerun=true 的数量落在 10~45（防判定失�
 console.log(`· 卡池所属活动：${scBanners.length} 个卡池，actType 取值 `
   + `${[...new Set(scBanners.map((b) => b.actType ?? '(null)'))].join(' / ')}；`
   + `单六寻访 ${scSingles.length} 个中 canRerun=true 的 ${crTrue} 个`);
+
+/* en / tc 的这四个键是**从国服沿用**过去的（见本段开头的注释）→ 只验「沿用没丢字段」。
+   取值正确性由国服那段保证（它才是真值来源）。 */
+for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
+  const file = `banners_${srv}.json`;
+  if (!fs.existsSync(path.join(RES_DIR, file))) continue;
+  const list = Object.values(read(file));
+  const singles = list.filter((b) => b.type === 'single');
+  check(`卡池所属活动：${label}所有卡池都带 actType / actName（从国服沿用）`,
+    list.every((b) => 'actType' in b && 'actName' in b), true);
+  check(`卡池所属活动：${label}单六寻访都带 canRerun / rerunKind`,
+    singles.filter((b) => 'canRerun' in b && 'rerunKind' in b).length, singles.length);
+  check(`卡池所属活动：${label}非单六寻访不带 canRerun`,
+    list.filter((b) => b.type !== 'single' && 'canRerun' in b).length, 0);
+}
 
 // ---- 输出 ----
 let bad = 0;

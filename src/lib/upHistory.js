@@ -30,9 +30,12 @@
  * - `skinRelated`：卡池窗口 ∩ 某套皮肤的**上架窗口**（区间 ∩ 区间）
  * - `memoirRelated` / `moduleRelated`：某条密录 / 模组的**推出日**落在卡池窗口内（点 ∈ 区间）
  *
- * ⚠️ **这三个只在国服（`sc`）判**（用户 2026-10-05 定）：皮肤 / 密录 / 模组三份数据都**只做国服**，
- *   拿国服的推出日期去比国际服 / 繁中服的卡池窗口是错的（国际服比国服晚约 9 个月）。
- *   所以非国服一律**不做判定、不显示标记**（三个布尔都是 `false`）—— 而不是拿国服数据凑合标。
+ * ⚠️ **三个判定三服都做**（2026-10-06 起）：extras 已**按服分文件**（`skins_<srv>.json` 等），
+ *   调用方传进来的就是当前服那一份 → 本函数不再需要知道服务器（此前那层
+ *   「只有国服才判」的门控已随数据补齐而删除，见资源仓库）。
+ *   ⚠️ 但两服的**皮肤窗口精度不同**：国服来自 PRTS、是真实的上架 / 复刻窗口；
+ *   en / tc 来自官方解包，官方只有「首发上架日」→ 产出时就写成 `[首发日, 首发日 + 14]`
+ *   （见资源仓库 `scripts/lib/gamedata-extras.mjs`，用户 2026-10-06 定）。
  */
 import { diffDays } from './date.js';
 
@@ -58,8 +61,9 @@ const dateInSpan = (d, start, end) => !!d && !!start && !!end && start <= d && d
  *   「有没有关联」要的是宽松信号，边界那天差一天不值得纠结。）
  * ⚠️ `longTime` 的那几个窗口（常驻类，`end = start + 14` 是脚本**造出来的**）照常参与
  *   —— 用户定过「只为讨论与 UP 的关联性，这里数据不真实也无妨」。
- * ⚠️ 皮肤数据只有国服 → **门控交给调用方**（`computeUpHistory` 里 `extrasOk = server === 'sc'`），
- *   非国服根本走不到这里。见文件头。
+ * ⚠️ 这三份数据现在是**按服**传来的（`skins_<srv>.json` / `memoirs_<srv>.json` /
+ *   `modules_<srv>.json`）—— 三服都有，所以**不再按服门控**；某服缺文件时调用方给的就是空表，
+ *   判定自然为 false。
  */
 function skinOverlapsBanner(skins, start, end) {
   for (const s of skins || []) {
@@ -95,11 +99,9 @@ function sorter(sort) {
  * @param {Array}  ctx.banners         当前服务器全部卡池（含 id）
  * @param {object} ctx.categories      type → 大类
  * @param {object} ctx.operatorByName  干员名 → 干员
- * @param {object} [ctx.skinsByOperator] 干员名 → 该干员的时装数组（skins.json；缺省=不做皮肤关联判定）
- * @param {object} [ctx.memoirsByOperator] 干员名 → 该干员密录的**推出日期数组**（memoirs.json）
- * @param {object} [ctx.modulesByOperator] 干员名 → 该干员模组的**推出日期数组**（modules.json）
- * @param {string} [ctx.server]        当前服务器 id —— 皮肤 / 密录 / 模组**只有国服数据**，
- *        所以**非 `sc` 一律不判**（见文件头说明）
+ * @param {object} [ctx.skinsByOperator] 干员名 → 该干员的时装数组（`skins_<srv>.json`；缺省=不做皮肤关联判定）
+ * @param {object} [ctx.memoirsByOperator] 干员名 → 该干员密录的**推出日期数组**（`memoirs_<srv>.json`）
+ * @param {object} [ctx.modulesByOperator] 干员名 → 该干员模组的**推出日期数组**（`modules_<srv>.json`）
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
@@ -117,7 +119,6 @@ export function computeUpHistory({
   skinsByOperator = {},
   memoirsByOperator = {},
   modulesByOperator = {},
-  server = '',
   relDateOf,
   classicDateOf = null,
   today = '',
@@ -128,8 +129,6 @@ export function computeUpHistory({
   sort = 'release-asc',
 }) {
   const typeSet = types && types.length ? new Set(types) : null;
-  /* 皮肤 / 密录 / 模组**只有国服数据** → 非国服不做这三个判定（见文件头的说明） */
-  const extrasOk = server === 'sc';
   /* 「已属中坚」的判据时点：优先右栏的结束日期，没设就按今天 */
   const midCutoff = hideMid ? ((range && range.to) || today || '') : '';
 
@@ -152,13 +151,10 @@ export function computeUpHistory({
         rarity: op.rarity,
         /* 这一期卡池与该干员的这些内容「时间重合」（页面在头像左下角打三角，样式见 upTimeline）：
            皮肤 = 上架窗口与卡池窗口重叠；密录 / 模组 = 推出日落在卡池窗口内。
-           ⚠️ 前面挂 `extrasOk` —— 非国服一律 false（三份数据都只有国服，见文件头）。 */
-        skinRelated: extrasOk
-          && skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
-        memoirRelated: extrasOk
-          && anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
-        moduleRelated: extrasOk
-          && anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
+           三份数据都是**当前服**的（调用方按服取好传进来）。 */
+        skinRelated: skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
+        memoirRelated: anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
+        moduleRelated: anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
       });
     }
   }

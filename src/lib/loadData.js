@@ -6,9 +6,10 @@
  * `VITE_RESOURCE=cdn` 才让 dev 走 CDN；**build 一律走 CDN**。切换逻辑见 `resource.js`。
  *   metadata.json          站点元信息 + 服务器列表
  *   operators.json         干员表（各服共用，靠 *ReleaseDate 区分实装日）
- *   skins.json             干员时装（只做国服；**可选** —— 缺文件时 UP 历史页不显示相应标记）
- *   memoirs.json           干员密录（只做国服；**可选**）
- *   modules.json           干员模组（只做国服；**可选**）
+ *   skins_<server>.json    干员时装（**可选**）—— 国服来自 PRTS（含**复刻窗口**），
+ *                          en / tw 来自官方解包（只有首发日，窗口 = 首发日 + 14 天）
+ *   memoirs_<server>.json  干员密录（**可选**，三服都来自官方解包）
+ *   modules_<server>.json  干员模组（**可选**，三服都来自官方解包）
  *   卡池类型 → 大类：见 `constants.js` 的 `BANNER_CATEGORIES`（不再用 JSON 数据文件）
  *   banners_<server>.json  各服卡池表（**不含中坚**）
  *   banners_cla_<server>.json  中坚系列（常驻中坚寻访 + 中坚甄选，**可选**）
@@ -53,14 +54,9 @@ function unwrap(json, key) {
 export async function loadSiteData() {
   /* ⚠️ 大类映射 `BANNER_CATEGORIES` 已从 `banner-categories.json` 移入 `constants.js`
      （各服共用、不随数据更新），这里不再额外发一个请求。 */
-  const [meta, rawOperators, rawSkins, rawMemoirs, rawModules] = await Promise.all([
+  const [meta, rawOperators] = await Promise.all([
     getJSON('metadata.json'),
     getJSON('operators.json'),
-    /* 皮肤 / 密录 / 模组都是**可选**的（2026-10-04 才产出）—— 线上 CDN 上还没有时要能降级，
-       不能因为缺它们整站加载失败。缺了只是 UP 历史页不显示对应的标记。 */
-    getJSONOptional('skins.json'),
-    getJSONOptional('memoirs.json'),
-    getJSONOptional('modules.json'),
   ]);
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），
@@ -68,30 +64,35 @@ export async function loadSiteData() {
   const operators = {};
   for (const op of Object.values(unwrap(rawOperators, 'operators') || {})) operators[op.name] = op;
 
-  /* 皮肤**不分服**（文件本身不带 _sc 后缀，这三份都只做国服），按干员名索引即可。
-     用途：UP 历史页判断「该期卡池的开放窗口与该干员的皮肤上架窗口是否重叠」。
-     ⚠️ **只在国服判定**（非 `sc` 时不显示标记）—— 这层门控在 `lib/upHistory.js`，不在这里。 */
-  const skinsByOperator = {};
-  for (const s of unwrap(rawSkins, 'skins') || []) {
-    if (s?.char) (skinsByOperator[s.char] ||= []).push(s);
-  }
-
-  /* 密录 / 模组同上一律按干员名索引，但**只留日期**（判定只要日期）。
+  /* 皮肤 / 密录 / 模组（下称 extras）**按服分文件**（`skins_<srv>.json` 等），每份都**可选** ——
+     线上 CDN 还没产出时不能整站失败，缺了只是 UP 历史页不显示对应标记。
+     这里把一份文件索引成「按干员名查」的三张表：
+       · `skins`            → 该干员的时装数组（判定要用它 `onShelf[]` 里那些窗口）
+       · `memoirs`/`modules` → 该干员的**推出日期数组**（判定只要日期）
      密录一位可能有多批（`batches[].date`），模组一位可能有好几个（每条一个 `date`）。 */
-  const memoirsByOperator = {};
-  for (const m of unwrap(rawMemoirs, 'memoirs') || []) {
-    if (!m?.char) continue;
-    const dates = (m.batches || []).map((b) => b.date).filter(Boolean);
-    if (dates.length) (memoirsByOperator[m.char] ||= []).push(...dates);
-  }
-  const modulesByOperator = {};
-  for (const m of unwrap(rawModules, 'modules') || []) {
-    if (m?.char && m.date) (modulesByOperator[m.char] ||= []).push(m.date);
+  function indexExtras(rawSkins, rawMemoirs, rawModules) {
+    const skins = {};
+    for (const s of unwrap(rawSkins, 'skins') || []) {
+      if (s?.char) (skins[s.char] ||= []).push(s);
+    }
+    const memoirs = {};
+    for (const m of unwrap(rawMemoirs, 'memoirs') || []) {
+      if (!m?.char) continue;
+      const dates = (m.batches || []).map((b) => b.date).filter(Boolean);
+      if (dates.length) (memoirs[m.char] ||= []).push(...dates);
+    }
+    const modules = {};
+    for (const m of unwrap(rawModules, 'modules') || []) {
+      if (m?.char && m.date) (modules[m.char] ||= []).push(m.date);
+    }
+    return { skins, memoirs, modules };
   }
 
   const declared = meta.servers || [];
   const bannersByServer = {};
   const servers = [];
+  /** 每服的 extras 索引（皮肤 / 密录 / 模组）—— UP 历史页的三角标记用 */
+  const extrasByServer = {};
   /** 中坚文件自带的元信息（仅作 `metadata.cla` 的兜底，见下） */
   const claFromFile = {};
 
@@ -120,6 +121,13 @@ export async function loadSiteData() {
       count: midBanners ? Object.keys(midBanners).length : null,
     };
     bannersByServer[s.id] = banners;
+    /* extras 也**按服**读（`skins_en.json` / `memoirs_tc.json` …），三份都可选。 */
+    const [rawSkins, rawMemoirs, rawModules] = await Promise.all([
+      getJSONOptional(`skins_${s.id}.json`),
+      getJSONOptional(`memoirs_${s.id}.json`),
+      getJSONOptional(`modules_${s.id}.json`),
+    ]);
+    extrasByServer[s.id] = indexExtras(rawSkins, rawMemoirs, rawModules);
     servers.push({ ...s, available: true });
   }
 
@@ -142,9 +150,7 @@ export async function loadSiteData() {
     operators,
     categories: BANNER_CATEGORIES,
     bannersByServer,
-    skinsByOperator,
-    memoirsByOperator,
-    modulesByOperator,
+    extrasByServer,
   };
 }
 

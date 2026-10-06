@@ -45,13 +45,10 @@ export const useSiteStore = defineStore('site', {
     error: '',
     meta: { servers: [], defaultServer: 'sc', generatedAt: '', cla: {} },
     operators: {},
-    /* 干员名 → 该干员的时装数组（来自 skins.json，**只做国服、不分服**）。
-       缺文件时是空对象 → UP 历史页只是不显示**对应的**标记。 */
-    skinsByOperator: {},
-    /* 干员名 → 推出日期数组（来自 memoirs.json / modules.json，**只做国服、不分服**）。
-       同上：缺文件就是空对象，不影响其它功能。 */
-    memoirsByOperator: {},
-    modulesByOperator: {},
+    /* 每服的 extras 索引：`{ sc|en|tc: { skins, memoirs, modules } }` —— 来自
+       `skins_<srv>.json` / `memoirs_<srv>.json` / `modules_<srv>.json`（**按服分文件**）。
+       某服缺文件时它就是空对象 → UP 历史页只是不显示**对应的**标记，不报错。 */
+    extrasByServer: {},
     /* type → 大类：来自 constants.js（不再由 JSON 数据文件提供） */
     categories: BANNER_CATEGORIES,
     bannersByServer: {},
@@ -115,6 +112,9 @@ export const useSiteStore = defineStore('site', {
       }
       return idx;
     },
+
+    /** 当前服的 extras 索引（皮肤 / 密录 / 模组，按干员名索引）—— 该服没有就返回空的三张表 */
+    extras: (s) => s.extrasByServer[s.server] ?? { skins: {}, memoirs: {}, modules: {} },
 
     /** 干员在当前服务器的实装日；该服尚未实装则为 null */
     relDateOf: (s) => (op) => (op ? op[SERVER_FIELD[s.server]] || null : null),
@@ -209,18 +209,18 @@ export const useSiteStore = defineStore('site', {
 
     /** UP 历史一览：每位干员一条横条（实装日 → 最后一次 UP），条上按卡池开始日打标记 */
     upHistory(s) {
+      /* 当前服的皮肤 / 密录 / 模组索引 —— 用来判断「该期卡池与该干员的这些内容是否时间重合」。
+         三服现在都有数据（国服皮肤来自 PRTS，其余来自官方解包），所以**不再按服门控**。 */
+      const ex = this.extras;
       return computeUpHistory({
         banners: this.banners,
         categories: s.categories,
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
         classicDateOf: this.classicDateOf,
-        /* 皮肤 / 密录 / 模组（国服、不分服）：用来判断「该期卡池与该干员的这些内容是否时间重合」。
-           ⚠️ 传 `server` 是因为这三份数据**只有国服** → 非 `sc` 时 lib 里一律不判（见 upHistory.js 文件头）。 */
-        server: s.server,
-        skinsByOperator: s.skinsByOperator,
-        memoirsByOperator: s.memoirsByOperator,
-        modulesByOperator: s.modulesByOperator,
+        skinsByOperator: ex.skins,
+        memoirsByOperator: ex.memoirs,
+        modulesByOperator: ex.modules,
         /* 「在结束日期已属中坚」的判据时点 = 右栏结束日期（默认值就是今天），没设才按 today */
         today: s.today,
         hideMid: s.upHideMid,
@@ -274,9 +274,7 @@ export const useSiteStore = defineStore('site', {
         const data = await loadSiteData();
         this.meta = data.meta;
         this.operators = data.operators;
-        this.skinsByOperator = data.skinsByOperator || {};
-        this.memoirsByOperator = data.memoirsByOperator || {};
-        this.modulesByOperator = data.modulesByOperator || {};
+        this.extrasByServer = data.extrasByServer || {};
         this.categories = data.categories;
         this.bannersByServer = data.bannersByServer;
         this.server = data.meta.defaultServer;

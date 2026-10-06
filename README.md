@@ -46,6 +46,9 @@ https://cdn.jsdelivr.net/gh/Yjun233/akGachaResource@<sha>/avatars/char_306_leizi
 
 - **卡池 / 干员数据**：**国服**抓取自 [PRTS Wiki](https://prts.wiki/)、**国际服**抓取自
   [arknights.wiki.gg](https://arknights.wiki.gg/)、**繁中服**取自人工维护的金山文档在线表格
+- **常驻中坚寻访 / 中坚甄选**、**皮肤 / 密录 / 模组**：取自官方解包数据
+  [ArknightsAssets/ArknightsGamedata](https://github.com/ArknightsAssets/ArknightsGamedata)
+  （三服都有）；国服皮肤的**复刻窗口**仍来自 PRTS
 - **干员头像**：来自 [ArknightsGameResource](https://github.com/yuanyan3060/ArknightsGameResource)，
   已压缩到 96×96
 
@@ -59,4 +62,5 @@ Vue 3 + Vite + Vue Router + Pinia + ECharts；干员名的拼音搜索用 [pinyi
 ## 声明
 
 本站点是个人非商业的数据整理项目。《明日方舟》相关素材与数据的著作权归上海鹰角网络科技有限公司所有。
-数据来源为 PRTS Wiki 与 arknights.wiki.gg（均为玩家共建 Wiki），繁中服数据来自人工维护的金山文档在线表格。
+数据来源为 PRTS Wiki 与 arknights.wiki.gg（均为玩家共建 Wiki）、人工维护的金山文档在线表格，
+以及官方解包数据（[ArknightsGamedata](https://github.com/ArknightsAssets/ArknightsGamedata)）。
