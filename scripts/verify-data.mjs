@@ -89,6 +89,26 @@ check('干员总数', Object.keys(operators).length, meta.operatorCount);
 check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount + claCountOf('sc'));
 check('参与统计干员数', rows.length, 204);
 
+/* `operators.json` 的 `alter`（**同一个异格组里其它成员**的 charId 数组）—— 来自官方解包
+   `char_meta_table.json` 的 `spCharGroups`，由 `fetch-data.mjs` 写。
+   这里只守**不变量**（不写死「47 位 / 50 个」这种会随新异格干员增长的数字）。 */
+const rawOps = Object.values(rawOperators);
+check('异格：每位干员都有 alter 数组',
+  rawOps.every((o) => Array.isArray(o.alter)), true);
+check('异格：alter 里的 charId 都在册、且不是自己',
+  rawOps.every((o) => o.alter.every((a) => a !== o.charId && rawOperators[a])), true);
+/* ⭐ 核心不变量：**双向** —— A 的 alter 里有 B，则 B 的 alter 里必有 A
+   （本体填异格、异格也填本体；三人组各填另外两个 → 这条一红就说明只填了单向）。 */
+check('异格：alter 是双向的（A 填了 B → B 也必填 A）',
+  rawOps.every((o) => o.alter.every((a) => (rawOperators[a].alter || []).includes(o.charId))), true);
+check('异格：alter 内无重复',
+  rawOps.every((o) => new Set(o.alter).size === o.alter.length), true);
+/* 上游 `char_meta_table` 若改结构（如 `spCharGroups` 改名 / 变空），会静默变成全 `[]`
+   → 用范围守住（实测 47 位，留足增长余量）。 */
+const altOwners = rawOps.filter((o) => o.alter.length).length;
+check('异格：非空 alter 的干员数落在 15~120（防上游表改结构 → 全空）',
+  altOwners >= 15 && altOwners <= 120, true);
+
 /* `metadata.cla` = 中坚文件元信息的**镜像**（站点左栏「中坚数据更新」读它，由
    `fetch-gamedata.mjs` 写）—— 顺手对账，防止镜像与实际文件漂移。
    ⚠️ 缺这个键就跳过（旧快照 / 镜像还没产出时不报错）。 */
