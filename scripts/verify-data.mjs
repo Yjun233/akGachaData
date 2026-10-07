@@ -113,6 +113,85 @@ const altOwners = rawOps.filter((o) => o.alter.length).length;
 check('异格：非空 alter 的干员数落在 15~120（防上游表改结构 → 全空）',
   altOwners >= 15 && altOwners <= 120, true);
 
+/* ---------------- 干员的「实装活动」：actType / actName / actLine（2026-10-07 加） ----------------
+   来自 PRTS 活动页（首发卡池 + 信赖提升干员）+ 官方解包（`story_review_table` / `stage_table`），
+   由 `fetch-data.mjs` 的 `--with-activities` 那支写、`lib/op-activity.mjs` 算。
+   口径见 akGachaDocs/resource/干员实装活动类型预研.md。
+   这里守**不变量 + 几条稳定的黄金样例**（不写死「主题曲 22 位」这种会随新干员增长的数字）。 */
+const ACT_TYPES = ['主题曲', '插曲', '别传', '故事集', '其他'];
+const LINE_TYPES = ['主题曲', '插曲', '别传', '故事集'];
+check('实装活动：每位干员都有 actType / actName / actLine 三个键',
+  rawOps.every((o) => 'actType' in o && 'actName' in o && 'actLine' in o), true);
+check('实装活动：actType 只能是五个大类之一或 null',
+  rawOps.every((o) => o.actType === null || ACT_TYPES.includes(o.actType)), true);
+check('实装活动：有 actType 就必有 actName',
+  rawOps.every((o) => !o.actType || typeof o.actName === 'string'), true);
+/* ⭐ 核心不变量：`actLine` **只**对主题曲/插曲/别传/故事集有值 ——
+   「其他」与无活动（null）必须为空，前四类必须非空。这条一红就说明归类口径错位了。 */
+check('实装活动：actLine 非空 ⇔ actType 属于主题曲/插曲/别传/故事集',
+  rawOps.every((o) => Boolean(o.actLine) === LINE_TYPES.includes(o.actType)), true);
+/* 上游表若改结构（stage_table 的 storylines 改名 / story_review 变空）会静默变成全 null
+   → 用**下限**守住（实测 183 位有活动，留足余量）。 */
+const actOwned = rawOps.filter((o) => o.actType).length;
+check('实装活动：有归属的干员数 ≥ 150（防上游表改结构 → 全 null）',
+  actOwned >= 150, true);
+/* 黄金样例 —— 钉住三个最容易回归的判定：
+   · 煌：卡池**没被**活动页的 `限时寻访` 收录（主线章节），靠正文「干员信赖值UP」兜底收下；
+   · W：卡池归属于「一周年庆典」，但**信赖提升清单**说他是「生于黑夜」的 → 同类并存时以清单为准；
+   · 棘刺：「火蓝之心」的**复刻页**新增的干员 → actName 必须带年份（2020），不能被并回原活动。 */
+const actOf = (n) => rawOps.find((o) => o.name === n) || {};
+check('实装活动：煌 = 主题曲·局部坏死·为了明日（走正文信赖UP 兜底）',
+  [actOf('煌').actType, actOf('煌').actName, actOf('煌').actLine].join('|'),
+  '主题曲|局部坏死|为了明日');
+check('实装活动：W = 插曲·生于黑夜·方舟（同类并存时信赖清单优先）',
+  [actOf('W').actType, actOf('W').actName, actOf('W').actLine].join('|'),
+  '插曲|生于黑夜|方舟');
+check('实装活动：棘刺 = 别传·火蓝之心2020·夏日律动（复刻期新增，actName 带年份）',
+  [actOf('棘刺').actType, actOf('棘刺').actName, actOf('棘刺').actLine].join('|'),
+  '别传|火蓝之心2020|夏日律动');
+check('实装活动：开服常驻干员（临光 / 塞雷娅 / 能天使）三个字段都是 null',
+  ['临光', '塞雷娅', '能天使'].every((n) => {
+    const o = actOf(n); return o.actType === null && o.actName === null && o.actLine === null;
+  }), true);
+
+/* ---------------- 干员的「阵营」：group / subGroup（2026-10-07 加） ----------------
+   来自官方解包 `character_table.json` —— `group` = `nationId`（国家/地区）、
+   `subGroup` = `groupId` **或** `teamId`（组织/小队；⚠️ 两者**互斥**，实测全表 0 例同时有值）。
+   **都是原始内部 id**（`lungmen` / `penguin`），不是本地化名；**三服取值一致**。
+   由 `fetch-data.mjs` 写（`loadAffiliations`）。 */
+check('阵营：每位干员都有 group / subGroup 两个键',
+  rawOps.every((o) => 'group' in o && 'subGroup' in o), true);
+check('阵营：两个值都是字符串或 null',
+  rawOps.every((o) => (o.group === null || typeof o.group === 'string')
+    && (o.subGroup === null || typeof o.subGroup === 'string')), true);
+/* ⭐ 守住「存的是**内部 id**，不是本地化名」—— id 一律小写字母/数字/下划线，
+   一旦有人改成「龙门」「企鹅物流」这种中文名，这条立刻红。 */
+check('阵营：值是原始内部 id（只含小写字母·数字·下划线），不是中文名',
+  rawOps.every((o) => [o.group, o.subGroup].every(
+    (v) => v === null || /^[a-z0-9_]+$/.test(v))), true);
+/* 上游表若改结构（nationId 改名 / character_table 变空）会静默全 null → 用**下限**守住。
+   实测 223 位有 group、74 位有 subGroup（空值是**正常**的，两字段互相独立）。 */
+const groupOwned = rawOps.filter((o) => o.group).length;
+const subOwned = rawOps.filter((o) => o.subGroup).length;
+check('阵营：有 group 的干员数落在 150~230（防上游表改结构 → 全 null）',
+  groupOwned >= 150 && groupOwned <= rawOps.length, true);
+check('阵营：有 subGroup 的干员数落在 30~130',
+  subOwned >= 30 && subOwned <= 130, true);
+/* 黄金样例 —— 钉住三点：
+   · 陈：龙门 + 龙门近卫局（`nationId` 与 `groupId` 都有值的常规情况）；
+   · 能天使：龙门 + 企鹅物流（同上）；
+   · W：**`group` 为 null 但 `subGroup` = `babel`** —— ⚠️ 这两个字段**互相独立**，
+          上游确实存在「有组织、没国家」（实测 7 位这样，另有 teamId 侧的 临光 → followers）；
+   · 煌：罗德岛 + 精英干员（`elite`）。 */
+check('阵营：陈 = lungmen / lgd',
+  [actOf('陈').group, actOf('陈').subGroup].join('|'), 'lungmen|lgd');
+check('阵营：能天使 = lungmen / penguin',
+  [actOf('能天使').group, actOf('能天使').subGroup].join('|'), 'lungmen|penguin');
+check('阵营：W = null / babel（两个字段互相独立，有组织也可以没国家）',
+  [actOf('W').group, actOf('W').subGroup].map(String).join('|'), 'null|babel');
+check('阵营：煌 = rhodes / elite',
+  [actOf('煌').group, actOf('煌').subGroup].join('|'), 'rhodes|elite');
+
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------
    自设数据只存在**浏览器本地** → 测试环境恒为空，**渲染层覆盖不到**
    （`verify-render` 那几条卡池数断言也因此不受影响）。所以这一段全部落在
