@@ -113,46 +113,52 @@ const altOwners = rawOps.filter((o) => o.alter.length).length;
 check('异格：非空 alter 的干员数落在 15~120（防上游表改结构 → 全空）',
   altOwners >= 15 && altOwners <= 120, true);
 
-/* ---------------- 干员的「实装活动」：actType / actName / actLine（2026-10-07 加） ----------------
-   来自 PRTS 活动页（首发卡池 + 信赖提升干员）+ 官方解包（`story_review_table` / `stage_table`），
-   由 `fetch-data.mjs` 的 `--with-activities` 那支写、`lib/op-activity.mjs` 算。
-   口径见 akGachaDocs/resource/干员实装活动类型预研.md。
-   这里守**不变量 + 几条稳定的黄金样例**（不写死「主题曲 22 位」这种会随新干员增长的数字）。 */
-const ACT_TYPES = ['主题曲', '插曲', '别传', '故事集', '其他'];
-const LINE_TYPES = ['主题曲', '插曲', '别传', '故事集'];
-check('实装活动：每位干员都有 actType / actName / actLine 三个键',
-  rawOps.every((o) => 'actType' in o && 'actName' in o && 'actLine' in o), true);
-check('实装活动：actType 只能是五个大类之一或 null',
-  rawOps.every((o) => o.actType === null || ACT_TYPES.includes(o.actType)), true);
-check('实装活动：有 actType 就必有 actName',
-  rawOps.every((o) => !o.actType || typeof o.actName === 'string'), true);
-/* ⭐ 核心不变量：`actLine` **只**对主题曲/插曲/别传/故事集有值 ——
-   「其他」与无活动（null）必须为空，前四类必须非空。这条一红就说明归类口径错位了。 */
-check('实装活动：actLine 非空 ⇔ actType 属于主题曲/插曲/别传/故事集',
-  rawOps.every((o) => Boolean(o.actLine) === LINE_TYPES.includes(o.actType)), true);
-/* 上游表若改结构（stage_table 的 storylines 改名 / story_review 变空）会静默变成全 null
-   → 用**下限**守住（实测 183 位有活动，留足余量）。 */
-const actOwned = rawOps.filter((o) => o.actType).length;
-check('实装活动：有归属的干员数 ≥ 150（防上游表改结构 → 全 null）',
-  actOwned >= 150, true);
-/* 黄金样例 —— 钉住三个最容易回归的判定：
-   · 煌：卡池**没被**活动页的 `限时寻访` 收录（主线章节），靠正文「干员信赖值UP」兜底收下；
-   · W：卡池归属于「一周年庆典」，但**信赖提升清单**说他是「生于黑夜」的 → 同类并存时以清单为准；
-   · 棘刺：「火蓝之心」的**复刻页**新增的干员 → actName 必须带年份（2020），不能被并回原活动。 */
+/* ---------------- 干员的「实装活动剧情线」：actLine（2026-10-08 改） ----------------
+   **纯官方解包**推导（`lib/op-activity.mjs` 的 `resolveOperatorActivities()`），
+   由 `fetch-data.mjs` 的 `--with-activities` 那支写。
+   ⚠️ 原 `actType` / `actName` 两个字段（走 PRTS 活动页）已**删除** —— 用户改了分析方法，
+      只需要剧情线。口径见 akGachaDocs/resource/干员实装活动剧情线预研.md。
+   这里守**不变量 + 几条稳定的黄金样例**（不写死「为了明日 28 位」这种会随新干员增长的数字）。 */
+check('剧情线：每位干员都有 actLine 键',
+  rawOps.every((o) => 'actLine' in o), true);
+check('剧情线：actLine 是字符串或 null（不出现 undefined / 空串）',
+  rawOps.every((o) => o.actLine === null || (typeof o.actLine === 'string' && o.actLine.length > 0)), true);
+/* ⚠️ 已删除的字段不该复活（`actType` / `actName` 若被上游脚本重新写出，这条立刻红）。 */
+check('剧情线：actType / actName 两个旧字段已彻底移除',
+  rawOps.every((o) => !('actType' in o) && !('actName' in o)), true);
+/* 上游表若改结构（`stage_table` 的 `storylines` 改名 / `story_review` 变空）会静默变成全 null
+   → 用**下限**守住（实测 184 位有剧情线，留足余量）。 */
+const lineOwned = rawOps.filter((o) => o.actLine).length;
+check('剧情线：有剧情的干员数 ≥ 150（防上游表改结构 → 全 null）',
+  lineOwned >= 150, true);
+/** 按名字取干员（黄金样例用；取不到给空对象，断言会红得比较清楚） */
 const actOf = (n) => rawOps.find((o) => o.name === n) || {};
-check('实装活动：煌 = 主题曲·局部坏死·为了明日（走正文信赖UP 兜底）',
-  [actOf('煌').actType, actOf('煌').actName, actOf('煌').actLine].join('|'),
-  '主题曲|局部坏死|为了明日');
-check('实装活动：W = 插曲·生于黑夜·方舟（同类并存时信赖清单优先）',
-  [actOf('W').actType, actOf('W').actName, actOf('W').actLine].join('|'),
-  '插曲|生于黑夜|方舟');
-check('实装活动：棘刺 = 别传·火蓝之心2020·夏日律动（复刻期新增，actName 带年份）',
-  [actOf('棘刺').actType, actOf('棘刺').actName, actOf('棘刺').actLine].join('|'),
-  '别传|火蓝之心2020|夏日律动');
-check('实装活动：开服常驻干员（临光 / 塞雷娅 / 能天使）三个字段都是 null',
-  ['临光', '塞雷娅', '能天使'].every((n) => {
-    const o = actOf(n); return o.actType === null && o.actName === null && o.actLine === null;
-  }), true);
+/* 黄金样例 —— 钉住几条最容易回归的判定（2026-10-08 定稿，含用户核出的 6 例口径变更）：
+   · 煌：「局部坏死」当日实装 → 为了明日（主线章）；
+   · 傀影：「生于黑夜」**首发组**的干员（傀影 / 巫恋）→ 方舟（不被主线近邻吃掉）；
+   · W / 极境 / 温蒂：「遗愿焰火」限定池（2020-05-01）当日**只对上签到活动** → 落主线第 7 章
+     「苦难摇篮」→ 为了明日（⚠️ 2026-10-08 用户拍板：**采用解包新值**，
+     不再沿用 PRTS「生于黑夜 5月5日追加组」的旧口径）；
+   · 泥岩 / 絮雨 / 迷迭香：「勿忘我」限定池（2020-11-01）→ 主线第 8 章「怒号光明」→ 为了明日
+     （⚠️ 旧值是被排除的「感谢庆典 2020 / 其他」→ null，同样按新口径改为为了明日）；
+   · 棘刺：「火蓝之心 2020」复刻期新增 → 夏日律动（复刻活动靠名字继承首发剧情线）；
+   · 开服常驻干员（临光 / 塞雷娅 / 能天使，走轮换池）→ 必须为 null。 */
+check('剧情线：煌 = 为了明日（主线「局部坏死」当日实装）',
+  actOf('煌').actLine, '为了明日');
+check('剧情线：傀影 = 方舟（「生于黑夜」首发组，不被同日主线近邻吃掉）',
+  actOf('傀影').actLine, '方舟');
+check('剧情线：巫恋 = 方舟（同上，生于黑夜首发组第二位）',
+  actOf('巫恋').actLine, '方舟');
+check('剧情线：W = 为了明日（「遗愿焰火」限定池 → 主线第 7 章「苦难摇篮」；2026-10-08 新口径）',
+  actOf('W').actLine, '为了明日');
+check('剧情线：泥岩 = 为了明日（「勿忘我」限定池 → 主线第 8 章「怒号光明」；2026-10-08 新口径）',
+  actOf('泥岩').actLine, '为了明日');
+check('剧情线：棘刺 = 夏日律动（「火蓝之心 2020」复刻期新增，靠名字继承首发剧情线）',
+  actOf('棘刺').actLine, '夏日律动');
+check('剧情线：诗怀雅 / 陈 = null（首发池与主线第三章同日，靠例外表压掉）',
+  ['诗怀雅', '陈'].every((n) => actOf(n).actLine === null), true);
+check('剧情线：开服常驻干员（临光 / 塞雷娅 / 能天使）都是 null',
+  ['临光', '塞雷娅', '能天使'].every((n) => actOf(n).actLine === null), true);
 
 /* ---------------- 干员的「阵营」：group / subGroup（2026-10-07 加） ----------------
    来自官方解包 `character_table.json` —— `group` = `nationId`（国家/地区）、
@@ -887,7 +893,7 @@ const upStd = computeUpHistory({
 check('UP 历史：按类型筛选后只含该类型',
   upStd.all.every((r) => r.marks.every((m) => m.type === 'double')), true);
 check('UP 历史：只选 double 的干员 / 标记数',
-  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '187/970');
+  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '187/975');
 
 const upSort = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, sort: 'lastUp-desc',
@@ -1319,55 +1325,84 @@ if (skinsFile) {
     + ` 含「只皮肤」${onlySkin} / 空心·只密录模组 ${onlyExtra} / 两者都有 ${both}）`);
 }
 
-/* ---------------- 卡池所属活动：actType / canRerun（2026-10-05 加） ----------------
-   资源仓库的 `fetch-data.mjs` 在**周五**抓活动页（`{{活动信息}}` 模板）把「卡池所属活动」
-   写进 `banners_sc.json`。这里守住最关键的那条**不变量**：
-   **`canRerun=true` 的池必须属于「支线故事」** —— 它是整套判定的依据
-   （实测：非支线故事的单六寻访 **0 个**复刻过，见 akGachaDocs 的同名预研）。
-   ⚠️ 这套判定的**真值来源只有国服**（活动页只有 PRTS 有）→ 下面全对 `sc` 断。
-   en / tc 的这四个键是 2026-10-06 起**从国服沿用**过去的（`fetch-data-en/tc.mjs` 按池名反查，
-   `rerunKind` / `canRerun` 只加给 `single`），那边只验「沿用没丢字段」，见本段末尾。 */
+/* ---------------- 单六寻访：rerunKind / canRerun（2026-10-08 改为纯解包） ----------------
+   资源仓库的 `fetch-data.mjs` 在**周五**（带 `--with-activities`）读官方解包，把
+   **单六寻访的** `rerunKind`（首发 / 复刻 / 返场）与 `canRerun`（会不会复刻）写进
+   `banners_sc.json`。判据见 `akGachaResource/scripts/lib/op-activity.mjs`：
+     · `rerunKind`：解包 `gacha_table` 里**同名池的出现序号 + 距首发天数**
+       （序号 0 → 首发；≥1 且 ≤180 天 → 返场；≥1 且 >180 天 → 复刻）；
+     · `canRerun`：首发 && 最近活动（±14 天）是「支线故事(SS)」&& 不在例外表里。
+   口径 / 实测见 akGachaDocs/resource/干员实装活动剧情线预研.md。
+
+   ⚠️ 2026-10-08 起卡池的 `actType` / `actName` **两个字段已删除** ——
+      所以「canRerun=true ⇒ actType==='支线故事'」这条交叉核对**做不了了**
+      （真值来源只在解包里，站点仓库没有那份数据）→ 改为在**资源仓库**侧保证
+      （`op-activity.mjs` 的 84/84 实测），这里只守下面这些**结构不变量**。
+   ⚠️ `rerunKind` / `canRerun` 的**真值来源只有国服** → 下面全对 `sc` 断。
+   en / tc 的这两个键是**从国服沿用**过去的，那边只验「沿用没丢字段」。 */
 const scBanners = banners;
 const scSingles = scBanners.filter((b) => b.type === 'single');
-check('卡池所属活动：所有国服卡池都有 actType / actName 两个键',
-  scBanners.every((b) => 'actType' in b && 'actName' in b), true);
-check('卡池所属活动：单六寻访都有 canRerun / rerunKind',
+check('卡池所属活动：卡池已不再输出 actType / actName 两个旧字段',
+  scBanners.filter((b) => 'actType' in b || 'actName' in b).length, 0);
+check('单六寻访：都有 canRerun / rerunKind',
   scSingles.filter((b) => 'canRerun' in b && 'rerunKind' in b).length, scSingles.length);
-check('卡池所属活动：非单六寻访不带 canRerun（常驻轮换池谈复刻没意义）',
+check('单六寻访：非单六寻访不带 canRerun（常驻轮换池谈复刻没意义）',
   scBanners.filter((b) => b.type !== 'single' && 'canRerun' in b).length, 0);
-check('卡池所属活动：rerunKind 取值合法',
+check('单六寻访：rerunKind 取值合法',
   scSingles.every((b) => ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
-/* ⭐ 核心不变量（用户给的规律：只有支线故事的单六寻访会复刻） */
-check('卡池所属活动：canRerun=true 的池全都是「支线故事」',
-  scSingles.filter((b) => b.canRerun).every((b) => b.actType === '支线故事'), true);
-check('卡池所属活动：canRerun=true 的池都是「首发」池（复刻 / 返场都算已再上架、不再有下一次）',
+/* ⭐ 核心不变量：**canRerun=true 的池必须都是「首发」**（复刻 / 返场都算已再上架、不再有下一次）。 */
+check('单六寻访：canRerun=true 的池都是「首发」池',
   scSingles.filter((b) => b.canRerun).every((b) => b.rerunKind === '首发'), true);
-/* ⚠️ 支线故事的首发池里 canRerun=false 的，应当**只有**那两个已知反例
-   （2019「火蓝之心」复刻时带了新干员、开的是新池，旧池没复刻）。
-   以后要是冒出第三个，说明规律变了 —— 这条会立刻红。 */
-const ssNoRerun = scSingles.filter((b) => b.actType === '支线故事' && b.rerunKind === '首发' && !b.canRerun);
-check('卡池所属活动：支线故事首发池里 canRerun=false 的只有那 2 个已知反例',
-  ssNoRerun.length === 2 && ssNoRerun.every((b) => ['深夏的守夜人', '久铸尘铁'].includes(b.name)), true);
+/* ⭐ 反向：**非首发的池 must 恒 false**（防止哪天误判成可复刻）。 */
+check('单六寻访：rerunKind ≠ 首发 的池 canRerun 恒 false',
+  scSingles.filter((b) => b.rerunKind !== '首发').every((b) => b.canRerun === false), true);
+/* ⭐ 「首发」池里 canRerun 两个取值都要有 —— 否则说明判定塌成一边（全 true / 全 false）。
+   实测：首发 59 个里 canRerun=true 的 26 个、false 的 33 个。 */
+{
+  const firsts = scSingles.filter((b) => b.rerunKind === '首发');
+  const firstTrue = firsts.filter((b) => b.canRerun).length;
+  check('单六寻访：首发池里 canRerun 有 true 也有 false（防判定塌成一边）',
+    firstTrue > 0 && firstTrue < firsts.length, true);
+  check('单六寻访：canRerun=true 的数量落在 10~45（防判定失效 → 全 true / 全 false）',
+    firstTrue >= 10 && firstTrue <= 45, true);
+  /* ⚠️ 已知反例（`CAN_RERUN_EXCEPTIONS`）：
+     深夏的守夜人 / 久铸尘铁 / 银灰色的荣耀 —— 最近活动是 SS 但**实际从未复刻过**。
+     它们都是**首发**池，且 canRerun 必须是 false。 */
+  const exceptions = ['深夏的守夜人', '久铸尘铁', '银灰色的荣耀'];
+  const excInData = scSingles.filter((b) => exceptions.includes(b.name));
+  check('单六寻访：三个已知反例（深夏的守夜人 / 久铸尘铁 / 银灰色的荣耀）都在且 canRerun=false',
+    excInData.length === 3 && excInData.every((b) => b.canRerun === false && b.rerunKind === '首发'), true);
+}
+/* ⭐ 结构黄金值：首发 59 / 返场 2 / 复刻 23（新干员入库会变，但这三个数变化很慢）。
+   只锁「首发」与「非首发」的总数，避免把每一期都写死。 */
+{
+  const kindCount = {};
+  for (const b of scSingles) kindCount[b.rerunKind] = (kindCount[b.rerunKind] || 0) + 1;
+  check('单六寻访：rerunKind 分布 = 首发 59 / 返场 2 / 复刻 23',
+    `${kindCount['首发'] ?? 0}/${kindCount['返场'] ?? 0}/${kindCount['复刻'] ?? 0}`, '59/2/23');
+}
 const crTrue = scSingles.filter((b) => b.canRerun).length;
-check('卡池所属活动：canRerun=true 的数量落在 10~45（防判定失效 → 全 true / 全 false）',
-  crTrue >= 10 && crTrue <= 45, true);
-console.log(`· 卡池所属活动：${scBanners.length} 个卡池，actType 取值 `
-  + `${[...new Set(scBanners.map((b) => b.actType ?? '(null)'))].join(' / ')}；`
-  + `单六寻访 ${scSingles.length} 个中 canRerun=true 的 ${crTrue} 个`);
+console.log(`· 单六寻访：${scSingles.length} 个（首发 ${scSingles.filter((b) => b.rerunKind === '首发').length}`
+  + ` / 返场 ${scSingles.filter((b) => b.rerunKind === '返场').length}`
+  + ` / 复刻 ${scSingles.filter((b) => b.rerunKind === '复刻').length}），canRerun=true 的 ${crTrue} 个`);
 
-/* en / tc 的这四个键是**从国服沿用**过去的（见本段开头的注释）→ 只验「沿用没丢字段」。
-   取值正确性由国服那段保证（它才是真值来源）。 */
+/* en / tc 的两个键是**从国服沿用**过去的（见本段开头的注释）→ 只验「沿用没丢字段」。
+   取值正确性由国服那段保证（它才是真值来源）；且解包只有一套池序列，按各服重算没有意义。 */
 for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
   const file = `banners_${srv}.json`;
   if (!fs.existsSync(path.join(RES_DIR, file))) continue;
   const list = Object.values(read(file));
   const singles = list.filter((b) => b.type === 'single');
-  check(`卡池所属活动：${label}所有卡池都带 actType / actName（从国服沿用）`,
-    list.every((b) => 'actType' in b && 'actName' in b), true);
-  check(`卡池所属活动：${label}单六寻访都带 canRerun / rerunKind`,
+  check(`卡池所属活动：${label}已不再输出 actType / actName`,
+    list.filter((b) => 'actType' in b || 'actName' in b).length, 0);
+  check(`单六寻访：${label}单六寻访都带 canRerun / rerunKind`,
     singles.filter((b) => 'canRerun' in b && 'rerunKind' in b).length, singles.length);
-  check(`卡池所属活动：${label}非单六寻访不带 canRerun`,
+  check(`单六寻访：${label}非单六寻访不带 canRerun`,
     list.filter((b) => b.type !== 'single' && 'canRerun' in b).length, 0);
+  check(`单六寻访：${label}rerunKind 取值合法`,
+    singles.every((b) => ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
+  check(`单六寻访：${label}canRerun=true 的池都是「首发」`,
+    singles.filter((b) => b.canRerun).every((b) => b.rerunKind === '首发'), true);
 }
 
 // ---- 输出 ----
