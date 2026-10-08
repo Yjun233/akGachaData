@@ -1306,6 +1306,15 @@ if (skinsFile) {
     .filter((m) => m.skinRelated || m.memoirRelated || m.moduleRelated).length;
   check('实装那次：不传实装日时不压制 → 三角数比（传了实装日的）多',
     triNull > triTotal, true);
+  /* 钉住「为什么压」的依据（这是文档里写明的口径，别让它随数据悄悄失真）：
+     实装那次的三角**主要来自伴生密录 / 模组**，不是皮肤 —— 拿不压制的那一份复算。
+     实测国服：会标 65 个里，「只有密录 / 模组」64 个、纯皮肤仅 1 个。 */
+  const relNullMarks = [...uhRelNull.six, ...uhRelNull.five].flatMap((r) => r.marks)
+    .filter((m) => relDateOfOp(m.operator) === m.date && (m.skinRelated || m.memoirRelated || m.moduleRelated));
+  const relOnlyExtra = relNullMarks.filter((m) => !m.skinRelated
+    && (m.memoirRelated || m.moduleRelated)).length;
+  check('实装那次：被压的三角主要来自密录 / 模组（只皮肤的是少数）',
+    relNullMarks.length > 0 && relOnlyExtra / relNullMarks.length > 0.8, true);
   /* 开服那批干员（实装日 = 2019-04-30）的**首条 UP 不是实装那次** → 三角照旧保留。
      取德克萨斯做锚（实测其首条 UP 2019-05-16 与皮肤窗口重合）。 */
   const texasRow = [...uhRows.six, ...uhRows.five].find((r) => r.name === '德克萨斯');
