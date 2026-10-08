@@ -30,6 +30,16 @@
  * - `skinRelated`：卡池窗口 ∩ 某套皮肤的**上架窗口**（区间 ∩ 区间）
  * - `memoirRelated` / `moduleRelated`：某条密录 / 模组的**推出日**落在卡池窗口内（点 ∈ 区间）
  *
+ * ⚠️ **「干员实装那次」不标三角**（用户 2026-10-08 定）：判定条件是
+ *   「**该标记的卡池开始日 == 该干员在当前服务器的实装日**」（严格相等，不是「首条标记」）。
+ *   依据：新干员实装时**必然**带着自己的伴生时装上架（模组 / 密录也常在同期开），
+ *   那个三角恒亮、没有任何信息量，反而把真正有意义的「后续复刻期又有皮肤」淹掉了。
+ *   ⚠️ 用**日期相等**而不是「marks[0]」：开服那批干员（实装日 2019-04-30）的首次 UP
+ *   在 5 月之后，那是他们的**第一次轮换**、不是实装 —— 那一条的三角是有意义的，得留着。
+ *   ⚠️ 只压**三角**（这三个布尔），不影响进店绿点 / 中坚甄选菱形，也不影响 tooltip 里
+ *   「实装 xxx · 第 n/m 次 UP」那行（那行照旧显示）。实装日拿不到（`relDateOf` 返回 null）时
+ *   不做这层压制 —— 与「三份 extras 都不传就一个都不标」的降级是同一种思路。
+ *
  * ⚠️ **三个判定三服都做**（2026-10-06 起）：extras 已**按服分文件**（`skins_<srv>.json` 等），
  *   调用方传进来的就是当前服那一份 → 本函数不再需要知道服务器（此前那层
  *   「只有国服才判」的门控已随数据补齐而删除，见资源仓库）。
@@ -102,7 +112,8 @@ function sorter(sort) {
  * @param {object} [ctx.skinsByOperator] 干员名 → 该干员的时装数组（`skins_<srv>.json`；缺省=不做皮肤关联判定）
  * @param {object} [ctx.memoirsByOperator] 干员名 → 该干员密录的**推出日期数组**（`memoirs_<srv>.json`）
  * @param {object} [ctx.modulesByOperator] 干员名 → 该干员模组的**推出日期数组**（`modules_<srv>.json`）
- * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
+ * @param {(op:object)=>string|null} [ctx.relDateOf] 取当前服务器实装日；**可选**，缺省（null）
+ *        时 `releaseDate` 一律为 null、且不做「实装那次不标三角」的压制
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
  * @param {(op:object)=>string|null} [ctx.classicDateOf] 取当前服务器「进入中坚寻访」的日期
@@ -139,6 +150,9 @@ export function computeUpHistory({
     for (const op of b.upOperators) {
       if ((op.rarity || 0) < 5) continue;
       if (!byOp[op.name]) byOp[op.name] = { name: op.name, rarity: op.rarity, marks: [] };
+      /* 「实装那次」—— 该次卡池开始日 == 该干员在本服的实装日（严格相等，见文件头）。
+         实装日拿不到（null）时不算实装那次，照旧标三角。 */
+      const isRelease = !!relDateOf && relDateOf(operatorByName[op.name]) === b.startDate;
       byOp[op.name].marks.push({
         operator: op.name,
         bannerId: b.id,
@@ -151,10 +165,11 @@ export function computeUpHistory({
         rarity: op.rarity,
         /* 这一期卡池与该干员的这些内容「时间重合」（页面在头像左下角打三角，样式见 upTimeline）：
            皮肤 = 上架窗口与卡池窗口重叠；密录 / 模组 = 推出日落在卡池窗口内。
-           三份数据都是**当前服**的（调用方按服取好传进来）。 */
-        skinRelated: skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
-        memoirRelated: anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
-        moduleRelated: anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
+           三份数据都是**当前服**的（调用方按服取好传进来）。
+           ⚠️ 「实装那次」强制为 false（三个都压掉）—— 见文件头的口径说明。 */
+        skinRelated: !isRelease && skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
+        memoirRelated: !isRelease && anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
+        moduleRelated: !isRelease && anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
       });
     }
   }
@@ -193,7 +208,7 @@ export function computeUpHistory({
     rows.push({
       name: r.name,
       rarity: r.rarity,
-      releaseDate: relDateOf(op),
+      releaseDate: relDateOf ? relDateOf(op) : null,
       marks,
       firstDate: marks[0].date,
       lastDate: marks[marks.length - 1].date,

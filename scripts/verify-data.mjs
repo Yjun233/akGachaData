@@ -1212,7 +1212,10 @@ if (hasProto) {
 /* ---------------- 时间重合 × 卡池：头像左下角的赭三角（UP 历史页） ----------------
    三段判定都在 src/lib/upHistory.js（皮肤 = 区间 ∩ 区间；密录 / 模组 = 推出日 ∈ 区间），
    这里**照站点的接线**把三个数据源喂进去跑一遍（接线 + 判定一起验），
-   再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。 */
+   再钉住比例区间 —— 防「判定失效 → 全 true / 全 false」这种最坏情况。
+   ⚠️ 2026-10-08 起「实装那次」（标记日 == 该干员实装日）**不标三角** →
+   所以这里必须传**真实**的 `relDateOf`（传 null 那层压制根本走不到，会漏测），
+   并在下面单独断言「实装标记的三个布尔全为 false」「不传实装日时三角数更多」。 */
 /* ⚠️ extras 现在**按服分文件**：`skins_<srv>.json` / `memoirs_<srv>.json` / `modules_<srv>.json`。
    国服皮肤来自 PRTS（含复刻窗口），其余来自官方解包；先断言九个文件齐备。 */
 const EXTRA_FILES = [
@@ -1257,7 +1260,9 @@ if (skinsFile) {
     skinsByOperator,
     memoirsByOperator,
     modulesByOperator,
-    relDateOf: () => null,
+    /* ⚠️ 传**真实**的实装日取法（不是 `() => null`）—— 「实装那次不标三角」的压制
+       就靠它，传 null 的话这块判定完全不会被走到。 */
+    relDateOf,
     today: localToday(),
   });
   const allMarks = [...uhRows.six, ...uhRows.five].flatMap((r) => r.marks);
@@ -1272,10 +1277,40 @@ if (skinsFile) {
   check('时间重合：三角总数（有皮肤或密录·模组）比例落在 5%~30%',
     triTotal / allMarks.length > 0.05 && triTotal / allMarks.length < 0.3, true);
   check('时间重合：有皮肤的 > 0（实心三角）', skinHit > 0, true);
-  /* ⚠️「只有密录 / 模组」这一类**必须存在** —— 它是「空心三角」那半边的依据（实测 ~96 个） */
+  /* ⚠️「只有密录 / 模组」这一类**必须存在** —— 它是「空心三角」那半边的依据
+     （实测 32 个；2026-10-08 起「实装那次」被压掉，之前是 96 个） */
   check('时间重合：只有密录 / 模组（无皮肤）的 > 0（空心三角）', onlyExtra > 0, true);
   check('时间重合：实心 + 空心 + 两种都有 = 三角总数',
     onlySkin + onlyExtra + both === triTotal, true);
+  /* 「实装那次」不标三角（用户 2026-10-08 定）：判据是「标记的卡池开始日 == 该干员实装日」。
+     这里**照同一条判据**独立复算一遍，验压制真的生效、且只压了实装那一次。 */
+  const relDateOfOp = (name) => relDateOf(operators[name]);
+  const releaseMarks = allMarks.filter((m) => relDateOfOp(m.operator) === m.date);
+  check('实装那次：数据里确实存在「标记日 == 实装日」的标记（判据能命中）',
+    releaseMarks.length > 0, true);
+  check('实装那次：这些标记的三角布尔全部被压成 false',
+    releaseMarks.every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
+  /* 反向：不传实装日取法（`relDateOf` 为 null）时**不压制** —— 也就是「实装那次」在
+     同一份数据下确实**本来**会算出三角（说明压制不是靠数据凑巧为 false 蒙对的）。 */
+  const uhRelNull = computeUpHistory({
+    banners,
+    categories: BANNER_CATEGORIES,
+    operatorByName: operators,
+    skinsByOperator,
+    memoirsByOperator,
+    modulesByOperator,
+    relDateOf: null,
+    today: localToday(),
+  });
+  const triNull = [...uhRelNull.six, ...uhRelNull.five].flatMap((r) => r.marks)
+    .filter((m) => m.skinRelated || m.memoirRelated || m.moduleRelated).length;
+  check('实装那次：不传实装日时不压制 → 三角数比（传了实装日的）多',
+    triNull > triTotal, true);
+  /* 开服那批干员（实装日 = 2019-04-30）的**首条 UP 不是实装那次** → 三角照旧保留。
+     取德克萨斯做锚（实测其首条 UP 2019-05-16 与皮肤窗口重合）。 */
+  const texasRow = [...uhRows.six, ...uhRows.five].find((r) => r.name === '德克萨斯');
+  check('实装那次：开服干员（首条 UP ≠ 实装日）的三角不被误伤（德克萨斯）',
+    !!texasRow && texasRow.marks.some((m) => m.skinRelated || m.memoirRelated || m.moduleRelated), true);
   /* 降级：三个数据源都不传时必须**一个都不标**（线上 CDN 还没有这些文件时的情形） */
   const uhNoExtra = computeUpHistory({
     banners,
@@ -1313,13 +1348,19 @@ if (skinsFile) {
       skinsByOperator: srvSkins,
       memoirsByOperator: srvMem,
       modulesByOperator: srvMod,
-      relDateOf: () => null,
+      /* 该服自己的实装日（压制「实装那次」要用，见上面国服那段） */
+      relDateOf: (op) => (op ? op[`${srv}ReleaseDate`] || null : null),
       today: localToday(),
     });
-    const triOther = [...uhOther.six, ...uhOther.five]
-      .flatMap((r) => r.marks)
+    const srvMarks = [...uhOther.six, ...uhOther.five].flatMap((r) => r.marks);
+    const triOther = srvMarks
       .filter((m) => m.skinRelated || m.memoirRelated || m.moduleRelated).length;
     check(`时间重合：${srv} 用**自己的** extras 能算出非零三角标记`, triOther > 0, true);
+    /* 该服也要压掉「实装那次」—— 用该服自己的实装日判 */
+    const srvRel = (name) => (operators[name] ? operators[name][`${srv}ReleaseDate`] || null : null);
+    const srvReleaseMarks = srvMarks.filter((m) => srvRel(m.operator) === m.date);
+    check(`实装那次：${srv} 的实装标记三角全被压掉`, srvReleaseMarks.length > 0
+      && srvReleaseMarks.every((m) => !m.skinRelated && !m.memoirRelated && !m.moduleRelated), true);
   }
   console.log(`· 时间重合：标记 ${allMarks.length} 个 → 三角 ${triTotal} 个（实心·有皮肤 ${skinHit}`
     + ` 含「只皮肤」${onlySkin} / 空心·只密录模组 ${onlyExtra} / 两者都有 ${both}）`);

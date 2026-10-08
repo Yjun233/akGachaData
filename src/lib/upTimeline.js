@@ -388,7 +388,9 @@ export function buildUpTimeline({
             头像（图片模式）还是干员名首字（简洁模式）。
             进店 = **左上角**绿点（圆）、中坚甄选 = **左上角**蓝菱形（同位，两者互斥，见 renderItem 里的注释）、
             **该期有皮肤在售 / 密录·模组上线 = 左下角赭三角**（皮肤 2026-10-04 加、密录模组 2026-10-05 加；
-            **实心 = 有皮肤**、**空心 = 只有密录·模组**；判定见 lib/upHistory.js）。 */
+            **实心 = 有皮肤**、**空心 = 只有密录·模组**；判定见 lib/upHistory.js）。
+            ⚠️ **「实装那次」不画三角**（用户 2026-10-08 定）—— 那一次新干员必然带着伴生时装上架，
+            三角恒亮没有信息量；压制在 `lib/upHistory.js` 里就把三个布尔置 false，这里照常不画。 */
       {
         type: 'custom',
         data: markRefs.map((ref) => [ref.mi, ref.idx]),
@@ -540,7 +542,8 @@ export function buildUpTimeline({
              · **只有**密录 / 模组 → **空心赭**（白填充 + 赭描边）
              ⚠️ 与上面的蓝菱形同理：zrender **没有 `type:'triangle'`**，要用 polygon 手拼三个顶点。
              位置挑左下角是因为左上角已被进店绿点 / 中坚甄选蓝菱形占着 —— 四种标记互不遮挡。
-             判定在 `lib/upHistory.js`（皮肤 = 窗口 ∩ 窗口；密录 / 模组 = 推出日 ∈ 窗口）。 */
+             判定在 `lib/upHistory.js`（皮肤 = 窗口 ∩ 窗口；密录 / 模组 = 推出日 ∈ 窗口；
+             **「实装那次」三个布尔一律置 false → 不画**）。 */
           if (mark.skinRelated || mark.memoirRelated || mark.moduleRelated) {
             const tx = cx + TL.dotInset;
             const ty = cy + d / 2 - TL.dotInset;

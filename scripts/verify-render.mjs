@@ -796,12 +796,17 @@ try {
     /const dateInSpan = \(d, start, end\) => !!d && !!start && !!end && start <= d && d <= end;/.test(uhLibSrc)
     && /anyDateInBanner\(/.test(uhLibSrc), true);
   /* ⚠️ 2026-10-06 起三服都有 extras（国服皮肤来自 PRTS，其余来自官方解包）——
-     `extrasOk` 那层按服门控**已删**，现在是「调用方按服取好再传进来」。 */
+     `extrasOk` 那层按服门控**已删**，现在是「调用方按服取好再传进来」。
+     ⚠️ 2026-10-08 起「实装那次」不标三角 —— 三个布尔都带 `!isRelease &&` 前缀。 */
   check('时间重合：mark 上带三个布尔（直接用传进来的那三份数据判）',
-    /skinRelated: skinOverlapsBanner\(/.test(uhLibSrc)
-    && /memoirRelated: anyDateInBanner\(/.test(uhLibSrc)
-    && /moduleRelated: anyDateInBanner\(/.test(uhLibSrc)
+    /skinRelated: !isRelease && skinOverlapsBanner\(/.test(uhLibSrc)
+    && /memoirRelated: !isRelease && anyDateInBanner\(/.test(uhLibSrc)
+    && /moduleRelated: !isRelease && anyDateInBanner\(/.test(uhLibSrc)
     && !/extrasOk/.test(uhLibSrc), true);
+  /* 「实装那次」的判据：卡池开始日 == 该干员实装日（**严格相等**，不是「首条标记」）。
+     见 upHistory.js —— 用日期相等是为了不误伤开服那批（首条 UP ≠ 实装日）。 */
+  check('实装那次：判据是「标记日 == 实装日」（严格相等，非 marks[0]）',
+    /relDateOf\(operatorByName\[op\.name\]\) === b\.startDate/.test(uhLibSrc), true);
   /* 绘制：polygon 手拼三点（zrender 无 triangle 类型）；底边半宽 = R·cos30° 是等边三角的特征 */
   check('时间重合：画成等边三角形（底边半宽 = R·cos30°）',
     /mark\.skinRelated \|\| mark\.memoirRelated \|\| mark\.moduleRelated/.test(tlSrc)
