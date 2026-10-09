@@ -618,8 +618,62 @@ check('总次数 = 中坚次数 + 标准次数',
 check('限定干员已排除', rows.every((r) => !r.upAll.some((b) => b.upOperators.find((o) => o.name === r.name && o.isLimited))), true);
 
 const wz = map['推进之王'];
-check('推进之王 · 出率提升次数', wz?.upAll.length, 21);
+/* ⚠️ 2026-10-08 起默认**排除中坚甄选**，两条都是排除后的值（计入甄选的黄金值在下一段）。 */
+check('推进之王 · 出率提升次数', wz?.upAll.length, 16);
 check('推进之王 · 商店兑换次数', wz?.shopAll.length, 10);
+
+/* ---------------- 中坚甄选（clafes）计入出率提升的开关（2026-10-08） ----------------
+   默认**不计入**；右栏一个复选框可打开。
+   口径见 src/lib/stats.js 文件头、akGachaDocs/site/工作指令.md 5.4。
+   ⚠️ 上面的 `rows` / `wz` 是**默认口径**（排除甄选）。
+   ⚠️ **只做出率提升这一个开关** —— 甄选池三服实测 **0 个 isShop**，商店兑换没有可切换的东西。 */
+
+const clafesBanners = banners.filter((b) => b.type === 'clafes');
+/** 甄选池里出现过的干员名（去重） */
+const clafesOps = new Set();
+for (const b of clafesBanners) {
+  for (const op of b.upOperators) {
+    if (!op.isLimited && (op.rarity || 0) >= 5) clafesOps.add(op.name);
+  }
+}
+check('中坚甄选（clafes）池存在且都在「中坚寻访」大类下',
+  clafesBanners.length > 0 && clafesBanners.every((b) => categories[b.type] === '中坚寻访'), true);
+/* 甄选池没有进店位 —— 这是「不做商店兑换开关」的依据，也是 UP 历史那两个标记同位的依据
+   （见下面 UP 历史那段的 clafesShop 断言）。 */
+check('中坚甄选池带进店标记的池数 = 0（「不做商店兑换开关」的依据）',
+  clafesBanners.filter((b) => b.upOperators.some((o) => o.isShop && !o.isLimited && (o.rarity || 0) >= 5)).length, 0);
+
+const statsWithClafesUp = computeStats({
+  banners, categories, operatorByName: operators, operatorIndex, refDate, relDateOf,
+  includeClafesUp: true,
+});
+
+/* ① 开「出率提升」后，每位干员的**增量**必须全部来自甄选池（且增量 > 0 的干员都在甄选名单里） */
+const upUp = statsWithClafesUp.map;
+const gainOk = Object.keys(map).every((n) => {
+  const before = map[n].upAll.length;
+  const after = upUp[n] ? upUp[n].upAll.length : 0;
+  const gain = after - before;
+  if (gain < 0) return false;
+  return !gain || clafesOps.has(n);
+});
+check('开「出率提升」：增量只来自甄选池、且甄选干员次数只增不减', gainOk, true);
+check('开「出率提升」：至少有一位干员次数增加（开关真的生效）',
+  Object.keys(map).some((n) => (upUp[n] ? upUp[n].upAll.length : 0) > map[n].upAll.length), true);
+check('开「出率提升」：参与统计干员数不变（甄选干员本来就靠常驻中坚在表里）',
+  Object.keys(upUp).length, Object.keys(map).length);
+
+/* ② 不变量在开 / 关两种口径下都成立 */
+const invOk = (m) => Object.values(m).every((r) => r.upAll.length === r.upMid.length + r.upStd.length
+  && r.shopAll.length === r.shopMid.length + r.shopStd.length
+  && r.shopAll.every((b) => r.upAll.includes(b)));
+check('总次数 / 商店⊆出率 不变量在开 / 关两种口径下都成立',
+  invOk(map) && invOk(upUp), true);
+
+/* ③ 黄金值：推进之王 —— 计入甄选后各 +5（出率提升 16 → 21、中坚 5 → 10） */
+check('推进之王 · 出率提升次数（计入甄选）', upUp['推进之王']?.upAll.length, 21);
+check('推进之王 · 中坚次数（默认排除甄选）', wz?.upMid.length, 5);
+check('推进之王 · 中坚次数（计入甄选）', upUp['推进之王']?.upMid.length, 10);
 
 // ---- 卡池列表 ----
 const all = bannerRows(banners, emptyFilters(), categories, { key: 'startDate', dir: 'desc' });

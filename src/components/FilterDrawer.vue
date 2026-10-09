@@ -4,7 +4,7 @@
  *  - 卡池列表页   → 筛选表单（类型 / 大类 / 开始日期范围 / UP 干员多选）
  *    ⚠️ UP 干员是**多选**：搜索框支持 名字 / 全拼 / 首字母（lib/opSearch.js），
  *    点候选加进来、点 chip 移除；生效的是 store 里的 `filters.ops`（精确名数组）。
- *  - 统计页       → 参考日期
+ *  - 统计页       → 参考日期 + 「中坚甄选计入出率提升」开关
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
@@ -281,6 +281,16 @@ function resetUp() {
         仅统计 <code>卡池开启日期 ≤ 参考日期</code> 的卡池，用于回看任意历史时点的出率提升记录。
         不影响「卡池列表」页。
       </div>
+      <!-- 中坚甄选（clafes）默认不计入出率提升（2026-10-08 用户定）：
+           甄选池每期一次性放出 30+ 位中坚干员，与常驻中坚不是一回事，混进来会把次数抬得很难看。
+           不影响卡池列表 / 图表 / 进行中判定。 -->
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.statIncludeClafesUp"
+          @change="site.setStatIncludeClafesUp($event.target.checked)"
+        />
+        <span>中坚甄选计入出率提升<small>默认不计入。甄选池每期会一次性放入 30 多位中坚干员</small></span>
+      </label>
       <div class="fresult">{{ statResult }}</div>
     </div>
 

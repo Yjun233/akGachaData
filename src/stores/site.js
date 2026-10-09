@@ -92,6 +92,7 @@ export const useSiteStore = defineStore('site', {
     avatarMode: 'text',                // 干员展示：text 简洁（名字）| image 图片（头像）
     bannerSort: { key: 'startDate', dir: 'desc' },
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
+    statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
@@ -255,6 +256,8 @@ export const useSiteStore = defineStore('site', {
         operatorIndex: this.operatorIndex,
         refDate: s.refDate || this.today,
         relDateOf: this.relDateOf,
+        /* 中坚甄选（clafes）默认不计入出率提升，由右栏开关决定（见 lib/stats.js 文件头） */
+        includeClafesUp: s.statIncludeClafesUp,
       });
     },
 
@@ -679,6 +682,14 @@ export const useSiteStore = defineStore('site', {
 
     resetRefDate() {
       this.refDate = this.today;
+    },
+
+    /* ⚠️ 与 `firstUpMode` / `firstUpAxis` 那批一样：这是**看数据的角度**、不是筛选条件，
+       所以 `setServer` 里**不重置**（切服务器保持用户的勾选）。默认**关**（= 排除中坚甄选）。 */
+
+    /** 中坚甄选是否计入**出率提升**（默认关） */
+    setStatIncludeClafesUp(on) {
+      this.statIncludeClafesUp = !!on;
     },
 
     /** 重置卡池筛选：日期范围回到本服完整跨度（不是空框，见 fullBannerRange） */

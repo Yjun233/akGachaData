@@ -8,6 +8,12 @@
  * - 限定干员（isLimited）在统计页完全排除；星级 < 5 也排除。
  * - 中坚次数 = 该干员在中坚寻访大类（classic / clafes）中的次数；
  *   标准次数 = 标准寻访大类 + 限定寻访中的次数；总次数 = 中坚 + 标准。
+ * - **中坚甄选（`clafes`）默认不计入出率提升**（2026-10-08 用户定）：中坚甄选是「官方自选
+ *   中坚干员」的池子、每期一次性把 30+ 位干员全放出来，与常驻中坚（`classic`）不是一回事，
+ *   混在一起会把绝大多数干员的次数抬得很难看。所以**默认排除**，由右栏一个开关控制是否计入
+ *   （见下面的 `includeClafesUp`）。
+ *   ⚠️ 排除只影响统计页的记录集，**卡池列表 / 图表 / 进行中判定都不受影响**（它们走各自的 getter）。
+ *   ⚠️ 甄选池**没有进店位**（三服实测 0 个 isShop）→ 商店兑换**不需要**这个开关，故不做。
  */
 import { diffDays } from './date.js';
 
@@ -61,9 +67,13 @@ export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
  * @param {object} ctx.operatorIndex    干员名 → { rarity, isLimited }
  * @param {string} ctx.refDate          参考日期 YYYY-MM-DD
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
+ * @param {boolean} [ctx.includeClafesUp=false]    中坚甄选是否计入**出率提升**
  * @returns {{ visible:Array, map:object }}
  */
-export function computeStats({ banners, categories, operatorByName, operatorIndex, refDate, relDateOf }) {
+export function computeStats({
+  banners, categories, operatorByName, operatorIndex, refDate, relDateOf,
+  includeClafesUp = false,
+}) {
   const visible = banners.filter((b) => b.startDate <= refDate);
   const map = {};
 
@@ -82,9 +92,17 @@ export function computeStats({ banners, categories, operatorByName, operatorInde
 
   for (const b of visible) {
     const mid = categories[b.type] === '中坚寻访';
+    /* 中坚甄选（clafes）由一个开关控制它进不进「出率提升」记录集。
+       ⚠️ 甄选池没有进店位（三服 0 个 isShop），所以**商店兑换不需要开关** —— shopAll 照常收
+          `isShop` 的条目（甄选池永远不会命中）。 */
+    const clafes = b.type === 'clafes';
+    const skipUp = clafes && !includeClafesUp;
     for (const op of b.upOperators) {
       if (op.isLimited) continue;
       if ((op.rarity || 0) < 5) continue;
+      /* ⚠️ 被排除的条目**连 rec() 都不进** —— 否则该干员会凭空多出一行
+         （`upAll` 为空、却因为被 skip 的池子而占了一行）。 */
+      if (skipUp) continue;
       const r = rec(op.name);
       r.upAll.push(b);
       (mid ? r.upMid : r.upStd).push(b);
