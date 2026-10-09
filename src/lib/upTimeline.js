@@ -38,7 +38,7 @@
  *   写 CSS 的 `font` 简写或 `textAlign` 都不生效；旋转用元素的 `rotation` + `originX/Y`。
  */
 import { TYPE_LABEL,BANNER_CATEGORIES , CAT_COLOR, CAT_TINT, CAT_DEEP, SHOP } from './constants.js';
-import { avatarUrl } from './avatars.js';
+import { avatarUrl, avatarReady } from './avatars.js';
 import { diffDays } from './date.js';
 
 /** 时间轴布局常量 */
@@ -144,10 +144,16 @@ export const minInnerWidth = (xMin, xMax) => {
  * @param {boolean} [ctx.isImage]       图片模式
  * @param {boolean} [ctx.showGaps]      在两次 UP 之间写日期差（右栏可关）
  * @param {object} [ctx.operatorByName] 干员名 → 干员（取 charId 找头像）
+ * @param {number} [ctx.avatarTick]     头像加载计数（**只为打断 computed 缓存**：
+ *   值变了 → 调用方重算 option → 未就绪的首字占位能换成真头像）。
+ *   本身**不参与绘制**，别拿它做判断。
  */
 export function buildUpTimeline({
   rows, xRange = {}, isImage = false, showGaps = true, operatorByName = {},
+  avatarTick = 0,
 }) {
+  /* ⚠️ `avatarTick` 纯粹是缓存失效用的，读一下把它纳入依赖即可（echarts 只看 option 内容） */
+  void avatarTick;
   const startOf = (r) => (Number.isFinite(monthIndexOf(r.releaseDate))
     ? monthIndexOf(r.releaseDate)
     : monthIndexOf(r.firstDate));
@@ -409,6 +415,10 @@ export function buildUpTimeline({
           const cx = Math.min(cx0, cs.x + cs.width - TL.markRight - d);
           const center = cx + d / 2;
 
+          /* 该行干员的**完整对象**（取 charId 找头像；取不到就退化成一个只有名字的壳）。
+             ⚠️ `avatarReady` / `avatarUrl` 都吃这个对象。 */
+          const op = operatorByName[row.name] || { name: row.name };
+
           const children = [];
 
           /* 0) **选中外发光**（必须放在**第一个** —— zrender 按 children 顺序绘制，
@@ -446,7 +456,7 @@ export function buildUpTimeline({
              要**最后**画，才不会被外发光 / 大类色圆环 / 左上角标记盖掉。 */
           let textChar = null;
 
-          if (isImage) {
+          if (isImage && avatarReady(op)) {
             /* 素材是**方形**半身像 → 用 clipPath 裁成圆。
                ⚠️ 只裁图片本身：大类色圆环和右上角的进店点要留在裁剪之外，
                所以把图片单独包一层 group（zrender 的 group 支持 clipPath）。 */
@@ -457,7 +467,7 @@ export function buildUpTimeline({
                 {
                   type: 'image',
                   style: {
-                    image: avatarUrl(operatorByName[row.name] || { name: row.name }, 'circle'),
+                    image: avatarUrl(op, 'circle'),
                     x: cx,
                     y: cy - d / 2,
                     width: d,
@@ -466,6 +476,31 @@ export function buildUpTimeline({
                 },
               ],
             });
+          } else if (isImage) {
+            /* 图片模式但头像**还没加载完 / 加载失败**（`avatarReady` 为假）：
+               退化成一枚圆底 + 干员名首字 —— 与简洁模式观感一致，只是底色用卡池大类色，
+               等加载完由外层 `onAvatarLoad` 触发重绘（见 UpHistory 页的订阅）。
+               ⚠️ 必须**同步**判断：renderItem 是渲染期回调，不能在这里 await / 发请求；
+               预加载另有一处（页面挂载时 `preloadAvatar` 全体干员）。 */
+            children.push({
+              type: 'circle',
+              shape: { cx: center, cy, r: d / 2 },
+              style: { fill: CAT_TINT[mark.cat] || '#f3f4f6' },
+            });
+            textChar = {
+              type: 'text',
+              style: {
+                text: firstChar(row.name),
+                x: center,
+                y: cy,
+                fill: CAT_DEEP[mark.cat] || '#1f2937',
+                fontSize: 10,
+                fontWeight: 600,
+                fontFamily: 'system-ui, "Microsoft YaHei", sans-serif',
+                align: 'center',
+                verticalAlign: 'middle',
+              },
+            };
           } else {
             /* 简洁模式：**不随头像素材变图片** —— 浅色圆底 + 干员名首字 */
             children.push({

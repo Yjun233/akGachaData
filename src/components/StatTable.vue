@@ -10,7 +10,7 @@
 import { computed } from 'vue';
 import { WARN_DAYS, DANGER_DAYS } from '../lib/constants.js';
 import { endInfo } from '../lib/stats.js';
-import { avatarUrl } from '../lib/avatars.js';
+import AvatarImg from './AvatarImg.vue';
 import { useSiteStore } from '../stores/site.js';
 
 const props = defineProps({
@@ -23,7 +23,8 @@ const site = useSiteStore();
 
 /** 图片模式：干员列显示头像；统计页用**长方形蒙版**（宽是高的 2 倍），见 main.css 的 .avt-rect */
 const isImage = computed(() => site.avatarMode === 'image');
-const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'square');
+/** 头像按 charId 取 —— 表格行上只有名字，用名字回查完整干员对象（取不到就用 `{ name }` 退化） */
+const opOf = (name) => site.operators[name] || { name };
 
 const refDate = computed(() => site.refDate || site.today);
 const sort = computed(() => site.statSort[props.tableId]);
@@ -117,7 +118,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-if="!r.releaseDate" class="dash">—</span><template v-else>{{ r.releaseDate }}</template>
           </td>
           <td class="wrapcell">
-            <img v-if="isImage" class="avt-rect" :src="avatarOf(r.name)" :alt="r.name" :title="r.name" />
+            <AvatarImg v-if="isImage" :op="opOf(r.name)" shape="square" img-class="avt-rect" />
             <b v-else>{{ r.name }}</b>
           </td>
           <!-- 出率提升 -->

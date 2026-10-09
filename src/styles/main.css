@@ -606,8 +606,25 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
    头像是**真实素材**（96×96 PNG，来自资源仓库经 jsDelivr CDN，见 src/lib/avatars.js），
    显示尺寸 26px。卡池列表 / 出率提升记录用圆角正方形（CSS 裁出来），
    首次UP间隔与 UP 历史的点是圆形（素材本身是方形半身像，由 zrender 的 clipPath 裁圆）。
-   「限」「兑」两个标记挪到头像右上角（并排挂在头像外侧一点点）。 */
+   「限」「兑」两个标记挪到头像右上角（并排挂在头像外侧一点点）。
+
+   ⚠️ 头像由 `<AvatarImg>` 渲染（一个 `.avt-img` 外层 + 里面 `.avt-real` 真图 + `.avt-fallback`
+   首字占位层）。**加载中 / 加载失败**时露出底下的占位层 —— 用户 2026-10-09 要求
+   「加载中或加载失败的图片用干员名字首字占位」。 */
 .avt{position:relative;display:inline-flex;width:26px;height:26px;margin:2px 5px 2px 0;vertical-align:middle}
+/* 头像外层：**尺寸 / 定位都由各处的 class 决定**（.av 26px / .avt-rect 68×34），
+   这里只保证它是两层（真图 + 占位）的**重合容器**。 */
+.avt-img{display:block;position:relative}
+.avt-img .avt-fallback,
+.avt-img .avt-real{
+  display:block;width:100%;height:100%;object-fit:cover;
+}
+/* 占位层：铺满外层，垫在真图**下面**（真图不透明时看不见它） */
+.avt-img .avt-fallback{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+  border-radius:inherit;
+}
 .avt .av,.avt-sq{
   width:26px;height:26px;border-radius:7px;display:block;object-fit:cover;
   background:var(--blue-100);margin: 0 auto;
@@ -639,10 +656,10 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
         `#f7fbff`(hover) 三种，叠遮罩得跟着换色、hover 时还会穿帮；mask 是真正的透明度，与底色无关。
       · ⚠️ `transparent` 在 mask 里即 alpha=0（mask 默认按 alpha 通道取用），黑/白都没关系。
       · ⚠️ 保留 `-webkit-` 前缀给旧 Safari 兜底；两者同时写时**后者生效**，值要一致。 */
-table.grid.stat-tbl td.wrapcell img.avt-rect,
-table.grid.fup-tbl td.opcell img.avt-rect{
+table.grid.stat-tbl td.wrapcell .avt-img,
+table.grid.fup-tbl td.opcell .avt-img{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:68px;height:34px;object-fit:cover;object-position:50% 70%;
+  width:68px;height:34px;
   -webkit-mask-image:
    linear-gradient(to right,  transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%),
    linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
@@ -653,6 +670,13 @@ table.grid.fup-tbl td.opcell img.avt-rect{
    linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
   mask-composite: intersect;
 }
+/* 真素材：填满外层（尺寸 / 取景 / 渐隐都由 `.avt-img` 那层管） */
+table.grid.stat-tbl td.wrapcell .avt-img img,
+table.grid.fup-tbl td.opcell .avt-img img{
+  width:100%;height:100%;object-fit:cover;object-position:50% 70%;
+}
+/* 占位层：跟真图同一个取景口径（首字是居中的，object-position 对它没意义，
+   background 默认居中即可） */
 
 /* ---------------- 统计表 / 首次UP表格版：**两表行高统一** ----------------
    两处数据行原本不一样高（统计表 ≈37.8px、表格版 ≈29.8px）—— 统计表的干员格自带

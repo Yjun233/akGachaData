@@ -36,9 +36,9 @@
  * 所以**统一钉在该图表标题那一带**（绘图区上方），恒定不变、不压折线。
  * 另外同一时刻只允许一张图有浮窗（点完六星再点五星，六星那张要消失）——由 `EChart.vue` 统一管。
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
-import { avatarUrl } from '../lib/avatars.js';
+import { avatarUrl, avatarReady, preloadAvatar, onAvatarLoad } from '../lib/avatars.js';
 import { modeFirstLabel, modeWord, axisLabel, metricShort, firstUpRangeLabel } from '../lib/firstUp.js';
 import { TIP_GAP } from '../lib/chartTooltip.js';
 import EChart from '../components/EChart.vue';
@@ -47,6 +47,11 @@ import { useDragPan } from '../composables/useDragPan.js';
 const site = useSiteStore();
 const data = computed(() => site.firstUp);
 const isImage = computed(() => site.avatarMode === 'image');
+
+/* 头像加载完成 → 触发重绘（图片模式下 canvas 才能从「首字占位」换成真头像）。
+   ⚠️ 用递增的 tick 而不是布尔量：同一批头像会**陆续**加载完，需要每次都重算 option。 */
+const avatarTick = ref(0);
+let offAvatar = null;
 
 /** 「首次进店」/「首次轮换」——分节标题、tooltip、空态文案都用它 */
 const firstLabel = computed(() => modeFirstLabel(data.value.mode));
@@ -152,8 +157,17 @@ function tipBand(host) {
 
 const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'circle');
 
+/** 图片模式下该干员的头像是否**已就绪**（未加载完 / 加载失败 → 先画首字占位） */
+const readyOf = (name) => avatarReady(site.operators[name] || { name });
+
+/** 干员名首字（占位用，与简洁模式同一个口径） */
+const firstChar = (name) => String(name || '?').trim().charAt(0) || '?';
+
 function buildOption(rows, rarity, ax) {
   const image = isImage.value;
+  /* ⚠️ 读一下 `avatarTick` 把它纳入 computed 依赖 —— 头像陆续加载完时要重绘。
+     （调用方是 `option6/option5` 这两个 computed，见下。） */
+  void avatarTick.value;
   return {
     animationDuration: 260,
     grid: {
@@ -253,6 +267,35 @@ function buildOption(rows, rarity, ax) {
           if (!row || row.value === null) return null;
           const p = api.coord([api.value(0), api.value(1)]);
           const d = AVATAR_PT;
+          /* 头像**未就绪 / 加载失败** → 退化成一枚圆底 + 干员名首字
+             （与 UP 历史页同一套：renderItem 是渲染期回调，只能同步判断，
+               预加载在别处做，加载完由 `avatarTick` 触发重绘）。 */
+          if (!readyOf(row.name)) {
+            return {
+              type: 'group',
+              children: [
+                {
+                  type: 'circle',
+                  shape: { cx: p[0], cy: p[1], r: d / 2 },
+                  style: { fill: '#e8f1fb' },
+                },
+                {
+                  type: 'text',
+                  style: {
+                    text: firstChar(row.name),
+                    x: p[0],
+                    y: p[1],
+                    fill: BLUE_DARK,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    fontFamily: 'system-ui, "Microsoft YaHei", sans-serif',
+                    align: 'center',
+                    verticalAlign: 'middle',
+                  },
+                },
+              ],
+            };
+          }
           return {
             type: 'group',
             clipPath: { type: 'circle', shape: { cx: p[0], cy: p[1], r: d / 2 } },
@@ -294,11 +337,30 @@ function scrollToEnd() {
   }
 }
 
-onMounted(() => nextTick(scrollToEnd));
+/** 预加载本页要画的干员头像（图片模式才需要）。
+ *  ⚠️ canvas 是**同步**渲染的，不能在 renderItem 里发请求 —— 所以先整体预加载；
+ *  加载完由 `onAvatarLoad` → `avatarTick++` → option 重算 → EChart 重绘。 */
+function preloadVisible() {
+  if (!isImage.value) return;
+  for (const r of [...data.value.six, ...data.value.five]) {
+    preloadAvatar(site.operators[r.name] || { name: r.name });
+  }
+}
+
+onMounted(() => {
+  offAvatar = onAvatarLoad(() => { avatarTick.value += 1; });
+  preloadVisible();
+  nextTick(scrollToEnd);
+});
+onBeforeUnmount(() => { offAvatar?.(); offAvatar = null; });
+
 watch(
   () => [data.value.six.length, data.value.five.length],
   () => nextTick(scrollToEnd),
 );
+
+/* 切到图片模式时预加载（初始是简洁模式的话，头像是这时才需要的） */
+watch(isImage, (on) => { if (on) preloadVisible(); });
 
 /* 「筛选范围」文案：日期框默认填的就是完整跨度，所以那种情况仍显示「全部」 */
 const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullFirstUpRange));

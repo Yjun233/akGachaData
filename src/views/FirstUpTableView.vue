@@ -39,7 +39,7 @@
  */
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';
-import { avatarUrl } from '../lib/avatars.js';
+import AvatarImg from '../components/AvatarImg.vue';
 import { axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel } from '../lib/firstUp.js';
 
 const site = useSiteStore();
@@ -66,7 +66,7 @@ const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullF
 /** 图片模式头像：表格版用**长方形蒙版**（与「出率提升记录」同一套，见 main.css 的 .avt-rect）。
  *  ⚠️ shape 只在素材缺失、回退占位图时才有意义 —— 真素材都是同一张方形 96×96 PNG，
  *  形状（这里的 2:1 长方蒙版）完全交给 CSS。 */
-const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'square');
+const opOf = (name) => site.operators[name] || { name };
 
 /** 当前纵轴口径 → 给哪一列加底色（右栏切换时的唯一反馈） */
 const isMetric = (which) => site.firstUpMetric === which;
@@ -118,10 +118,7 @@ const isMetric = (which) => site.firstUpMetric === which;
                     <template v-else>{{ r.releaseDate }}</template>
                   </td>
                   <td class="opcell">
-                    <img
-                      v-if="isImage" class="avt-rect" :src="avatarOf(r.name)"
-                      :alt="r.name" :title="r.name"
-                    />
+                    <AvatarImg v-if="isImage" :op="opOf(r.name)" shape="square" img-class="avt-rect" />
                     <b v-else>{{ r.name }}</b>
                   </td>
                   <td class="num">{{ r.firstDate }}</td>

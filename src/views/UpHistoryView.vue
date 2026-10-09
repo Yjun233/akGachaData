@@ -24,6 +24,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { buildUpTimeline, chartHeight, minInnerWidth, TL } from '../lib/upTimeline.js';
+import { preloadAvatar, onAvatarLoad } from '../lib/avatars.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
 import { TIP_GAP } from '../lib/chartTooltip.js';
@@ -35,6 +36,19 @@ const isImage = computed(() => site.avatarMode === 'image');
 /** 当前显示的星级（右栏切换，默认六星） */
 const rows = computed(() => (site.upRarity === 5 ? data.value.five : data.value.six));
 
+/* 头像加载完成 → 触发重绘（图片模式下 canvas 才能从「首字占位」换成真头像）。
+   ⚠️ 用递增的 tick 而不是布尔量：同一批头像会**陆续**加载完，需要每次都重算 option。 */
+const avatarTick = ref(0);
+let offAvatar = null;
+
+/** 预加载本页要画的干员头像（图片模式才需要）。
+ *  ⚠️ canvas 是**同步**渲染的，不能在 renderItem 里发请求 —— 所以先整体预加载；
+ *  加载完由 `onAvatarLoad` → `avatarTick++` → `built` 重算 → EChart 重绘。 */
+function preloadVisible() {
+  if (!isImage.value) return;
+  for (const r of rows.value) preloadAvatar(site.operators[r.name] || { name: r.name });
+}
+
 /** 图表 option（顶部刻度条 + 主体） */
 const built = computed(() => buildUpTimeline({
   rows: rows.value,
@@ -42,6 +56,9 @@ const built = computed(() => buildUpTimeline({
   isImage: isImage.value,
   showGaps: site.upShowGaps,
   operatorByName: site.operators,
+  /* ⚠️ 把头像加载计数带进来：某张头像加载完 → tick 变 → 这里重算 → EChart 重绘。
+     不带它的话，canvas 上的「首字占位」永远不会换成真头像（renderItem 不会自己重跑）。 */
+  avatarTick: avatarTick.value,
 }));
 
 const bodyH = computed(() => chartHeight(rows.value));
@@ -100,6 +117,8 @@ async function scrollToRight() {
 
 let ro = null;
 onMounted(async () => {
+  offAvatar = onAvatarLoad(() => { avatarTick.value += 1; });
+  preloadVisible();
   await scrollToRight();
   if (!innerEl.value) return;
   ro = new ResizeObserver(() => {
@@ -108,12 +127,18 @@ onMounted(async () => {
   });
   ro.observe(innerEl.value);
 });
-onBeforeUnmount(() => { ro?.disconnect(); ro = null; });
+onBeforeUnmount(() => {
+  ro?.disconnect(); ro = null;
+  offAvatar?.(); offAvatar = null;
+});
 
 /* 切星级 / 切服务器都会整体换一批干员（横向总宽度随之改变），重新贴回最右。
    ⚠️ 只 watch `upRarity` 会漏掉切服务器 —— 那时滚动条的相对位置不变、但内容宽度变了，
    于是停在半中间，看起来「没贴到最右」。 */
-watch(() => [site.server, site.upRarity], scrollToRight);
+watch(() => [site.server, site.upRarity], () => { preloadVisible(); scrollToRight(); });
+
+/* 切到图片模式时也要预加载（初始是简洁模式的话，头像是这时才需要的） */
+watch(isImage, (on) => { if (on) preloadVisible(); });
 
 /* 卡片头的一行摘要：「只看进店」与卡池类型是**叠加**的两个条件（2026-10-03 改），所以都报出来 */
 const filterText = computed(() => {

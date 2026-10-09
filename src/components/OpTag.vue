@@ -7,7 +7,7 @@
  * 两种模式都带状态标记：限 = 限定干员（卡池列表展示、统计页排除）；兑 = 商店兑换。
  */
 import { computed } from 'vue';
-import { avatarUrl } from '../lib/avatars.js';
+import AvatarImg from './AvatarImg.vue';
 import { useSiteStore } from '../stores/site.js';
 
 const props = defineProps({
@@ -26,13 +26,12 @@ const site = useSiteStore();
 const fullOp = computed(() => site.operators[props.op.name] || props.op);
 
 const isImage = computed(() => site.avatarMode === 'image');
-const src = computed(() => avatarUrl(fullOp.value, 'square'));
 const hasBadge = computed(() => props.op.isLimited || props.op.isShop);
 </script>
 
 <template>
   <span v-if="isImage" class="avt">
-    <img class="av" :src="src" :alt="op.name" :title="op.name" />
+    <AvatarImg :op="fullOp" shape="square" img-class="av" />
     <span v-if="mark && hasBadge" class="corners">
       <i v-if="op.isLimited" class="mk mk-lim" title="限定干员（不参与统计）">限</i>
       <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">兑</i>

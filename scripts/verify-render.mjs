@@ -154,6 +154,8 @@ try {
     }
   };
   const BANNER_N = META.servers.find((x) => x.id === 'sc').bannerCount + claCount('sc');
+  /* 干员总数从 metadata 派生（**不写死** —— 会随新干员入库增长；头像数应与它一致） */
+  const OP_N = META.operatorCount;
   const SNAP = META.generatedAt;
   /* 参考日期的初始值 = 打开页面的**真实当天**（2026-10-01 口径调整；以前取数据快照日 SNAP）。
      三个服务器的「数据更新日」只用于左栏展示，不再参与计算。 */
@@ -166,7 +168,7 @@ try {
 
   check('数据层加载成功', banners.store.error, '');
   check('卡池总数 = metadata.bannerCount', banners.store.banners.length, BANNER_N);
-  check('干员总数', banners.store.operatorCount, 230);
+  check('干员总数', banners.store.operatorCount, OP_N);
   check('默认服务器', banners.store.server, 'sc');
   check('参考日期初始值 = 打开页面的当天', banners.store.refDate, TODAY);
 
@@ -191,7 +193,7 @@ try {
     dateVal(bh, 'f-from') === banners.store.fullBannerRange.from
     && dateVal(bh, 'f-to') === banners.store.fullBannerRange.to
     && !!dateVal(bh, 'f-from'), true);
-  check('左栏元信息：干员 230 位', /干员 <b>230<\/b> 位/.test(bh), true);
+  check(`左栏元信息：干员 ${OP_N} 位`, new RegExp(`干员 <b>${OP_N}<\\/b> 位`).test(bh), true);
   check('左栏元信息：卡池数', new RegExp(`卡池 <b>${BANNER_N}</b> 个`).test(bh), true);
 
   /* ---------------- 卡池列表：UP 干员**多选**（名字 / 全拼 / 首字母搜索） ----------------
@@ -662,11 +664,13 @@ try {
     && /距上行/.test(ftRot.html) && /累计数/.test(ftRot.html)
     && !/累计轮换次数/.test(ftRot.html), true);
 
-  /* 图片模式：干员列换成**长方形蒙版头像** —— 与「出率提升记录」同款，共用 img.avt-rect
-     （用户 2026-10-03 指定；此前是 26px 的圆形头像） */
+  /* 图片模式：干员列换成**长方形蒙版头像** —— 与「出率提升记录」同款，共用 `.avt-img` 那套
+     几何（用户 2026-10-03 指定；此前是 26px 的圆形头像）。
+     ⚠️ 2026-10-09 起 `<img>` 由 `<AvatarImg>` 渲染，class 变成 `avt-rect avt-real`
+     （真实素材那层带 `avt-real`）—— 所以按**类名 token** 匹配，别再写 `class="avt-rect"` 整串。 */
   const ftImg = await renderRoute('/first-up/table', (s) => s.setAvatarMode('image'));
   check('表格版：图片模式下行内出现头像图片',
-    count(ftImg.html, /class="avt-rect"/g), ftRows);
+    count(ftImg.html, /class="avt-rect[ "]/g), ftRows);
   check('表格版：图片模式下不再渲染干员名（<b> 标签）',
     count(ftImg.html, /<td class="opcell">\s*<b>/g), 0);
   /* ⚠️ 这边没有冻结列 / colgroup：定位包含块与列宽都得自己补，否则头像会脱位（相对外层定位）、
@@ -701,10 +705,11 @@ try {
   check('「干员展示」排在「服务器」上面',
     ph.indexOf('干员展示') > 0 && ph.indexOf('干员展示') < ph.indexOf('>服务器<'), true);
   check('默认简洁模式：卡池列表仍是名字标签',
-    count(bh, /class="tag r/g) > 0 && !bh.includes('class="av"'), true);
+    count(bh, /class="tag r/g) > 0 && !/class="av[ "]/.test(bh), true);
 
   const imgBanners = await renderRoute('/', (s) => s.setAvatarMode('image'));
-  check('图片模式：卡池列表换成头像', count(imgBanners.html, /class="av"/g) > 400, true);
+  /* ⚠️ 头像 `<img>`（`<AvatarImg>` 渲染）的 class 现在是 `av avt-real` —— 按类名 token 匹配 */
+  check('图片模式：卡池列表换成头像', count(imgBanners.html, /class="av[ "]/g) > 400, true);
   check('图片模式：头像带「限」「兑」角标', count(imgBanners.html, /class="corners"/g) > 0, true);
   check('图片模式：不再渲染名字标签', count(imgBanners.html, /class="tag r/g), 0);
   /* 头像是真的素材了（不是内联占位图 —— 占位图只在素材缺失时兜底）。
@@ -716,14 +721,55 @@ try {
     && !/src="data:image\/svg\+xml/.test(imgBanners.html), true);
 
   const imgStats = await renderRoute('/operators', (s) => s.setAvatarMode('image'));
-  /* 统计页用**长方形蒙版**（.avt-rect，宽是高 2 倍），与卡池列表的方形头像 .avt-sq 区分开 */
-  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect"/g), 204);
+  /* 统计页用**长方形蒙版**（.avt-rect，宽是高 2 倍），与卡池列表的方形头像 .av 区分开。
+     ⚠️ 类名 token 匹配（真图那层 class = `avt-rect avt-real`）。 */
+  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect[ "]/g), 204);
   check('图片模式：统计表不再渲染干员名', !/<b>推进之王<\/b>/.test(imgStats.html), true);
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
   /* ⚠️ 行高一致性靠 `img-mode` 那句钩子 + `.avt-rect` 的绝对定位：
      没有它，干员格失去行流内容 → 行高从 37.8px 掉到 29.8px（实测），与简洁模式对不上。 */
   check('图片模式：统计表带 img-mode 钩子（补回干员格的行框高度）',
     /<table class="img-mode grid floating stat-tbl">/.test(imgStats.html), true);
+
+  /* ---------------- 图片模式：加载中 / 加载失败 → 干员名首字占位（2026-10-09） ----------------
+     用户要求：「加载中或加载失败的图片能否用干员名字首字占位」。
+     做法 = `<AvatarImg>` 在外层 `.avt-img` 里叠两层：真图 `.avt-real`（上）+ 首字占位
+     `.avt-fallback`（下）。占位图就是 `placeholderAvatar()` 的**内联 SVG**（浅蓝底 + 深蓝首字）。
+     ⚠️ SSR 里没有 `Image`（`CAN_LOAD=false`），`avatarReady` 一律恒 true
+       → 渲染出来的是**真素材**（上面那条 `src="…/avatars/char_*.png"` 断言守着），
+         占位层只作为**背景层**存在（加载中露出来、加载完被真图盖住、失败时真图撤掉）。
+         所以这里断言的是「两层结构 + 占位层是 data URI SVG」，**不是**「渲染成了占位图」。 */
+  check('图片模式：头像由 <AvatarImg> 渲染（外层 .avt-img 叠真图 + 占位两层）',
+    /<span class="avt-img">/.test(imgStats.html)
+    && /class="avt-rect avt-real"/.test(imgStats.html), true);
+  check('图片模式：每张头像都垫了一层首字占位（`.avt-fallback`，与真图同数）',
+    count(imgStats.html, /class="avt-fallback"/g), 204);
+  check('图片模式：占位层是内联 SVG 首字占位图（data:image/svg+xml，不发网络请求）',
+    /class="avt-fallback"[^>]*background-image:url\(&quot;data:image\/svg\+xml,/.test(imgStats.html), true);
+  /* 卡池列表（.av 方头像）同样要有占位层 —— 三处 DOM 共用同一个组件 */
+  check('图片模式：卡池列表的头像也有首字占位层',
+    count(imgBanners.html, /class="avt-fallback"/g) > 400, true);
+
+  const avLibSrc = fs.readFileSync(path.join(ROOT, 'src/lib/avatars.js'), 'utf8');
+  check('头像模块：预加载 + 就绪判断 + 加载完成订阅都在（canvas 两处要用）',
+    /export function preloadAvatar/.test(avLibSrc)
+    && /export function avatarReady/.test(avLibSrc)
+    && /export function onAvatarLoad/.test(avLibSrc), true);
+  /* ⚠️ SSR / 无 Image 环境必须「当真图已就绪」，否则整图退化成首字、`<image>` 断言全红 */
+  check('头像模块：无 Image 环境（SSR）一律当真图已就绪（否则 SSR 会画成首字）',
+    /const CAN_LOAD = typeof Image !== 'undefined'/.test(avLibSrc)
+    && /if \(!CAN_LOAD\) return true/.test(avLibSrc), true);
+  /* canvas 两处（UP 历史 / 首次UP折线）在头像没就绪时画首字，就绪后靠 avatarTick 重绘 */
+  const upLibSrc2 = fs.readFileSync(path.join(ROOT, 'src/lib/upTimeline.js'), 'utf8');
+  const fupSrc2 = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpView.vue'), 'utf8');
+  const upViewSrc2 = fs.readFileSync(path.join(ROOT, 'src/views/UpHistoryView.vue'), 'utf8');
+  check('UP 历史：头像未就绪时画首字占位（isImage && avatarReady 分支）',
+    /isImage && avatarReady\(op\)/.test(upLibSrc2) && /else if \(isImage\)/.test(upLibSrc2), true);
+  check('首次UP折线：头像未就绪时画圆底首字占位（!readyOf 分支）',
+    /if \(!readyOf\(row\.name\)\)/.test(fupSrc2), true);
+  check('canvas 两处：头像加载完成会触发重绘（订阅 onAvatarLoad → avatarTick）',
+    /onAvatarLoad\(\(\) => \{ avatarTick\.value \+= 1; \}\)/.test(upViewSrc2)
+    && /onAvatarLoad\(\(\) => \{ avatarTick\.value \+= 1; \}\)/.test(fupSrc2), true);
 
   const imgFup = await renderRoute('/first-up', (s) => s.setAvatarMode('image'));
   /* 页内说明块已移除；图片模式的关键行为（点用头像）在数据层与 upTimeline 断言里守 */
@@ -879,9 +925,11 @@ try {
   check('拖拽判定：点在图表主体上（事件目标很大、offset 远超容器）也要接管',
     shouldStartDrag(dragEv({ offsetX: 480, offsetY: 2600 }), dragNode), true);
   /* 横向滚动条要一直停在最右：① 切服务器 / 切星级后重新贴右；
-     ② 时间轴宽度变化时（动筛选会让它变窄 / 变宽）若本来就贴着右端就继续保持。 */
+     ② 时间轴宽度变化时（动筛选会让它变窄 / 变宽）若本来就贴着右端就继续保持。
+     ⚠️ 2026-10-09 起那个 watcher 体里多了 `preloadVisible()`（图片模式要预加载头像），
+     所以不再写成 `, scrollToRight)` 的简写 —— 断言改成「watch 了这两个键 + 调了 scrollToRight」。 */
   check('UP 历史页：横向滚动条会重新贴到最右（切服 / 切星级 + 宽度变化）',
-    /watch\(\(\) => \[site\.server, site\.upRarity\], scrollToRight\)/.test(upSrc)
+    /watch\(\(\) => \[site\.server, site\.upRarity\][\s\S]{0,80}?scrollToRight\(\)/.test(upSrc)
     && /new ResizeObserver/.test(upSrc) && /pinned/.test(upSrc), true);
   check('UP 历史页：名字列每人一行（92 行）', count(uh, /class="tl-name"/g), 92);
   /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
@@ -1257,7 +1305,7 @@ try {
   const avDir = path.join(RES, 'avatars');
   const avCount = fs.existsSync(avDir)
     ? fs.readdirSync(avDir).filter((f) => f.endsWith('.png')).length : -1;
-  check('资源仓库 ../akGachaResource 存在，且头像齐全（230 张）', avCount, 230);
+  check(`资源仓库 ../akGachaResource 存在，且头像齐全（${OP_N} 张）`, avCount, OP_N);
   /* banner-categories.json 已删除，内容并入 constants.js 的 BANNER_CATEGORIES */
   check('资源仓库里有数据 JSON（3 个）',
     ['operators.json', 'banners_sc.json', 'metadata.json']
@@ -1360,16 +1408,18 @@ try {
   check('统计表：冻结列用 background:inherit 保证不透明（依赖 tbody tr 有背景色）',
     /stat-tbl tbody tr\{background:#fff\}/.test(cssAll), true);
   /* ---------------- 图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
-     ⚠️ 这条规则**统计页与首次UP间隔 · 表格版共用**（选择器两段），所以正则从 class 本身取。
+     ⚠️ 这条规则**统计页与首次UP间隔 · 表格版共用**（选择器两段）。2026-10-09 起几何从
+     `img.avt-rect` 挪到了外层 `.avt-img`（头像改由 `<AvatarImg>` 渲染：外层定位 + 里面
+     真图 `.avt-real` / 首字占位层 `.avt-fallback` 两层重合），所以正则改成取 `.avt-img{`。
      五条硬约束都在 CSS 里守着，改坏了会立刻红：
      ① 宽 = 高 × 2（具体像素是用户手调的，别写死 → 只守比例契约）；
      ② **四边渐隐**：两层 `mask-image`（左右一层 + 上下二层）靠 `mask-composite: intersect`
         取交集，让头像**自身的 alpha** 在四条边渐入 → 硬边消失，且与行底色无关
         （行有白 / #fcfdff / #f7fbff 三种底，所以不能叠同色遮罩）；
-     ③ `object-fit:cover` → 96×96 方形素材**不拉伸**（按 2:1 裁上下）；
+     ③ `object-fit:cover` → 96×96 方形素材**不拉伸**（按 2:1 裁上下；现在写在内层 img 上）；
      ④ **绝对定位** → 头像不参与行高计算（统计页行高由干员格的占位行框决定；表格版由数字列决定）；
      ⑤ 统计页配套的 `img-mode` 那句给干员格补回 1lh 的行框高度（否则行高会掉 8px）。 */
-  const rectCss = (cssAll.match(/img\.avt-rect\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
+  const rectCss = (cssAll.match(/\.avt-img,\s*table[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   /* ⚠️ 尺寸是用户手调的（2026-10-03 由 52×26 改到 68×34），所以**不写死像素**，
      只断言「宽 = 高 × 2」这条比例契约 —— 以后他再调尺寸也不会被误判成回归。 */
   const rectW = Number((rectCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
@@ -1403,8 +1453,9 @@ try {
     maskStd !== '' && maskStd === maskWebkit
     && /mask-composite:intersect/.test(rectCss)
     && /-webkit-mask-composite:source-in/.test(rectCss), true);
+  const rectImgCss = (cssAll.match(/\.avt-img img\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   check('统计页图片模式：头像不被拉伸（object-fit:cover）+ 绝对定位（不影响行高）',
-    /object-fit:cover/.test(rectCss) && /position:absolute/.test(rectCss), true);
+    /object-fit:cover/.test(rectImgCss) && /position:absolute/.test(rectCss), true);
   check('统计页图片模式：行高由「两表统一」的 height:35px 钉死（占位行框已随行高统一删除）',
     /stat-tbl tbody td,\s*table\.grid\.fup-tbl tbody td\{\s*padding-top:0;padding-bottom:0;height:35px;\s*\}/.test(cssAll), true);
   /* ⚠️ 冻结列表头的 z-index 必须**高于**分组表头，否则 DOM 靠后的「出率提升」会盖住「干员」。
