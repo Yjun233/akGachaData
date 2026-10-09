@@ -21,7 +21,7 @@ import CustomBannerDialog from './CustomBannerDialog.vue';
  *   国服来自 PRTS Wiki；国际服来自 arknights.wiki.gg；
  *   繁中服没有公开数据站，来自用户自建的卡池记录表（金山文档在线表格，人工维护，
  *   没有对外链接，所以 url 为 null）。
- * （干员头像一律来自 ArknightsGameResource，见 akGachaDocs/resource/资源仓库说明.md。）
+ * （干员头像一律来自 ArknightsAssets/ArknightsAssets2，见 akGachaDocs/resource/资源仓库说明.md。）
  */
 const BANNER_SOURCES = {
   sc: { label: 'PRTS Wiki', url: 'https://prts.wiki' },

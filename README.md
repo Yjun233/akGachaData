@@ -49,7 +49,8 @@ https://cdn.jsdelivr.net/gh/Yjun233/akGachaResource@<sha>/avatars/char_306_leizi
 - **常驻中坚寻访 / 中坚甄选**、**皮肤 / 密录 / 模组**：取自官方解包数据
   [ArknightsAssets/ArknightsGamedata](https://github.com/ArknightsAssets/ArknightsGamedata)
   （三服都有）；国服皮肤的**复刻窗口**仍来自 PRTS
-- **干员头像**：来自 [ArknightsGameResource](https://github.com/yuanyan3060/ArknightsGameResource)，
+- **干员头像**：来自
+  [ArknightsAssets/ArknightsAssets2](https://github.com/ArknightsAssets/ArknightsAssets2)（`cn` 分支），
   已压缩到 96×96
 
 想直接用这些数据的话，看 [akGachaResource 的 README](https://github.com/Yjun233/akGachaResource)。
