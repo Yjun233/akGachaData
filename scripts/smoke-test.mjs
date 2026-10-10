@@ -274,7 +274,8 @@ const checks = [
   ['预渲染：不输出宽表格', count(wide.preBanners, /<table/g), 0],
 
   // ---- 统计页 ----
-  ['统计页：数据行', count(wide.stats, /<tr/g) - 8, 204],
+  // ⚠️ 黄金值：只在新干员入库时变（2026-10-10 由 204 → 206，快照新增 克莱门莎 / 德·托莱多）
+  ['统计页：数据行', count(wide.stats, /<tr/g) - 8, 206],
   ['统计页：四节标题', ['1.1','1.2','2.1','2.2'].every(x => wide.stats.includes('>' + x + '<')), true],
   ['统计页：分组表头单元格（两行表头）', count(wide.stats, /class="group"/g), 8],
   ['统计页：跨两行的表头单元格', count(wide.stats, /rowspan="2"/g), 8],

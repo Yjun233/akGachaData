@@ -91,7 +91,9 @@ const check = (label, actual, expected) => {
 // ---- 站点级 ----
 check('干员总数', Object.keys(operators).length, meta.operatorCount);
 check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount + claCountOf('sc'));
-check('参与统计干员数', rows.length, 204);
+/* ⚠️ 黄金值：**新干员首次进 UP 就会变**（2026-10-10 由 204 → 206，新增 克莱门莎 / 德·托莱多）。
+   不派生是故意的 —— 它正是「参与统计的干员有没有变多」的哨兵。 */
+check('参与统计干员数', rows.length, 206);
 
 /* `operators.json` 的 `alter`（**同一个异格组里其它成员**的 charId 数组）—— 来自官方解包
    `char_meta_table.json` 的 `spCharGroups`，由 `fetch-data.mjs` 写。
@@ -864,8 +866,8 @@ check('修正后必然满足 开始 < 结束',
 
 /* ---------------- UP 历史一览 ---------------- */
 const upAll = computeUpHistory({ banners, categories, operatorByName: operators, relDateOf });
-check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.length}`, '92/112');
-check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 26 位限定）', upAll.all.length, 204);
+check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.length}`, '93/113');
+check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 26 位限定）', upAll.all.length, 206);
 check('UP 历史：不含任何限定干员',
   upAll.all.every((r) => !operators[r.name]?.isLimited), true);
 /* 标记总数改成**独立算一遍**：把每个卡池里 5/6★ 且非限定的 UP 干员数加起来。
@@ -1452,8 +1454,23 @@ check('单六寻访：都有 canRerun / rerunKind',
   scSingles.filter((b) => 'canRerun' in b && 'rerunKind' in b).length, scSingles.length);
 check('单六寻访：非单六寻访不带 canRerun（常驻轮换池谈复刻没意义）',
   scBanners.filter((b) => b.type !== 'single' && 'canRerun' in b).length, 0);
-check('单六寻访：rerunKind 取值合法',
-  scSingles.every((b) => ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
+/* ⚠️ **允许 `null`**：非周五那几轮 CI **不读解包表**，新池的 rerunKind 只能等下周五补上
+   （`fetch-data.mjs` 会打印「N 个新池暂缺 rerunKind（下周五补上）」）。
+   2026-10-10（周六）新上的「海渊巡游」正是这种 —— 不能因为它是 null 就判红。 */
+check('单六寻访：rerunKind 取值合法（新池暂缺 = null，下周五补上）',
+  scSingles.every((b) => b.rerunKind === null || ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
+/* 反向收紧：null **只允许落在「快照日前后一周内开的新池」上** ——
+   补上它的下一次带解包的运行最多晚 7 天（周五），所以老池要是变 null，就是回填逻辑坏了。 */
+{
+  const pending = scSingles.filter((b) => b.rerunKind === null);
+  const snap = meta.generatedAt;
+  check('单六寻访：rerunKind 为空的只可能是刚开的新池（老池变空 = 回填丢了）',
+    pending.every((b) => Math.abs(diffDays(b.startDate, snap)) <= 7), true);
+  if (pending.length) {
+    console.log(`· 单六寻访：${pending.length} 个新池暂缺 rerunKind（${pending.map((b) => b.name).join('、')}）`
+      + `—— 等下一次带官方解包的运行补上`);
+  }
+}
 /* ⭐ 核心不变量：**canRerun=true 的池必须都是「首发」**（复刻 / 返场都算已再上架、不再有下一次）。 */
 check('单六寻访：canRerun=true 的池都是「首发」池',
   scSingles.filter((b) => b.canRerun).every((b) => b.rerunKind === '首发'), true);
@@ -1478,7 +1495,8 @@ check('单六寻访：rerunKind ≠ 首发 的池 canRerun 恒 false',
     excInData.length === 3 && excInData.every((b) => b.canRerun === false && b.rerunKind === '首发'), true);
 }
 /* ⭐ 结构黄金值：首发 59 / 返场 2 / 复刻 23（新干员入库会变，但这三个数变化很慢）。
-   只锁「首发」与「非首发」的总数，避免把每一期都写死。 */
+   只锁「首发」与「非首发」的总数，避免把每一期都写死。
+   ⚠️ 分布只统计**取到值**的那些；`null`（新池暂缺，见上面那条）不进这个比对。
 {
   const kindCount = {};
   for (const b of scSingles) kindCount[b.rerunKind] = (kindCount[b.rerunKind] || 0) + 1;

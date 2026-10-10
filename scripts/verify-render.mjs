@@ -54,7 +54,9 @@ globalThis.window = {
 const RES_ROOT = path.resolve(ROOT, '..', 'akGachaResource');
 globalThis.fetch = async (url) => {
   const s = String(url);
-  const m = s.match(/(data|avatars)\/(.+)$/);
+  /* ⚠️ 必须**连查询串一起去掉**：数据文件现在挂着缓存版本号 `?v=…`（见 src/lib/resource.js），
+     不剥掉的话下面拼出来的文件路径会带上 `?v=`，`existsSync` 一律落空 → 整站降级成「不可用」。 */
+  const m = s.match(/(data|avatars)\/([^?#]+)/);
   const file = m
     ? path.join(RES_ROOT, m[1], m[2])
     : path.join(ROOT, 'public', s.replace(/^\/+/, ''));
@@ -272,7 +274,8 @@ try {
   check('统计页：只剩一个分隔块（星级已并入分节标题）',
     count(sh, /class="grp-sep"/g), 1);
 
-  /* 每张表的行数：与原型（44 / 48 / 44 / 68）一致 */
+  /* 每张表的行数：与原型一致（2026-10-10 起 45 / 48 / 45 / 68 ——
+     当天快照新增 克莱门莎(6★) / 德·托莱多(5★)，两张标准表各 +1 行） */
   const tableRows = (html, anchor) => {
     const start = html.indexOf(`id="${anchor}"`);
     const t = html.indexOf('<tbody>', start);
@@ -280,9 +283,9 @@ try {
     return count(html.slice(t, e), /<tr>/g);
   };
   const sizes = ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(sh, a));
-  check('统计页：四张表行数 44 / 48 / 44 / 68', sizes.join(','), '44,48,44,68');
+  check('统计页：四张表行数 45 / 48 / 45 / 68', sizes.join(','), '45,48,45,68');
   check('统计页总行数 = 参与统计干员数',
-    sizes.reduce((a, b) => a + b, 0), 204);
+    sizes.reduce((a, b) => a + b, 0), 206);
 
   /* 抽样：与原型逐格核对过的干员应出现在统计页 */
   check('统计页：包含「推进之王」', sh.includes('推进之王'), true);
@@ -290,8 +293,9 @@ try {
   /* 「可见卡池」= 开始日不晚于参考日期的卡池数（visibleOf 定义见上，与卡池列表同一口径）。 */
   check('统计页：可见卡池数 = 开始日不晚于当天的卡池数',
     new RegExp(`可见卡池 ${visibleOf(banners.store)} 个`).test(sh), true);
-  /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值 */
-  check('统计页：参与统计干员 204 位', /参与统计干员 204 位/.test(sh), true);
+  /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值。
+     2026-10-10：204 → 206（快照新增 克莱门莎 / 德·托莱多）。 */
+  check('统计页：参与统计干员 206 位', /参与统计干员 206 位/.test(sh), true);
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
   check('顶栏定位按钮 六星干员·标准寻访', /六星干员·标准寻访/.test(sh), true);
@@ -723,7 +727,7 @@ try {
   const imgStats = await renderRoute('/operators', (s) => s.setAvatarMode('image'));
   /* 统计页用**长方形蒙版**（.avt-rect，宽是高 2 倍），与卡池列表的方形头像 .av 区分开。
      ⚠️ 类名 token 匹配（真图那层 class = `avt-rect avt-real`）。 */
-  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect[ "]/g), 204);
+  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect[ "]/g), 206);
   check('图片模式：统计表不再渲染干员名', !/<b>推进之王<\/b>/.test(imgStats.html), true);
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
   /* ⚠️ 行高一致性靠 `img-mode` 那句钩子 + `.avt-rect` 的绝对定位：
@@ -743,7 +747,7 @@ try {
     /<span class="avt-img">/.test(imgStats.html)
     && /class="avt-rect avt-real"/.test(imgStats.html), true);
   check('图片模式：每张头像都垫了一层首字占位（`.avt-fallback`，与真图同数）',
-    count(imgStats.html, /class="avt-fallback"/g), 204);
+    count(imgStats.html, /class="avt-fallback"/g), 206);
   check('图片模式：占位层是内联 SVG 首字占位图（data:image/svg+xml，不发网络请求）',
     /class="avt-fallback"[^>]*background-image:url\(&quot;data:image\/svg\+xml,/.test(imgStats.html), true);
   /* 卡池列表（.av 方头像）同样要有占位层 —— 三处 DOM 共用同一个组件 */
@@ -835,6 +839,22 @@ try {
     && /skinsByOperator: ex\.skins,/.test(siteSrc)
     && /memoirsByOperator: ex\.memoirs,/.test(siteSrc)
     && /modulesByOperator: ex\.modules,/.test(siteSrc), true);
+
+  /* --- 数据缓存的版本号（2026-10-10）---
+     jsDelivr 对数据文件回 `max-age=604800`（7 天），而 CI 的 purge 够不到浏览器里的那份，
+     于是可能「数据更新日是今天、卡池内容还是几天前」——自设卡池因此没被正式卡池顶掉。
+     治法：除 metadata 外所有数据 URL 挂 `?v=<六个更新日>`，metadata 用 `no-store` 单独抢取。
+     resource.js 那一半的断言在下面「资源模块」那组里（同一个文件只读一次）。 */
+  check('数据缓存：metadata 用 `cache: \'no-store\'` **绕开缓存**抢取（版本号的来源不能是缓存）',
+    /getJSON\('metadata\.json', \{ fresh: true \}\)/.test(loadSrc)
+    && /cache: 'no-store'/.test(loadSrc), true);
+  check('数据缓存：取 metadata → 写版本号 → 再取其余（顺序不能反）',
+    /setDataVersion\(versionOf\(meta\)\)/.test(loadSrc)
+    && loadSrc.indexOf('setDataVersion(versionOf(meta))') < loadSrc.indexOf("getJSON('operators.json')"),
+    true);
+  check('数据缓存：版本号含**三服 + 中坚三份共六个**日期（只取国服会漏掉国际服/繁中服/中坚的更新）',
+    /meta\?\.generatedAt, meta\?\.enGeneratedAt, meta\?\.tcGeneratedAt/.test(loadSrc)
+    && /cla\.sc\?\.generatedAt, cla\.en\?\.generatedAt, cla\.tc\?\.generatedAt/.test(loadSrc), true);
   /* 判定口径：皮肤是**区间 ∩ 区间**（闭区间求交）；密录 / 模组是**点 ∈ 区间** */
   check('时间重合：皮肤用闭区间求交',
     /aStart <= bEnd && bStart <= aEnd/.test(uhLibSrc), true);
@@ -931,7 +951,7 @@ try {
   check('UP 历史页：横向滚动条会重新贴到最右（切服 / 切星级 + 宽度变化）',
     /watch\(\(\) => \[site\.server, site\.upRarity\][\s\S]{0,80}?scrollToRight\(\)/.test(upSrc)
     && /new ResizeObserver/.test(upSrc) && /pinned/.test(upSrc), true);
-  check('UP 历史页：名字列每人一行（92 行）', count(uh, /class="tl-name"/g), 92);
+  check('UP 历史页：名字列每人一行（93 行）', count(uh, /class="tl-name"/g), 93);
   /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
   check('左栏底部：数据来源 + 版权声明',
     /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
@@ -939,8 +959,8 @@ try {
   check('UP 历史页：左栏导航四个顶级项 + 首次UP间隔的二级菜单都在',
     NAV_TOP.every((t) => uh.includes(t)) && NAV_SUB.every((t) => uh.includes(t)), true);
   check('UP 历史页：右栏标题', /时间范围与筛选/.test(uh), true);
-  check('UP 历史页：星级切换按钮（六星 92 / 五星 112）',
-    /六星（92）/.test(uh) && /五星（112）/.test(uh), true);
+  check('UP 历史页：星级切换按钮（六星 93 / 五星 113）',
+    /六星（93）/.test(uh) && /五星（113）/.test(uh), true);
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
@@ -1110,8 +1130,8 @@ try {
   /* 切到五星 */
   const upFive = await renderRoute('/up-history', (s) => s.setUpRarity(5));
   check('切到五星：分节切到 uh5', upFive.html.includes('id="uh5"') && !upFive.html.includes('id="uh6"'), true);
-  check('切到五星：卡片头统计（五星 112 位 · …）', /五星 112 位 ·/.test(plain(upFive.html)), true);
-  check('切到五星：五星行数 112', upFive.store.upHistory.five.length, 112);
+  check('切到五星：卡片头统计（五星 113 位 · …）', /五星 113 位 ·/.test(plain(upFive.html)), true);
+  check('切到五星：五星行数 113', upFive.store.upHistory.five.length, 113);
   check('切到五星：仍有两个图表容器', count(upFive.html, /class="echart"/g), 2);
 
   /* ---------------- 时间轴「真的能画出来」吗 ----------------
@@ -1325,6 +1345,11 @@ try {
   check('资源模块：指向 Yjun233/akGachaResource', /Yjun233\/akGachaResource/.test(resSrc), true);
   check('资源模块：头像版本可用 commit sha 固定（AVATARS_SHA）',
     /AVATARS_SHA/.test(resSrc), true);
+  /* 数据 URL 的缓存版本号（原因见上面那组「数据缓存」断言） */
+  check('资源模块：有版本号的存取口（模块级 dataVersion + setDataVersion）',
+    /let dataVersion = ''/.test(resSrc) && /export function setDataVersion\(/.test(resSrc), true);
+  check('资源模块：dataUrl 在版本号非空时追加 `?v=`（版本一变 URL 就变 → 绕开浏览器 7 天缓存）',
+    /\?v=\$\{dataVersion\}/.test(resSrc), true);
   /* ⚠️ 标签必须跟着 resource.js 的真实行为走：**dev 默认读本地**
      （public/{data,avatars} 是指向 ../akGachaResource 的目录联接），
      `VITE_RESOURCE=cdn` 才让 dev 走 CDN（看线上数据）；**build 一律走 CDN**。 */

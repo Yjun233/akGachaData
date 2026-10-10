@@ -4,6 +4,9 @@
  * 数据的**真身在独立资源仓库** `../akGachaResource/data`（远程 github.com/Yjun233/akGachaResource），
  * 本仓库里没有副本。**dev 默认读本地**（`public/data`，指向资源仓库的目录联接）；
  * `VITE_RESOURCE=cdn` 才让 dev 走 CDN；**build 一律走 CDN**。切换逻辑见 `resource.js`。
+ * ⚠️ 除 `metadata.json` 外，每个数据文件的 URL 都挂一个 `?v=<版本号>`（= metadata 里六个数据
+ *    更新日，见下面的 `versionOf`）—— 用来把浏览器的 **7 天缓存**按版本隔开，先取 metadata
+ *    再取其余，原因见 `resource.js` 里 `setDataVersion` 的长注释。
  *   metadata.json          站点元信息 + 服务器列表
  *   operators.json         干员表（各服共用，靠 *ReleaseDate 区分实装日）
  *   skins_<server>.json    干员时装（**可选**）—— 国服来自 PRTS（含**复刻窗口**），
@@ -24,12 +27,21 @@
  * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
  * banners_<id>.json 并把 available 改成 true 即可，前端无需改动。
  */
-import { dataUrl } from './resource.js';
+import { dataUrl, setDataVersion } from './resource.js';
 import { BANNER_CATEGORIES } from './constants.js';
 import { dedupe, loadEntries, saveEntries } from './customBanners.js';
 
-async function getJSON(name) {
-  const res = await fetch(dataUrl(name));
+/**
+ * 取一个数据文件。
+ *
+ * `fresh = true` 会加上 `cache: 'no-store'`，**绕开浏览器缓存**——全站只有 `metadata.json` 用它：
+ * 它里面那六个日期是其余所有数据文件的缓存版本号（`?v=`，见 `resource.js`），
+ * 它要是被浏览器缓存住，整套「数据更新了 URL 就变」的机制就白做了。
+ *
+ * ⚠️ `fetch(url, undefined)` 是合法的（等于不传第二个参数），所以非 fresh 的那支不用分支写。
+ */
+async function getJSON(name, { fresh = false } = {}) {
+  const res = await fetch(dataUrl(name), fresh ? { cache: 'no-store' } : undefined);
   if (!res.ok) throw new Error(`${name} 加载失败（HTTP ${res.status}）`);
   return res.json();
 }
@@ -56,13 +68,32 @@ function unwrap(json, key) {
   return json && typeof json === 'object' && json[key] !== undefined ? json[key] : json;
 }
 
+/**
+ * 数据版本号 —— 把 metadata 里**所有**会随数据变化的日期拼起来（去掉 `-` 好认一点）。
+ *
+ * ⚠️ **六个都得带上**，不能只取 `generatedAt`（国服）：那样「只有国际服更新」时版本号不变，
+ *    国际服用户的 `banners_en.json` 就仍然是浏览器里的旧那份 —— 正是要治的病。
+ *    中坚那三个日期同理（它是单独一个文件、单独一条管线）。
+ * 六个全空（新仓库 / 脏数据）时返回空串 → `dataUrl` 不加 `?v=`，退化成以前的行为。
+ */
+function versionOf(meta) {
+  const strip = (s) => String(s || '').replace(/-/g, '');
+  const cla = meta?.cla || {};
+  return [
+    meta?.generatedAt, meta?.enGeneratedAt, meta?.tcGeneratedAt,
+    cla.sc?.generatedAt, cla.en?.generatedAt, cla.tc?.generatedAt,
+  ].map(strip).filter(Boolean).join('.');
+}
+
 export async function loadSiteData() {
   /* ⚠️ 大类映射 `BANNER_CATEGORIES` 已从 `banner-categories.json` 移入 `constants.js`
      （各服共用、不随数据更新），这里不再额外发一个请求。 */
-  const [meta, rawOperators] = await Promise.all([
-    getJSON('metadata.json'),
-    getJSON('operators.json'),
-  ]);
+  /* ⚠️ metadata **单独、且绕开缓存**先取 —— 它的日期是其余所有数据文件的缓存版本号。
+     顺序不能反：抢到版本号，后面的请求才带得上 `?v=`（见 `resource.js` 的长注释）。
+     只多一次串行，且是个 1 KB 的小文件。 */
+  const meta = await getJSON('metadata.json', { fresh: true });
+  setDataVersion(versionOf(meta));
+  const rawOperators = await getJSON('operators.json');
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），
      前端一律按干员名索引（卡池数据里的 upOperators 只有 name）。 */
