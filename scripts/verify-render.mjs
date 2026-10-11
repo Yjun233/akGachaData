@@ -955,6 +955,16 @@ try {
   /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
   check('左栏底部：数据来源 + 版权声明',
     /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
+  /* 页脚两个外链图标（2026-10-11 加）：GitHub → 站点仓库、小电视 → b 站空间。
+     断言 href / target / rel 与「是内联 SVG（不引图标库）」。 */
+  check('左栏底部：两个外链图标（GitHub 站点仓库 + b 站小电视）',
+    count(uh, /class="dlk"/g), 2);
+  check('左栏底部：GitHub 图标指向站点仓库、新窗口打开、带 noreferrer',
+    /<a class="dlk" href="https:\/\/github\.com\/Yjun233\/akGachaData" target="_blank" rel="noreferrer"/.test(uh), true);
+  check('左栏底部：小电视图标指向 b 站空间',
+    /<a class="dlk" href="https:\/\/space\.bilibili\.com\/5555217" target="_blank" rel="noreferrer"/.test(uh), true);
+  check('左栏底部：两个图标都是**内联 SVG**（不引图标库 / 图标字体）',
+    count(uh, /class="dlk"[^>]*>\s*<svg viewBox="0 0 24 24"/g), 2);
 
   check('UP 历史页：左栏导航四个顶级项 + 首次UP间隔的二级菜单都在',
     NAV_TOP.every((t) => uh.includes(t)) && NAV_SUB.every((t) => uh.includes(t)), true);

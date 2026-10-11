@@ -167,6 +167,18 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 }
 .drawer-note b{color:var(--blue-700)}
 
+/* 左栏最底部：外链图标（站点仓库 GitHub / b 站小电视）。
+   ⚠️ 图标是组件里的**内联 SVG**（不引图标库），颜色走 currentColor → hover 只换 color 即可；
+   底色用极浅的蓝色方块做出可点区域，两个图标都是「实心图形 + 挖空的眼/嘴」，不会被底色顶出白点。 */
+.drawer-links{display:flex;align-items:center;gap:4px;margin-top:8px}
+.drawer-links a{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:26px;border-radius:7px;color:var(--muted);
+  transition:color .15s ease,background .15s ease;
+}
+.drawer-links a:hover{color:var(--blue-700);background:var(--blue-50)}
+.drawer-links svg{width:19px;height:19px;display:block}
+
 /* 左栏：服务器选择 + 干员展示模式（都放在 .drawer-bottom 里整体贴底） */
 .drawer-bottom{margin-top:auto;padding-bottom:10px;display:flex;flex-direction:column;gap:10px}
 .avgroup,.sgroup{
