@@ -442,6 +442,25 @@ main.content{
   --tbl-max-sec:max(180px, calc(100vh  - var(--top-h) - 120px));
   --tbl-max-sec:max(180px, calc(100dvh - var(--top-h) - 120px));
 }
+/* ---------------- 表格「复制」按钮（挂在**表格标题那一行**的右端） ----------------
+   用户 2026-10-11：「给出率提升记录和首次UP间隔·表格版的每个表格增加一个『复制』按钮，
+   复制后可在 Excel 里粘贴为表格」；随后又把这枚按钮**从表格上方挪到了标题行上**
+   （统计页 `.sec-title`、表格版 `.grp-sep`）。
+   ⚠️ 用 `margin-left:auto` 而不是给标题加 `justify-content:space-between`：
+   前者不关心标题里有几个子元素，将来标题再加东西也不会把文字推歪。
+   ⚠️ 按钮的状态类（ok / fail）由 `CopyButton.vue` 绑上来，见下。 */
+.sec-title .copy-btn,.grp-sep .copy-btn{margin-left:auto}
+.copy-btn{
+  display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;
+  font-size:12px;font-weight:600;line-height:1;color:var(--blue-700);
+  background:#fff;border:1px solid var(--blue-200);border-radius:7px;padding:4px 9px;
+}
+.copy-btn:hover{background:var(--blue-50);border-color:var(--blue-500)}
+.copy-btn svg{width:13px;height:13px;display:block}
+/* 复制成功 / 失败：只换文案与配色，1.6 秒后自己落回「复制」 */
+.copy-btn.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+.copy-btn.fail{color:var(--danger);border-color:var(--danger)}
+
 /* 宽度足够时容器收缩到表格宽度（width:fit-content）——
    否则容器会铺满父级，纵向滚动条被推到内容区右边缘、离表格老远。
    fit-content 在窄容器下自动退化为「可用宽度」，横向滚动照常。 */
@@ -821,6 +840,8 @@ table.grid.fup-tbl td.opcell{position:relative}
 .grp-sep{
   padding:12px 16px 6px;font-size:15px;font-weight:700;color:var(--blue-900);
   border-top:2px solid var(--blue-200);background:#fbfdff;
+  /* flex 只为把「复制」按钮推到右端（标题文字仍是第一个子元素、仍左对齐） */
+  display:flex;align-items:center;gap:10px;
   scroll-margin-top:calc(var(--top-h) + 12px);
 }
 /* 统计页：每张表按**所在大类**着色（标准寻访 = 黄、中坚寻访 = 蓝，

@@ -40,6 +40,8 @@
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import AvatarImg from '../components/AvatarImg.vue';
+import CopyButton from '../components/CopyButton.vue';
+import { firstUpCopyRows } from '../lib/tableCopy.js';
 import { axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel } from '../lib/firstUp.js';
 
 const site = useSiteStore();
@@ -70,6 +72,17 @@ const opOf = (name) => site.operators[name] || { name };
 
 /** 当前纵轴口径 → 给哪一列加底色（右栏切换时的唯一反馈） */
 const isMetric = (which) => site.firstUpMetric === which;
+
+/**
+ * 两个分节各自的「复制」数据（含表头行）—— 口径在 `lib/tableCopy.js`。
+ * ⚠️ 按钮就挂在**分节标题那一行**（`.grp-sep`）右端，所以这份数据在视图层算。
+ */
+const copyRows = computed(() => {
+  const w = word.value;
+  const out = {};
+  for (const sec of sections.value) out[sec.key] = firstUpCopyRows(sec.rows, { word: w });
+  return out;
+});
 </script>
 
 <template>
@@ -86,7 +99,10 @@ const isMetric = (which) => site.firstUpMetric === which;
     <div class="pair">
       <template v-for="sec in sections" :key="sec.key">
         <div class="pair-col">
-          <div class="grp-sep">{{ sec.label }} · {{ firstLabel }}间隔</div>
+          <div class="grp-sep">
+            <span>{{ sec.label }} · {{ firstLabel }}间隔</span>
+            <CopyButton v-if="sec.rows.length" :rows="copyRows[sec.key]" />
+          </div>
 
           <div v-if="!sec.rows.length" class="empty">
             当前筛选范围内没有{{ sec.label }}的{{ word }}记录

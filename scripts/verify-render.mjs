@@ -257,6 +257,13 @@ try {
     && /--shop-600:#15803d/.test(cssAll), true);
   check('统计页：分节标题按大类着色（标准 = 黄 / 中坚 = 蓝）',
     count(sh, /class="sec-title c-std"/g) === 2 && count(sh, /class="sec-title c-mid"/g) === 2, true);
+  /* 「复制」按钮（2026-10-11）：四张表各一个，挂在**表格标题行**（`.sec-title`）里。
+     ⚠️ 复制内容在 HTML 里看不到（点击时才算）→ 另见文件末尾「剪贴板」那一组的行为断言。 */
+  check('统计页：每张表都有一个「复制」按钮（4 张表 = 4 个）',
+    count(sh, /class="copy-btn"/g), 4);
+  check('统计页：复制按钮挂在**标题行**里（不是表格上方的工具条）',
+    count(sh, /class="sec-title[^"]*"[^>]*>[\s\S]{0,90}?<button class="copy-btn"/g) === 4
+    && count(sh, /class="tbl-tools"/g) === 0, true);
   check('统计页：样式表里两套标题配色存在',
     /\.sec-title\.c-std\{[\s\S]*?#FFD524/.test(cssAll)
     && /\.sec-title\.c-mid\{[\s\S]*?#0098DC/.test(cssAll), true);
@@ -611,6 +618,11 @@ try {
     clsHas(btnClass(ftHtml, '首次UP间隔'), 'navitem', 'active'), true);
 
   check('表格版：两个分节（与图表版一一对应）', count(ftHtml, /class="grp-sep"/g), 2);
+  /* 「复制」按钮（2026-10-11）：两个分节各一个，挂在**分节标题行**（`.grp-sep`）里 */
+  check('表格版：两个分节各一个「复制」按钮', count(ftHtml, /class="copy-btn"/g), 2);
+  check('表格版：复制按钮挂在**分节标题行**里（不是表格上方的工具条）',
+    count(ftHtml, /class="grp-sep"[\s\S]{0,140}?<button class="copy-btn"/g) === 2
+    && count(ftHtml, /class="tbl-tools"/g) === 0, true);
   check('表格版：分节标题与图表版同款',
     /六星干员 · 首次进店间隔/.test(ftHtml) && /五星干员 · 首次进店间隔/.test(ftHtml), true);
   /* ⚠️ 六星 / 五星放进 .pair 后，分节标题成了 `.pair-col` 的第一个子元素，
@@ -1743,6 +1755,63 @@ try {
       /class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8'))
       && /ref="opBoxEl" class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8')),
       true);
+  }
+
+  /* ---------------- 表格「复制」按钮：剪贴板格式（2026-10-11） ----------------
+     用户要求：出率提升记录 + 首次UP间隔·表格版的**每个表格**加一个「复制」按钮，
+     复制后可在 Excel 里粘贴为表格 → 走 TSV（单元格 Tab 分隔、行 CRLF）。
+     按钮**个数**在上面按页面数过了；这里把**格式**真跑一遍钉死。
+     ⚠️ 复制的数据是从视图数据算的（不读 DOM）—— 那种「读源码钉契约」的部分在下面几行。 */
+  {
+    const { toTSV } = await vite.ssrLoadModule('/src/lib/clipboard.js');
+    const j = (s) => JSON.stringify(s);   // 直接打印原文会被 tab / CRLF 搅乱，转义后好看
+    check('复制：行用 CRLF、单元格之间一个 Tab（Excel「粘贴为表格」就是这个格式）',
+      j(toTSV([['a', 'b'], [1, 2]])), j('a\tb\r\n1\t2'));
+    check('复制：单元格里的 Tab / 换行会被压成空格（否则粘出来整张表错位）',
+      j(toTSV([['a\tb', 'c\nd']])), j('a b\tc d'));
+    check('复制：null / undefined → 空串（不会变成字面的 "null"）',
+      j(toTSV([[null, undefined, '—']])), j('\t\t—'));
+    check('复制：空表 / 空行不抛异常', j(toTSV([])) + j(toTSV([[]])), j('') + j(''));
+
+    const statSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
+    const fupTblSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8');
+    check('复制：按钮与数据同在视图层（标题行由视图渲染，数据也在视图算好）',
+      /import \{ statCopyRows \} from '\.\.\/lib\/tableCopy\.js'/.test(statSrc)
+      && /import \{ firstUpCopyRows \} from '\.\.\/lib\/tableCopy\.js'/.test(fupTblSrc), true);
+
+    /* 拼表口径（`lib/tableCopy.js`）：**真跑一遍**，把表头与「显示口径」钉死 */
+    const { statCopyRows, firstUpCopyRows } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
+    const REF = '2026-10-11';
+    const ban = (startDate, endDate) => ({ startDate, endDate });
+    const mid = {
+      name: '甲', releaseDate: '2020-01-01',
+      upAll: [ban('2026-09-01', '2026-09-15')],   // 已结束 → 天数 = 27
+      upMid: [ban('2026-09-01', '2026-09-15')], upStd: [],
+      shopAll: [ban('2026-10-01', '2026-10-20')], // 进行中 → 「进行中」
+      shopMid: [ban('2026-10-01', '2026-10-20')], shopStd: [],
+    };
+    const midRows = statCopyRows([mid], { split: true, refDate: REF });
+    check('复制：统计表（中坚）表头 = 两层表头并成一行（组名 + 列名）',
+      j(midRows[0]), j(['实装时间', '干员',
+        '出率提升 结束时间', '出率提升 距今天数', '出率提升 总次数', '出率提升 中坚次数', '出率提升 标准次数',
+        '商店兑换 结束时间', '商店兑换 距今天数', '商店兑换 总次数', '商店兑换 中坚次数', '商店兑换 标准次数']));
+    check('复制：统计表数据行照**显示口径**（已结束 → 天数；进行中 → 「进行中」）',
+      j(midRows[1]), j(['2020-01-01', '甲', '2026-09-15', 27, 1, 1, 0, '2026-10-20', '进行中', 1, 1, 0]));
+    check('复制：标准表只有 8 列（次数不拆成总/中坚/标准）',
+      statCopyRows([mid], { refDate: REF })[0].length, 8);
+    const blank = { name: '乙', releaseDate: null, upAll: [], upMid: [], upStd: [], shopAll: [], shopMid: [], shopStd: [] };
+    check('复制：没有任何记录 → 实装时间 / 结束时间 / 天数都给 —、次数给 0',
+      j(statCopyRows([blank], { refDate: REF })[1]), j(['—', '乙', '—', '—', 0, '—', '—', 0]));
+
+    const fRows = firstUpCopyRows([{
+      name: '丙', releaseDate: '2019-04-30', firstDate: '2019-04-30',
+      firstBanner: '常驻标准寻访1', gap: null, sinceRelease: 0, count: 9,
+    }], { word: '进店' });
+    check('复制：表格版表头跟着统计模式换词，组内第一位 → 距上行 = —',
+      j(fRows[0]) + '|' + j(fRows[1]), j(['实装日', '干员', '首次进店日', '所在卡池', '距上行', '距实装', '累计数'])
+      + '|' + j(['2019-04-30', '丙', '2019-04-30', '常驻标准寻访1', '—', 0, 9]));
+    check('复制：切换统计模式后表头跟着变（首次轮换日）',
+      firstUpCopyRows([], { word: '轮换' })[0][2], '首次轮换日');
   }
 
   /* ---------------- 自定义卡池：**加载时自动删除**被覆盖的自设 ----------------
