@@ -68,7 +68,7 @@ const sortClass = (key) =>
           </td>
         </tr>
         <tr v-for="b in rows" :key="b.id">
-          <td class="wrapcell"><span :class="{ 'pill-live': isLive(b), 'pill-pending': isPending(b) }"><b>{{ b.name }}</b>{{ ' ' }}</span></td>
+          <td class="wrapcell"><span :class="{ 'pill-live': isLive(b), 'pill-pending': isPending(b) }"><b>{{ b.scName }}</b>{{ ' ' }}</span></td>
           <td class="wrapcell"><span class="badge">{{ TYPE_LABEL[b.type] }}</span></td>
           <td class="wrapcell"><span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{
             site.categories[b.type] }}</span></td>
@@ -76,11 +76,11 @@ const sortClass = (key) =>
           <td class="num">{{ b.endDate }}</td>
           <td class="ops">
             <span v-if="!opsOf(b, 6).length" class="dash">—</span>
-            <OpTag v-for="o in opsOf(b, 6)" :key="o.name" :op="o" />
+            <OpTag v-for="o in opsOf(b, 6)" :key="o.scCharName" :op="o" />
           </td>
           <td class="ops">
             <span v-if="!opsOf(b, 5).length" class="dash">—</span>
-            <OpTag v-for="o in opsOf(b, 5)" :key="o.name" :op="o" />
+            <OpTag v-for="o in opsOf(b, 5)" :key="o.scCharName" :op="o" />
           </td>
         </tr>
       </tbody>

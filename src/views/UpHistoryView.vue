@@ -46,7 +46,7 @@ let offAvatar = null;
  *  加载完由 `onAvatarLoad` → `avatarTick++` → `built` 重算 → EChart 重绘。 */
 function preloadVisible() {
   if (!isImage.value) return;
-  for (const r of rows.value) preloadAvatar(site.operators[r.name] || { name: r.name });
+  for (const r of rows.value) preloadAvatar(site.operators[r.name] || { scName: r.name });
 }
 
 /** 图表 option（顶部刻度条 + 主体） */

@@ -168,6 +168,9 @@ export const useSiteStore = defineStore('site', {
       return s.customEntries.filter((e) => e.server === s.server && uids.has(e.uid));
     },
 
+    /** 干员名 → charId（自设卡池的干员列表要存 charId；查不到给 null —— 允许强存新干员） */
+    charIdOf: (s) => (name) => s.operators[name]?.charId ?? null,
+
     /** 干员名 → { rarity, isLimited }，统计计算用 */
     operatorIndex(s) {
       const idx = {};
@@ -393,7 +396,9 @@ export const useSiteStore = defineStore('site', {
       const dropped = [];
       for (const s of this.availableServers) {
         const mine = entries.filter((e) => e.server === s.id);
-        const { kept, dropped: gone } = dedupe(mine, toBannerList(this.bannersByServer[s.id] || {}));
+        const { kept, dropped: gone } = dedupe(
+          mine, toBannerList(this.bannersByServer[s.id] || {}), this.charIdOf,
+        );
         byServer[s.id] = kept.map((x) => x.banner);
         active[s.id] = kept.map((x) => x.entry.uid);
         for (const d of gone) dropped.push({ ...d, server: s.id });
@@ -455,7 +460,7 @@ export const useSiteStore = defineStore('site', {
      * @returns {{ok:boolean, error:string|null, added:number, skipped:Array<{entry:object,errors:string[]}>}}
      */
     importCustom(text) {
-      const parsed = parseImport(text);
+      const parsed = parseImport(text, { charIdOf: this.charIdOf });
       if (!parsed.ok) return { ok: false, error: parsed.error, added: 0, skipped: [] };
       const add = [];
       const skipped = [];
@@ -481,11 +486,12 @@ export const useSiteStore = defineStore('site', {
      * 「导出文件 / 导入文件」那对按钮）。
      * ⚠️ 与 `importCustom`（**追加**）不同：这里是**覆盖** —— 框里就是全部自设，
      *    删掉的行就等于删掉那条。uid 一律**重编**（从 1 开始），免得框里带的 uid 撞车。
-     * @returns {{ok:boolean, error:string|null, count:number, skipped:Array}}
+     * ⚠️ 框里若是**旧格式（v1）**的老 JSON，会自动迁移成 v2（返回值里 `migrated: true`）。
+     * @returns {{ok:boolean, error:string|null, count:number, skipped:Array, migrated:boolean}}
      */
     replaceCustom(text) {
-      const parsed = parseImport(text);
-      if (!parsed.ok) return { ok: false, error: parsed.error, count: 0, skipped: [] };
+      const parsed = parseImport(text, { charIdOf: this.charIdOf });
+      if (!parsed.ok) return { ok: false, error: parsed.error, count: 0, skipped: [], migrated: false };
       const kept = [];
       const skipped = [];
       for (const raw of parsed.entries) {
@@ -497,7 +503,7 @@ export const useSiteStore = defineStore('site', {
       saveEntries(kept);
       this.customEntries = kept;
       this._syncCustom();
-      return { ok: true, error: null, count: kept.length, skipped };
+      return { ok: true, error: null, count: kept.length, skipped, migrated: parsed.migrated };
     },
 
     /** 切换服务器：重置参考日期与全部筛选条件（见 akGachaDocs/site/工作指令.md 5.5） */

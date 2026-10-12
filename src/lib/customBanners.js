@@ -12,6 +12,12 @@
  *
  * 关键设计：
  * - 存的是**用户填的原始字段**（不是解析后的 banner）—— 便于以后改解析规则、或再次编辑。
+ * - ⚠️ **2026-10-12 存储结构升到 v2**（与卡池数据同一轮字段规范化，用户要求「一起改」）：
+ *     · `name` → `scName`
+ *     · `star6` / `star5` / `shop`：**名字数组** → **`[{ scCharName, charId }]` 对象数组**
+ *       （与卡池的 `upOperators` 同构）
+ *   v1 的老数据**自动迁移并写回**（见 `loadEntries`），导入 v1 文件同样自动转换；
+ *   用户不需要做任何事。取值一律经 `toOpList()` 归一化，**三种形态都吃**。
  * - 三服的自设混在**一个数组**里，每条自带 `server`；切服只是切视图，不换 key。
  * - 解析失败 / 版本不符 **一律当空数组，绝不抛异常**（本地存储里可能是任何脏数据）；
  *   `localStorage` 不存在（SSR / 隐私模式）时同样静默返回空 —— `verify-render` 走 SSR，必须容错。
@@ -21,8 +27,13 @@ import { diffDays, shiftDays } from './date.js';
 
 /** 本地存储 key（**独占一个**，别与将来其它持久化混用） */
 export const STORAGE_KEY = 'akgacha:custom-banners';
-/** 存储结构版本（不符就当空，见文件头） */
-export const STORE_VERSION = 1;
+/**
+ * 存储结构版本。**v2 = 2026-10-12 的字段规范化**（见文件头）：
+ *   · `name` → `scName`
+ *   · `star6` / `star5` / `shop` → `[{ scCharName, charId }]` 对象数组
+ * v1 的老数据会自动迁移并写回（`loadEntries`），v1 的导出文件也能直接导入（`parseImport`）。
+ */
+export const STORE_VERSION = 2;
 
 /**
  * 允许的类型（用户 2026-10-05 收窄到 6 个）。
@@ -50,7 +61,7 @@ export const endDateOf = (startDate) =>
  * 弹窗里干员名前面那个「**标 / 中**」一字标记 —— 该干员在此刻属**标准**还是**中坚**寻访。
  *
  * @param {string|null} classicDate 该服「进入中坚寻访」的日期（`operators.json` 的
- *        `classicDate` / `enClassicDate` / `tcClassicDate`；`null` = 尚未进入）
+ *        `scClassicDate` / `enClassicDate` / `tcClassicDate`；`null` = 尚未进入）
  * @param {string} today           **当前现实时间**（`localToday()`）
  * @returns {'标'|'中'}
  *
@@ -87,6 +98,31 @@ export const splitList = (v) => {
 };
 
 /**
+ * 干员列表归一化 → `[{ scCharName, charId }]`。
+ * **三种形态都吃**（老数据不能因为改了规范就废掉）：
+ *   · v2 对象数组 `[{ scCharName, charId }]`
+ *   · v1 名字数组 `['克莱门莎']`
+ *   · v0 顿号分隔文本 `'克莱门莎、德·托莱多'`
+ * 名字为空的条目丢掉；`charId` 缺失时用 `charIdOf(name)` 补，仍查不到就是 `null`
+ * （用户 2026-10-12 定：允许强存「不在干员表里」的新干员，charId 写 null、不阻止保存）。
+ */
+export function toOpList(v, charIdOf = () => null) {
+  const arr = Array.isArray(v) ? v : String(v ?? '').split(/[、,，;；\s]+/);
+  const out = [];
+  for (const raw of arr) {
+    const o = raw && typeof raw === 'object'
+      ? { scCharName: String(raw.scCharName ?? raw.name ?? '').trim(), charId: raw.charId ?? null }
+      : { scCharName: String(raw ?? '').trim(), charId: null };
+    if (!o.scCharName) continue;
+    out.push({ scCharName: o.scCharName, charId: o.charId ?? charIdOf(o.scCharName) ?? null });
+  }
+  return out;
+}
+
+/** 归一化后的干员列表 → **名字数组**（比较 / 去重 / 校验都用它） */
+export const opNames = (list) => toOpList(list).map((o) => o.scCharName);
+
+/**
  * 剥掉已有的 `自定义_` 前缀（**循环剥**，脏数据里叠了两层也清得掉）。
  * 用途：编辑一条老条目时，名字里已经带了前缀，不剥就会叠成 `自定义_自定义_x`。
  */
@@ -105,13 +141,47 @@ function storageAvailable() {
 
 /* ---------------------------------------------------------------- 读写 */
 
-/** 读全部自设（三服混在一起）。任何异常都返回空数组 */
-export function loadEntries() {
+/**
+ * v1 条目 → v2：`name` → `scName`，三个干员列表 → `[{ scCharName, charId }]`。
+ * `charIdOf(name)` 用来给老数据补 charId（查不到就是 null）。
+ * @returns {object} v2 条目（键序与新建的一致）
+ */
+export function migrateV1Entry(entry, charIdOf = () => null) {
+  const old = entry || {};
+  return {
+    scName: old.name ?? '',
+    type: old.type,
+    startDate: old.startDate,
+    star6: toOpList(old.star6, charIdOf),
+    star5: toOpList(old.star5, charIdOf),
+    shop: toOpList(old.shop, charIdOf),
+    server: old.server,
+    uid: old.uid,
+  };
+}
+
+/**
+ * 读全部自设（三服混在一起）。任何异常都返回空数组。
+ *
+ * ⭐ **v1 → v2 自动迁移**（用户 2026-10-12 定）：读到 v1 就按名字查 `charIdOf` 转成 v2，
+ *    并**就地写回**存储（幂等；不写回的话每次打开都要迁一遍，导出的 JSON 也会夹着两种格式）。
+ *
+ * @param {{charIdOf?: (name:string)=>(string|null)}} [opts] 干员名 → charId（迁移老数据用）
+ */
+export function loadEntries({ charIdOf = () => null } = {}) {
   if (!storageAvailable()) return [];
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (!raw || raw.version !== STORE_VERSION || !Array.isArray(raw.banners)) return [];
-    return raw.banners.filter((e) => e && typeof e === 'object' && e.type && e.startDate);
+    if (!raw || !Array.isArray(raw.banners)) return [];
+    const base = raw.banners.filter((e) => e && typeof e === 'object' && e.type && e.startDate);
+    if (raw.version === STORE_VERSION) return base;
+    if (raw.version === 1) {
+      const migrated = base.map((e) => migrateV1Entry(e, charIdOf));
+      saveEntries(migrated);
+      console.info(`[自定义卡池] 本地存储 v1 → v2 已自动迁移 ${migrated.length} 条`);
+      return migrated;
+    }
+    return [];
   } catch {
     return [];
   }
@@ -140,9 +210,9 @@ export const nextUid = (list) =>
  * - 空的 → 自动生成：**单六寻访** `<第一个六星名>池`；**其他类型** `<类型展示名><MMdd>`（MMdd = **开始日**）
  */
 export function buildName(entry) {
-  const typed = stripPrefix(entry.name);
+  const typed = stripPrefix(entry.scName);
   if (typed) return NAME_PREFIX + typed;
-  const six = splitList(entry.star6);
+  const six = opNames(entry.star6);
   const auto = entry.type === 'single' && six.length
     ? `${six[0]}池`
     : `${TYPE_LABEL[entry.type] || entry.type}${String(entry.startDate || '').slice(5, 10).replace('-', '')}`;
@@ -157,16 +227,20 @@ export const makeCustomId = (entry) =>
  * 原始输入 → banner（与 `banners_<server>.json` 的条目同构，另加 `custom: true` 作来源标记）。
  * `upOperators` 的**顺序照用户的顿号顺序**（六星在前、五星在后，进店的打 `isShop`）。
  */
-export function entryToBanner(entry) {
-  const shop = new Set(splitList(entry.shop));
-  const mk = (rarity, text) => splitList(text).map((name) => ({
-    name, rarity, isLimited: false, isShop: shop.has(name),
+export function entryToBanner(entry, charIdOf = () => null) {
+  const shop = new Set(opNames(entry.shop));
+  const mk = (rarity, list) => toOpList(list, charIdOf).map((o) => ({
+    scCharName: o.scCharName,
+    charId: o.charId,
+    rarity,
+    isLimited: false,
+    isShop: shop.has(o.scCharName),
   }));
-  const name = buildName(entry);
+  const scName = buildName(entry);
   return {
     id: makeCustomId(entry),
-    name,
-    scName: name,
+    /* ⚠️ 2026-10-12 起卡池只有 `scName`（`name` 已删），自设这里跟着对齐。 */
+    scName,
     enName: null,
     type: entry.type,
     startDate: entry.startDate,
@@ -206,9 +280,10 @@ export function validate(entry, lookup = () => undefined) {
   /* ⚠️ **不校验结束日期**：自设卡池不设结束日，一律 `开始日 + DURATION_DAYS`
      （用户 2026-10-06 定）→「结束 > 开始」恒成立，没什么可校验的。 */
 
-  const six = splitList(entry.star6);
-  const five = splitList(entry.star5);
-  const shop = splitList(entry.shop);
+  /* ⚠️ 三个列表都先归一化成**名字数组**再比 —— 对象数组 / 名字数组 / 顿号文本都吃 */
+  const six = opNames(entry.star6);
+  const five = opNames(entry.star5);
+  const shop = opNames(entry.shop);
 
   /* ---- 进店数量：硬校验 ---- */
   const wantShop = SHOP_COUNT[entry.type];
@@ -261,16 +336,16 @@ const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
  *
  * @returns {{kept:Array<{entry:object,banner:object}>, dropped:Array<{entry:object,banner:object,hit:object,gap:number}>}}
  */
-export function dedupe(entries, existing) {
+export function dedupe(entries, existing, charIdOf = () => null) {
   const kept = [];
   const dropped = [];
   for (const entry of entries) {
-    const banner = entryToBanner(entry);
-    const sixSet = new Set(splitList(entry.star6));
+    const banner = entryToBanner(entry, charIdOf);
+    const sixSet = new Set(opNames(entry.star6));
     const hit = (existing || []).find((b) => {
       const gap = diffDays(banner.startDate, b.startDate);
       if (Math.abs(gap) > NEAR_DAYS) return false;
-      const bSix = new Set((b.upOperators || []).filter((o) => o.rarity === 6).map((o) => o.name));
+      const bSix = new Set((b.upOperators || []).filter((o) => o.rarity === 6).map((o) => o.scCharName));
       return sameSet(sixSet, bSix);
     });
     if (hit) {
@@ -296,19 +371,34 @@ export function serialize(list) {
  * 解析导入的文本。
  * ⚠️ **只做结构校验**（版本 / 是不是数组）；逐条的字段校验交给调用方走同一套 `validate` +
  *    `dedupe`（用户：「导入的条目要走同一套校验与去重」）。
- * @returns {{ok:boolean, entries:object[], error:string|null}}
+ * ⭐ **v1 的老导出文件照样能导入** —— 会自动迁移成 v2（`migrated: true`，界面可据此提示一声）。
+ * @param {object} text  JSON 文本
+ * @param {{charIdOf?: (name:string)=>(string|null)}} [opts]
+ * @returns {{ok:boolean, entries:object[], error:string|null, migrated:boolean}}
  */
-export function parseImport(text) {
+export function parseImport(text, { charIdOf = () => null } = {}) {
   let raw;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, entries: [], error: '不是合法的 JSON' };
+    return { ok: false, entries: [], error: '不是合法的 JSON', migrated: false };
   }
   const list = Array.isArray(raw) ? raw : raw?.banners;
-  if (!Array.isArray(list)) return { ok: false, entries: [], error: '结构不对：找不到 banners 数组' };
-  if (!Array.isArray(raw) && raw.version !== STORE_VERSION) {
-    return { ok: false, entries: [], error: `版本不符（文件是 v${raw.version}，当前支持 v${STORE_VERSION}）` };
+  if (!Array.isArray(list)) return { ok: false, entries: [], error: '结构不对：找不到 banners 数组', migrated: false };
+  /* 裸数组（老的手写 JSON）没有版本号 → 当成当前版本 */
+  const version = Array.isArray(raw) ? STORE_VERSION : raw.version;
+  if (version !== 1 && version !== STORE_VERSION) {
+    return {
+      ok: false, entries: [], migrated: false,
+      error: `版本不符（文件是 v${version}，当前支持 v1 / v${STORE_VERSION}）`,
+    };
   }
-  return { ok: true, entries: list.filter((e) => e && typeof e === 'object'), error: null };
+  const entries = list.filter((e) => e && typeof e === 'object');
+  const migrated = version === 1;
+  return {
+    ok: true,
+    entries: migrated ? entries.map((e) => migrateV1Entry(e, charIdOf)) : entries,
+    error: null,
+    migrated,
+  };
 }

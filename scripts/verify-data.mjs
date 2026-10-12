@@ -21,6 +21,7 @@ import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 import {
   CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, buildName, dedupe, endDateOf,
+  migrateV1Entry, opNames, toOpList,
   entryToBanner, loadEntries, midTag, parseImport, serialize, splitList, stripPrefix, validate,
 } from '../src/lib/customBanners.js';
 
@@ -57,9 +58,10 @@ try {
   /* 没有中坚文件（旧快照）就不合并 */
 }
 
-/* 与 src/lib/loadData.js 保持一致：operators.json 以 charId 为键，前端按 name 索引 */
+/* 与 src/lib/loadData.js 保持一致：operators.json 以 charId 为键，前端按**干员中文名**
+   （字段是 `scName`；2026-10-12 由 `name` 改名）索引 */
 const operators = {};
-for (const op of Object.values(rawOperators)) operators[op.name] = op;
+for (const op of Object.values(rawOperators)) operators[op.scName] = op;
 
 const banners = Object.keys(bannerMap).map((id) => ({ id, ...bannerMap[id] }));
 /* 本服卡池的**完整跨度** [最早开始日, 最晚结束日] —— 就是**卡池列表**右栏日期框的默认值
@@ -134,7 +136,7 @@ const lineOwned = rawOps.filter((o) => o.actLine).length;
 check('剧情线：有剧情的干员数 ≥ 150（防上游表改结构 → 全 null）',
   lineOwned >= 150, true);
 /** 按名字取干员（黄金样例用；取不到给空对象，断言会红得比较清楚） */
-const actOf = (n) => rawOps.find((o) => o.name === n) || {};
+const actOf = (n) => rawOps.find((o) => o.scName === n) || {};
 /* 黄金样例 —— 钉住几条最容易回归的判定（2026-10-08 定稿，含用户核出的 6 例口径变更）：
    · 煌：「局部坏死」当日实装 → 为了明日（主线章）；
    · 傀影：「生于黑夜」**首发组**的干员（傀影 / 巫恋）→ 方舟（不被主线近邻吃掉）；
@@ -216,41 +218,65 @@ check('自定义卡池：单六空名 → 自定义_<第一个六星>池',
 check('自定义卡池：其他类型空名 → 自定义_<类型展示名><MMdd>（MMdd 取**开始日**）',
   buildName({ type: 'double', startDate: '2026-10-08' }), '自定义_常驻标准寻访1008');
 check('自定义卡池：填了名字就用填的（仍加前缀）',
-  buildName({ name: '我猜的池', type: 'double', startDate: '2026-10-08' }), '自定义_我猜的池');
+  buildName({ scName: '我猜的池', type: 'double', startDate: '2026-10-08' }), '自定义_我猜的池');
 check('自定义卡池：前缀**先剥再加**（叠两层也只留一个）',
-  buildName({ name: '自定义_自定义_x', type: 'double', startDate: '2026-10-08' }), '自定义_x');
+  buildName({ scName: '自定义_自定义_x', type: 'double', startDate: '2026-10-08' }), '自定义_x');
 check('自定义卡池：stripPrefix 循环剥', stripPrefix('自定义_自定义_x'), 'x');
 check('自定义卡池：splitList 容忍顿号 / 逗号 / 分号 / 空白（四种都算分隔符）',
   splitList('A、B, C；D E').length, 5);
 /* ⚠️ 弹窗改多选后**新数据存数组**，但 2026-10-06 之前的自设是顿号文本 —— 两种都得吃 */
 check('自定义卡池：splitList 数组 / 顿号文本两种形态都吃',
   splitList(['甲', '乙']).length === 2 && splitList('甲、乙').length === 2, true);
+/* ⚠️ 2026-10-12 起存储结构是 v2：干员列表存 `[{ scCharName, charId }]`；
+   `toOpList` 必须**三种形态都吃**（v2 对象 / v1 名字数组 / v0 顿号文本），否则老数据全废。
+   charId 查不到时按名字补，仍查不到就是 null（允许强存新干员）。 */
+const fakeId = (n) => ({ 甲: 'char_a', 乙: 'char_b' }[n] ?? null);
+check('自定义卡池：toOpList 吃 v2 对象数组（charId 原样保留）',
+  JSON.stringify(toOpList([{ scCharName: '甲', charId: 'char_a' }], fakeId)),
+  JSON.stringify([{ scCharName: '甲', charId: 'char_a' }]));
+check('自定义卡池：toOpList 吃 v1 名字数组 / v0 顿号文本，并按名字补 charId',
+  JSON.stringify(toOpList(['甲', '乙'], fakeId)) + toOpList('甲、乙', fakeId).length,
+  JSON.stringify([{ scCharName: '甲', charId: 'char_a' }, { scCharName: '乙', charId: 'char_b' }]) + 2);
+check('自定义卡池：toOpList 给查不到的人写 charId = null（不丢条目）',
+  JSON.stringify(toOpList(['查无此人'])), JSON.stringify([{ scCharName: '查无此人', charId: null }]));
 check('自定义卡池：时长固定 14 天，结束日 = 开始日 + 14（不设结束日期）',
   DURATION_DAYS === 14 && endDateOf('2026-10-08') === '2026-10-22', true);
 
 const cbEntry = {
   uid: 7,
   server: 'sc',
-  name: '',
+  scName: '',
   type: 'double',
   startDate: '2026-10-08',
-  endDate: '2026-10-22',
-  star6: '玛恩纳、涤火杰西卡',
-  star5: '海霓',
-  shop: '玛恩纳、海霓',
+  star6: [{ scCharName: '玛恩纳', charId: 'char_a' }, { scCharName: '涤火杰西卡', charId: 'char_b' }],
+  star5: [{ scCharName: '海霓', charId: 'char_c' }],
+  shop: [{ scCharName: '玛恩纳', charId: 'char_a' }, { scCharName: '海霓', charId: 'char_c' }],
 };
 const cbBanner = entryToBanner(cbEntry);
 check('自定义卡池：id = YYYYMMDD_<type>_custom_<uid>', cbBanner.id, '20261008_double_custom_0007');
 check('自定义卡池：打 custom:true 来源标记', cbBanner.custom, true);
-check('自定义卡池：name / scName 同值且带前缀',
-  cbBanner.name === cbBanner.scName && cbBanner.name.startsWith(NAME_PREFIX), true);
+check('自定义卡池：产出的 banner **只有 scName**（`name` 已随卡池 schema 一起删掉）',
+  cbBanner.scName.startsWith(NAME_PREFIX) && !('name' in cbBanner), true);
+check('自定义卡池：upOperators 与卡池同构（scCharName + charId + rarity + isLimited + isShop）',
+  JSON.stringify(Object.keys(cbBanner.upOperators[0])),
+  JSON.stringify(['scCharName', 'charId', 'rarity', 'isLimited', 'isShop']));
 check('自定义卡池：进店打对「跨星级」的 isShop（1 六星 + 1 五星）',
-  cbBanner.upOperators.filter((o) => o.isShop).map((o) => `${o.name}/${o.rarity}`).join(','),
+  cbBanner.upOperators.filter((o) => o.isShop).map((o) => `${o.scCharName}/${o.rarity}`).join(','),
   '玛恩纳/6,海霓/5');
+
+/* ---- v1 → v2 迁移 ---- */
+const v1 = { uid: 3, server: 'sc', name: '旧池', type: 'double', startDate: '2026-10-08', star6: ['甲', '乙'], star5: [], shop: ['甲'] };
+check('自定义卡池：migrateV1Entry 把 name→scName、列表→对象数组并补 charId',
+  JSON.stringify(migrateV1Entry(v1, fakeId)),
+  JSON.stringify({
+    scName: '旧池', type: 'double', startDate: '2026-10-08',
+    star6: [{ scCharName: '甲', charId: 'char_a' }, { scCharName: '乙', charId: 'char_b' }],
+    star5: [], shop: [{ scCharName: '甲', charId: 'char_a' }], server: 'sc', uid: 3,
+  }));
 
 /* ---- 校验：硬校验（拒存）---- */
 const cbOk = {
-  type: 'double', startDate: '2026-10-08', endDate: '2026-10-22',
+  type: 'double', startDate: '2026-10-08',
   star6: '甲、乙', star5: '丙、丁、戊', shop: '甲、丙',
 };
 check('自定义卡池：正常的 double 通过', validate(cbOk).ok, true);
@@ -265,20 +291,24 @@ check('自定义卡池：double 进店填了 2 个六星被拒（同上）',
 check('自定义卡池：joint 填了进店被拒（该类进店恒为 0）',
   validate({ ...cbOk, type: 'joint', shop: '甲' }).ok, false);
 check('自定义卡池：single 五星留空 → 通过（复刻单六允许）',
-  validate({ type: 'single', startDate: '2026-10-08', endDate: '2026-10-22', star6: '甲', star5: '', shop: '' }).ok,
-  true);
+  validate({ type: 'single', startDate: '2026-10-08', star6: '甲', star5: '', shop: '' }).ok, true);
 check('自定义卡池：six 数量不符只**提醒**、不拦（ok 且 warnings 非空）',
   (() => { const r = validate({ ...cbOk, star6: '甲', shop: '甲、丙' }); return r.ok && r.warnings.length > 0; })(),
+  true);
+/* 三种形态都要能过校验（v2 对象 / v1 名字数组 / v0 顿号文本） */
+check('自定义卡池：v2 对象数组形态也通过校验',
+  validate({ ...cbOk, star6: [{ scCharName: '甲' }, { scCharName: '乙' }], star5: [{ scCharName: '丙' }], shop: [{ scCharName: '甲' }, { scCharName: '丙' }] }).ok,
   true);
 
 /* ---- 去重（两条判据同时成立才算同一场）---- */
 const cbSingle = [{
-  uid: 1, server: 'sc', name: '', type: 'single',
-  startDate: '2026-10-08', endDate: '2026-10-22', star6: '怒潮凛冬', star5: '', shop: '',
+  uid: 1, server: 'sc', scName: '', type: 'single', startDate: '2026-10-08',
+  star6: [{ scCharName: '怒潮凛冬', charId: 'char_x' }], star5: [], shop: [],
 }];
+/* ⚠️ 「已公布卡池」这一侧的 `upOperators` 也是**新 schema**（scCharName + charId） */
 const existAt = (start, six = '怒潮凛冬') => [{
-  id: 'w', name: '已公布的池', type: 'single', startDate: start, endDate: '2026-12-01',
-  upOperators: [{ name: six, rarity: 6, isLimited: false, isShop: false }],
+  id: 'w', scName: '已公布的池', type: 'single', startDate: start, endDate: '2026-12-01',
+  upOperators: [{ scCharName: six, charId: 'char_x', rarity: 6, isLimited: false, isShop: false }],
 }];
 check('自定义卡池：六星一致 + 开始日差 15 天 → 判为同一场（丢自定义）',
   dedupe(cbSingle, existAt('2026-10-23')).dropped.length, 1);
@@ -287,8 +317,14 @@ check('自定义卡池：六星不一致 → 不算同一场',
   dedupe(cbSingle, existAt('2026-10-09', '别的干员')).kept.length, 1);
 
 /* ---- 导出 / 导入 / 容错 ---- */
+check('自定义卡池：导出的是 v2（version = 2）', JSON.parse(serialize(cbSingle)).version, 2);
 check('自定义卡池：导出 → 导入 往返一致',
   JSON.stringify(parseImport(serialize(cbSingle)).entries), JSON.stringify(cbSingle));
+check('自定义卡池：导入 v1 老文件 → 自动迁移（migrated = true）',
+  (() => {
+    const r = parseImport(JSON.stringify({ version: 1, banners: [v1] }), { charIdOf: fakeId });
+    return r.ok && r.migrated && r.entries[0].scName === '旧池' && r.entries[0].star6[0].charId === 'char_a';
+  })(), true);
 check('自定义卡池：导入坏 JSON → 报错（不抛异常）', parseImport('{oops').ok, false);
 check('自定义卡池：导入版本不符 → 报错', parseImport('{"version":9,"banners":[]}').ok, false);
 /* ⚠️ SSR（verify-render 走的那条路）里没有 localStorage，必须静默返回空而不是炸 */
@@ -325,9 +361,11 @@ const nameGroupOf = (t) => (t === 'five' ? 'five' : t === 'single' ? 'single'
 const nameKeyOf = (b, g) => {
   const ups = b.upOperators || [];
   const xs = g === 'five' ? ups : ups.filter((o) => o.rarity === 6);
-  return [...new Set(xs.map((o) => o.name))].sort().join('|');
+  return [...new Set(xs.map((o) => o.scCharName))].sort().join('|');
 };
-const nameFieldsOk = (b) => Boolean(b.name) && b.scName === b.name && 'enName' in b;
+/* ⚠️ 2026-10-12 起卡池**只有 `scName`**（与它重复的 `name` 已删）→
+   这里反过来钉住「不该再有 name」。 */
+const nameFieldsOk = (b) => Boolean(b.scName) && !('name' in b) && 'enName' in b;
 /** 「限定 / 单六 / 双五」里能反查到英文名的比例 —— 对不上的是「国际服还没出这个池子」
     和国服特有的「返场」池，所以用比例而不是死数字。 */
 const enNameRate = (list) => {
@@ -356,11 +394,11 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_en.json'))) {
   check('国际服 type 都在本站 11 种之内', enBanners.every((b) => b.type in TYPE_LABEL), true);
   check('国际服 ID 的类型段与 type 一致', enBanners.every((b) => b.id.includes(`_${b.type}_`)), true);
   check('国际服 UP 干员都能按中文名对上干员表',
-    enBanners.every((b) => b.upOperators.every((o) => operators[o.name])), true);
+    enBanners.every((b) => b.upOperators.every((o) => operators[o.scCharName])), true);
   /* 「国际服还没上线的干员自动排除」这条约定的落地检查：
      凡出现在国际服卡池里的干员，都必须有 enReleaseDate（否则站点侧会算出空日期）。 */
   check('国际服卡池里的干员都有国际服实装日',
-    enBanners.every((b) => b.upOperators.every((o) => operators[o.name]?.enReleaseDate)), true);
+    enBanners.every((b) => b.upOperators.every((o) => operators[o.scCharName]?.enReleaseDate)), true);
 
   /* ---- 开服干员的实装日 = 各服开服日（2026-10-04 修） ----
      三服**同构**：国服开服当天就在 roster 里的那批干员，在任何服务器的实装日都是**该服开服日**。
@@ -463,17 +501,17 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
   check('繁中服 type 都在本站 11 种之内', tcBanners.every((b) => b.type in TYPE_LABEL), true);
   check('繁中服 ID 的类型段与 type 一致', tcBanners.every((b) => b.id.includes(`_${b.type}_`)), true);
   check('繁中服 UP 干员都能按中文名对上干员表',
-    tcBanners.every((b) => b.upOperators.every((o) => operators[o.name])), true);
+    tcBanners.every((b) => b.upOperators.every((o) => operators[o.scCharName])), true);
   /* 「繁中服还没上线的干员自动排除」的落地检查：卡池里出现的干员都必须有繁中服实装日 */
   check('繁中服卡池里的干员都有繁中服实装日',
-    tcBanners.every((b) => b.upOperators.every((o) => operators[o.name]?.tcReleaseDate)), true);
+    tcBanners.every((b) => b.upOperators.every((o) => operators[o.scCharName]?.tcReleaseDate)), true);
   check('繁中服「双五寻访」恰好 3 个（凝电之钻 / 雾漫荒林 / 流沙涡旋）', ofType('five').length, 3);
   /* 6 个联动卡池整行被跳过（J 列写「联动」），所以这些干员一个都不该出现。
      ⚠️ 别用「名字是不是纯英文」来判断 —— 国服本来就有 W 这种英文名干员。 */
   const COLLAB_OPS = ['Ash', 'Frost', 'Blitz', 'Ela', 'Iana', 'Doc', '麒麟R夜刀', '火龙S黑角',
     '玛露西尔', '莱欧斯', '齐尔查克', '丰川祥子', '三角初华', '若叶睦'];
   check('繁中服没有联动干员（6 个联动卡池整行被跳过）',
-    tcBanners.every((b) => b.upOperators.every((o) => !COLLAB_OPS.includes(o.name))), true);
+    tcBanners.every((b) => b.upOperators.every((o) => !COLLAB_OPS.includes(o.scCharName))), true);
   check('繁中服卡池按 (开始日, id) 升序', (() => {
     /* ⚠️ 判的是**文件本身的键序**（`fetch-data-tc.mjs` 按 (开始日, id) 写入）——
        所以用**未合并中坚**的原始表，别用上面合并过的 `tcMap`（中坚是拼在末尾的）。 */
@@ -498,7 +536,7 @@ if (fs.existsSync(path.join(RES_DIR, 'banners_tc.json'))) {
   for (const t of ['double', 'classic', 'clafes', 'joint', 'stdfes', 'mainfes']) {
     const list = ofType(t).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
     check(`繁中服 ${t} 的编号按时间从 1 连续编排`,
-      list.length > 0 && list.every((b, i) => b.name === `${TYPE_LABEL[t]}${i + 1}`), true);
+      list.length > 0 && list.every((b, i) => b.scName === `${TYPE_LABEL[t]}${i + 1}`), true);
   }
 
   /* 各类池子的干员构成（表格的列结构本身就是这么定的） */
@@ -617,7 +655,7 @@ check('商店兑换 ⊆ 出率提升（每一行都成立）',
   rows.every((r) => r.shopAll.every((b) => r.upAll.includes(b))), true);
 check('总次数 = 中坚次数 + 标准次数',
   rows.every((r) => r.upAll.length === r.upMid.length + r.upStd.length), true);
-check('限定干员已排除', rows.every((r) => !r.upAll.some((b) => b.upOperators.find((o) => o.name === r.name && o.isLimited))), true);
+check('限定干员已排除', rows.every((r) => !r.upAll.some((b) => b.upOperators.find((o) => o.scCharName === r.name && o.isLimited))), true);
 
 const wz = map['推进之王'];
 /* ⚠️ 2026-10-08 起默认**排除中坚甄选**，两条都是排除后的值（计入甄选的黄金值在下一段）。 */
@@ -635,7 +673,7 @@ const clafesBanners = banners.filter((b) => b.type === 'clafes');
 const clafesOps = new Set();
 for (const b of clafesBanners) {
   for (const op of b.upOperators) {
-    if (!op.isLimited && (op.rarity || 0) >= 5) clafesOps.add(op.name);
+    if (!op.isLimited && (op.rarity || 0) >= 5) clafesOps.add(op.scCharName);
   }
 }
 check('中坚甄选（clafes）池存在且都在「中坚寻访」大类下',
@@ -693,8 +731,8 @@ function expectedFirstRotation(banners_, types) {
     if (!types.includes(b.type)) continue;
     for (const op of b.upOperators) {
       if (op.isLimited || (op.rarity || 0) < 5) continue;
-      const cur = m.get(op.name);
-      if (cur === undefined || b.startDate < cur) m.set(op.name, b.startDate);
+      const cur = m.get(op.scCharName);
+      if (cur === undefined || b.startDate < cur) m.set(op.scCharName, b.startDate);
     }
   }
   return m;
@@ -821,9 +859,9 @@ check('纵轴标签·轮换模式', metricLabel('rotation', 'gap'), '距同星�
    所以这里**反查数据**：确实存在一个卡池，名字与日期都对得上，
    且该干员出现在它的 UP 名单里、并满足该模式的条件。 */
 function bannerMatchesFirst(r, b, mode) {
-  if (b.name !== r.firstBanner || b.startDate !== r.firstDate) return false;
+  if (b.scName !== r.firstBanner || b.startDate !== r.firstDate) return false;
   if (mode === 'rotation' && !ROT_TYPES.includes(b.type)) return false;
-  const op = b.upOperators.find((o) => o.name === r.name);
+  const op = b.upOperators.find((o) => o.scCharName === r.name);
   if (!op || op.isLimited || (op.rarity || 0) < 5) return false;
   return mode === 'rotation' || op.isShop === true;
 }
@@ -832,8 +870,8 @@ for (const [modeName, set, mode] of [['进店', fupShop, 'shop'], ['轮换', fup
     set.rows.every((r) => banners.some((b) => bannerMatchesFirst(r, b, mode))), true);
 }
 check('轮换：所在卡池名全部非空', fupRot.rows.every((r) => !!r.firstBanner), true);
-check('轮换：所在卡池名就是卡池的中文名（与 name 字段一致，不是其它语言的别名）',
-  fupRot.rows.every((r) => banners.some((b) => b.name === r.firstBanner)), true);
+check('轮换：所在卡池名就是卡池的中文名（与 scName 一致，不是其它语言的别名）',
+  fupRot.rows.every((r) => banners.some((b) => b.scName === r.firstBanner)), true);
 check('纵轴标签·距实装日与模式无关',
   metricLabel('shop', 'sinceRelease') === metricLabel('rotation', 'sinceRelease'), true);
 
@@ -912,7 +950,7 @@ let shopMarks = 0;
 for (const b of banners) {
   for (const o of b.upOperators) {
     if (!o.isShop || o.isLimited || (o.rarity || 0) < 5) continue;
-    shopOps.add(o.name);
+    shopOps.add(o.scCharName);
     shopMarks += 1;
   }
 }
@@ -963,7 +1001,9 @@ check('UP 历史：没有标记的干员不占行（只看进店时排除了未�
    判据 = 当前服务器「进入中坚寻访」的日期 ≤ 判据时点（右栏结束日期，未设则按今天）。
    ⚠️ 关键在**判据时点用什么**：设得越晚，被判成「已属中坚」的干员越多。
    这里用两个时点对比，既验功能也验「时点取自 range.to」这件事。 */
-const CLASSIC_FIELD = { sc: 'classicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
+/* ⚠️ 2026-10-12 起国服那个字段从 `classicDate` 改名为 **`scClassicDate`**
+   （与 `constants.js` 的 `SERVER_CLASSIC_FIELD` 同步）。 */
+const CLASSIC_FIELD = { sc: 'scClassicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
 const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
 const upAllNoCut = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true,
@@ -1013,10 +1053,10 @@ check('卡池筛选：只选一个类型时行数 = 该类型卡池数',
 const fSort = { key: 'startDate', dir: 'desc' };
 /* 取一对**同池出现过**的干员：这样「并集」严格小于两者之和 ——
    哪天把 OR 写成 AND（交集），下面那条会立刻红（交集里这对只可能更少）。 */
-const coBanner = banners.find((b) => new Set(b.upOperators.map((o) => o.name)).size >= 2);
-const [opA, opB] = [...new Set(coBanner.upOperators.map((o) => o.name))];
+const coBanner = banners.find((b) => new Set(b.upOperators.map((o) => o.scCharName)).size >= 2);
+const [opA, opB] = [...new Set(coBanner.upOperators.map((o) => o.scCharName))];
 const bannersWith = (names) =>
-  banners.filter((b) => b.upOperators.some((o) => names.includes(o.name))).length;
+  banners.filter((b) => b.upOperators.some((o) => names.includes(o.scCharName))).length;
 
 check('卡池筛选：选中一位干员 = 该干员 UP 过的卡池数',
   bannerRows(banners, { ...fEmpty, ops: [opA] }, categories, fSort).length, bannersWith([opA]));
@@ -1286,13 +1326,13 @@ const skinsFile = fs.existsSync(path.join(RES_DIR, 'skins_sc.json')) ? read('ski
 check('skins_sc.json 已产出', !!skinsFile, true);
 if (skinsFile) {
   const skinList = skinsFile.skins || [];
-  check('skins_sc.json：每套都有 char / name / onShelf / isCrossover',
-    skinList.every((s) => s.char && s.name && Array.isArray(s.onShelf)
+  check('skins_sc.json：每套都有 scCharName / charId / name / onShelf / isCrossover',
+    skinList.every((s) => s.scCharName && s.charId && s.name && Array.isArray(s.onShelf)
       && typeof s.isCrossover === 'boolean'), true);
   check('skins_sc.json：合作款数量 > 0', skinList.filter((s) => s.isCrossover).length > 0, true);
 
   const skinsByOperator = {};
-  for (const s of skinList) (skinsByOperator[s.char] ||= []).push(s);
+  for (const s of skinList) (skinsByOperator[s.scCharName] ||= []).push(s);
 
   /* 密录 / 模组：同样只留**推出日期**（与 src/lib/loadData.js 同一口径） */
   const memFile = fs.existsSync(path.join(RES_DIR, 'memoirs_sc.json')) ? read('memoirs_sc.json') : null;
@@ -1301,11 +1341,11 @@ if (skinsFile) {
   const memoirsByOperator = {};
   for (const m of memFile?.memoirs || []) {
     const ds = (m.batches || []).map((b) => b.date).filter(Boolean);
-    if (ds.length) (memoirsByOperator[m.char] ||= []).push(...ds);
+    if (ds.length) (memoirsByOperator[m.scCharName] ||= []).push(...ds);
   }
   const modulesByOperator = {};
   for (const m of modFile?.modules || []) {
-    if (m?.char && m.date) (modulesByOperator[m.char] ||= []).push(m.date);
+    if (m?.scCharName && m.date) (modulesByOperator[m.scCharName] ||= []).push(m.date);
   }
 
   const uhRows = computeUpHistory({
@@ -1396,15 +1436,15 @@ if (skinsFile) {
       Object.assign(srvMap, read(`banners_cla_${srv}.json`).banners);
     } catch { /* 没有中坚文件 */ }
     const srvSkins = {};
-    for (const s of read(`skins_${srv}.json`).skins || []) (srvSkins[s.char] ||= []).push(s);
+    for (const s of read(`skins_${srv}.json`).skins || []) (srvSkins[s.scCharName] ||= []).push(s);
     const srvMem = {};
     for (const m of read(`memoirs_${srv}.json`).memoirs || []) {
       const ds = (m.batches || []).map((x) => x.date).filter(Boolean);
-      if (ds.length) (srvMem[m.char] ||= []).push(...ds);
+      if (ds.length) (srvMem[m.scCharName] ||= []).push(...ds);
     }
     const srvMod = {};
     for (const m of read(`modules_${srv}.json`).modules || []) {
-      if (m?.char && m.date) (srvMod[m.char] ||= []).push(m.date);
+      if (m?.scCharName && m.date) (srvMod[m.scCharName] ||= []).push(m.date);
     }
     const uhOther = computeUpHistory({
       banners: Object.entries(srvMap).map(([id, b]) => ({ id, ...b })),
@@ -1467,7 +1507,7 @@ check('单六寻访：rerunKind 取值合法（新池暂缺 = null，下周五�
   check('单六寻访：rerunKind 为空的只可能是刚开的新池（老池变空 = 回填丢了）',
     pending.every((b) => Math.abs(diffDays(b.startDate, snap)) <= 7), true);
   if (pending.length) {
-    console.log(`· 单六寻访：${pending.length} 个新池暂缺 rerunKind（${pending.map((b) => b.name).join('、')}）`
+    console.log(`· 单六寻访：${pending.length} 个新池暂缺 rerunKind（${pending.map((b) => b.scName).join('、')}）`
       + `—— 等下一次带官方解包的运行补上`);
   }
 }
@@ -1490,7 +1530,7 @@ check('单六寻访：rerunKind ≠ 首发 的池 canRerun 恒 false',
      深夏的守夜人 / 久铸尘铁 / 银灰色的荣耀 —— 最近活动是 SS 但**实际从未复刻过**。
      它们都是**首发**池，且 canRerun 必须是 false。 */
   const exceptions = ['深夏的守夜人', '久铸尘铁', '银灰色的荣耀'];
-  const excInData = scSingles.filter((b) => exceptions.includes(b.name));
+  const excInData = scSingles.filter((b) => exceptions.includes(b.scName));
   check('单六寻访：三个已知反例（深夏的守夜人 / 久铸尘铁 / 银灰色的荣耀）都在且 canRerun=false',
     excInData.length === 3 && excInData.every((b) => b.canRerun === false && b.rerunKind === '首发'), true);
 }

@@ -36,7 +36,8 @@ const UNAVAILABLE = META.servers.filter((s) => !s.available).map((s) => s.id);
 const OPS_BY_NAME_SMOKE = (() => {
   const raw = JSON.parse(fs.readFileSync(path.join(RES_DATA, 'operators.json'), 'utf8'));
   const m = {};
-  for (const o of Object.values(raw)) m[o.name] = o;
+  /* 2026-10-12 字段规范化：operators 的 `name` → `scName` */
+  for (const o of Object.values(raw)) m[o.scName] = o;
   return m;
 })();
 

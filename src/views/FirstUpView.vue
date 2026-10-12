@@ -155,10 +155,10 @@ function tipBand(host) {
   return { bottom: plotTop - TIP_GAP, mode: 'bottom' };
 }
 
-const avatarOf = (name) => avatarUrl(site.operators[name] || { name }, 'circle');
+const avatarOf = (name) => avatarUrl(site.operators[name] || { scName: name }, 'circle');
 
 /** 图片模式下该干员的头像是否**已就绪**（未加载完 / 加载失败 → 先画首字占位） */
-const readyOf = (name) => avatarReady(site.operators[name] || { name });
+const readyOf = (name) => avatarReady(site.operators[name] || { scName: name });
 
 /** 干员名首字（占位用，与简洁模式同一个口径） */
 const firstChar = (name) => String(name || '?').trim().charAt(0) || '?';
@@ -343,7 +343,7 @@ function scrollToEnd() {
 function preloadVisible() {
   if (!isImage.value) return;
   for (const r of [...data.value.six, ...data.value.five]) {
-    preloadAvatar(site.operators[r.name] || { name: r.name });
+    preloadAvatar(site.operators[r.name] || { scName: r.name });
   }
 }
 

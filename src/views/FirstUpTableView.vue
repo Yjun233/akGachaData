@@ -68,7 +68,7 @@ const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullF
 /** 图片模式头像：表格版用**长方形蒙版**（与「出率提升记录」同一套，见 main.css 的 .avt-rect）。
  *  ⚠️ shape 只在素材缺失、回退占位图时才有意义 —— 真素材都是同一张方形 96×96 PNG，
  *  形状（这里的 2:1 长方蒙版）完全交给 CSS。 */
-const opOf = (name) => site.operators[name] || { name };
+const opOf = (name) => site.operators[name] || { scName: name };
 
 /** 当前纵轴口径 → 给哪一列加底色（右栏切换时的唯一反馈） */
 const isMetric = (which) => site.firstUpMetric === which;

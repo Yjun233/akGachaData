@@ -13,7 +13,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { TYPE_LABEL } from '../lib/constants.js';
-import { CUSTOM_TYPES, endDateOf, midTag, splitList } from '../lib/customBanners.js';
+import { CUSTOM_TYPES, endDateOf, midTag, opNames, toOpList } from '../lib/customBanners.js';
 import { localToday } from '../lib/date.js';
 import OpPicker from './OpPicker.vue';
 import CustomJsonDialog from './CustomJsonDialog.vue';
@@ -25,7 +25,7 @@ const site = useSiteStore();
    （用户 2026-10-06 定：标 / 中按**现实时间**算，不跟右栏那个可改的参考日期走）。 */
 const today = localToday();
 const blank = () => ({
-  name: '',
+  scName: '',
   /* 默认「常驻标准寻访 + 今天」——最常见的自设场景，用户按需改。
      ⚠️ **没有 `endDate`**：结束日由开始日派生（用户 2026-10-06 定，见 lib 的 `endDateOf`） */
   type: 'double',
@@ -56,7 +56,7 @@ const fivePool = computed(() => Object.keys(site.operators).filter((n) => site.o
 const shopPool = computed(() => [...form.star6, ...form.star5]);
 
 /** 名字 → 「标 / 中」—— 该干员在**当前现实时间**属标准还是中坚寻访（`lib/customBanners.js`）。
-    ⚠️ 判据 = 本服「进入中坚寻访」的日期（`classicDate` / `en*` / `tc*`）≤ 今天，
+    ⚠️ 判据 = 本服「进入中坚寻访」的日期（`scClassicDate` / `en*` / `tc*`）≤ 今天，
       与右栏「隐藏已属中坚的干员」同一口径，只是判据时点换成现实今天。
     ⚠️ **只作提醒，不限制你选谁**（用户 2026-10-06 定：不强制与寻访类型相符）。 */
 function tagOf(name) {
@@ -76,7 +76,7 @@ const endPreview = computed(() => endDateOf(form.startDate) || '—');
 
 /** 名字预览（让用户看到「留空会自动叫什么叫」） */
 const namePreview = computed(() => {
-  if (form.name.trim()) return '';
+  if (form.scName.trim()) return '';
   return form.type === 'single' && form.star6.length
     ? `将自动命名为「自定义_${form.star6[0]}池」`
     : `将自动命名为「自定义_${TYPE_LABEL[form.type] || form.type}${String(form.startDate).slice(5, 10).replace('-', '')}」`;
@@ -87,9 +87,24 @@ function reset() {
   editingUid.value = null;
 }
 
+/* 表单里三个干员列表是**名字数组**（`OpPicker` 的 v-model 就是名字），
+   存进本地存储时换成 `[{ scCharName, charId }]`（v2 结构，与卡池的 upOperators 同构）。
+   ⚠️ charId 查不到写 null —— 用户可能提前知道解包信息，允许强存（不阻止保存）。 */
+function toEntry(form) {
+  return {
+    scName: form.scName,
+    type: form.type,
+    startDate: form.startDate,
+    star6: toOpList(form.star6, site.charIdOf),
+    star5: toOpList(form.star5, site.charIdOf),
+    shop: toOpList(form.shop, site.charIdOf),
+    server: site.server,
+  };
+}
+
 function save() {
   if (!preview.value.ok) return;
-  const entry = { ...form, server: site.server };
+  const entry = toEntry(form);
   if (editingUid.value == null) site.addCustom(entry);
   else site.updateCustom(editingUid.value, entry);
   reset();
@@ -98,13 +113,14 @@ function save() {
 function edit(entry) {
   editingUid.value = entry.uid;
   Object.assign(form, {
-    name: entry.name || '',
+    scName: entry.scName || '',
     type: entry.type,
     startDate: entry.startDate,
-    /* ⚠️ 2026-10-06 之前的自设里这三个是**顿号分隔的文本** → `splitList` 两种形态都吃 */
-    star6: splitList(entry.star6),
-    star5: splitList(entry.star5),
-    shop: splitList(entry.shop),
+    /* ⚠️ 存储里是 `[{ scCharName, charId }]`，表单用的是名字数组 —— 这里只取名字。
+       `toOpList` 三种形态都吃（v2 对象 / v1 名字数组 / v0 顿号文本），老数据也能编辑。 */
+    star6: opNames(entry.star6),
+    star5: opNames(entry.star5),
+    shop: opNames(entry.shop),
   });
 }
 
@@ -139,7 +155,7 @@ const showJson = ref(false);
       </p>
 
       <div class="cbd-form">
-        <label>寻访名字<input v-model="form.name" type="text" placeholder="留空则自动生成" /></label>
+        <label>寻访名字<input v-model="form.scName" type="text" placeholder="留空则自动生成" /></label>
         <label>
           寻访类型
           <select v-model="form.type">
@@ -196,8 +212,8 @@ const showJson = ref(false);
       <p v-if="!myList.length" class="cbd-hint">还没有添加过。</p>
       <ul v-else class="cbd-list">
         <li v-for="e in myList" :key="e.uid" :class="{ editing: e.uid === editingUid }">
-          <span class="d">{{ e.startDate }} ~ {{ e.endDate }}</span>
-          <span class="n">{{ e.name || '(自动命名)' }}</span>
+          <span class="d">{{ e.startDate }} ~ {{ endDateOf(e.startDate) }}</span>
+          <span class="n">{{ e.scName || '(自动命名)' }}</span>
           <span class="t">{{ TYPE_LABEL[e.type] }}</span>
           <button class="cbd-mini" type="button" @click="edit(e)">编辑</button>
           <button class="cbd-mini" type="button" @click="remove(e.uid)">删除</button>
@@ -207,8 +223,8 @@ const showJson = ref(false);
       <div v-if="dropped.length" class="cbd-dropped">
         <div class="cbd-subhd">已忽略（与已公布卡池重复，不会生效 —— 下次打开页面会自动删除）</div>
         <div v-for="d in dropped" :key="d.entry.uid" class="row">
-          <span>{{ d.entry.startDate }} {{ d.entry.name || '(自动命名)' }}
-            —— 与「{{ d.hit.name }}」重复（开始日相差 {{ d.gap }} 天）</span>
+          <span>{{ d.entry.startDate }} {{ d.entry.scName || '(自动命名)' }}
+            —— 与「{{ d.hit.scName }}」重复（开始日相差 {{ d.gap }} 天）</span>
           <button class="cbd-mini" type="button" @click="remove(d.entry.uid)">删除</button>
         </div>
       </div>
@@ -217,8 +233,8 @@ const showJson = ref(false);
       <div v-if="autoRemoved.length" class="cbd-dropped cbd-auto-removed">
         <div class="cbd-subhd">已自动删除（{{ autoRemoved.length }} 条 · 对应卡池已被正式公布）</div>
         <div v-for="d in autoRemoved" :key="d.entry.uid" class="row">
-          <span>{{ d.entry.startDate }} {{ d.entry.name || '(自动命名)' }}
-            —— 与「{{ d.hit.name }}」重复（开始日相差 {{ d.gap }} 天）</span>
+          <span>{{ d.entry.startDate }} {{ d.entry.scName || '(自动命名)' }}
+            —— 与「{{ d.hit.scName }}」重复（开始日相差 {{ d.gap }} 天）</span>
         </div>
       </div>
 

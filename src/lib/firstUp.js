@@ -107,10 +107,10 @@ export function computeFirstUp({
       if (!isRotation && !op.isShop) continue;
       if (op.isLimited) continue;
       if ((op.rarity || 0) < 5) continue;
-      const cur = first[op.name];
+      const cur = first[op.scCharName];
       if (!cur) {
-        first[op.name] = {
-          name: op.name, rarity: op.rarity, firstDate: b.startDate, firstBanner: b.name, count: 1,
+        first[op.scCharName] = {
+          name: op.scCharName, rarity: op.rarity, firstDate: b.startDate, firstBanner: b.scName, count: 1,
         };
       } else {
         cur.count += 1;
@@ -118,7 +118,7 @@ export function computeFirstUp({
            「日期是 A 池的、池名是 B 池的」这种自相矛盾的浮窗 */
         if (b.startDate < cur.firstDate) {
           cur.firstDate = b.startDate;
-          cur.firstBanner = b.name;
+          cur.firstBanner = b.scName;
         }
       }
     }

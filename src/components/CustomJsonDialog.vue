@@ -38,9 +38,10 @@ function apply() {
     jsonMsg.value = `应用失败：${res.error}`;
     return;
   }
+  const tail = res.migrated ? '（旧格式 v1 已自动迁移为 v2）' : '';
   jsonMsg.value = res.skipped.length
-    ? `已应用 ${res.count} 条，跳过 ${res.skipped.length} 条（${res.skipped[0].errors[0]}…）`
-    : `已应用 ${res.count} 条`;
+    ? `已应用 ${res.count} 条，跳过 ${res.skipped.length} 条（${res.skipped[0].errors[0]}…）${tail}`
+    : `已应用 ${res.count} 条${tail}`;
 }
 </script>
 
@@ -55,6 +56,9 @@ function apply() {
       <p class="cbd-tip">
         「<b>应用</b>」= 用框里的内容<b>整体覆盖</b>全部自设（删掉一段就等于删掉那条）；
         不合法的条目会被<b>跳过</b>、其余照常生效。备份就整段<b>复制走</b>。
+        <br />
+        格式：卡池名是 <code>scName</code>，三个干员列表是
+        <code>[{ scCharName, charId }]</code>；<b>旧格式（v1）的文件也能直接粘</b>，会自动迁移。
       </p>
 
       <textarea

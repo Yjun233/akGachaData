@@ -25,7 +25,7 @@ const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
     <div v-if="!rows.length" class="empty">没有符合条件的卡池</div>
     <div v-for="b in rows" :key="b.id" class="bcard">
       <div class="bcard-hd">
-        <span class="bcard-name">{{ b.name }}</span>
+        <span class="bcard-name">{{ b.scName }}</span>
         <span v-if="isLive(b)" class="pill-live">进行中</span>
         <span v-else-if="isPending(b)" class="pill-pending">未开始</span>
         <span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{ site.categories[b.type] }}</span>
@@ -36,11 +36,11 @@ const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
       </div>
       <div v-if="opsOf(b, 6).length" class="bcard-row">
         <span class="k">出率提升 6★</span>
-        <span class="v"><OpTag v-for="o in opsOf(b, 6)" :key="o.name" :op="o" /></span>
+        <span class="v"><OpTag v-for="o in opsOf(b, 6)" :key="o.scCharName" :op="o" /></span>
       </div>
       <div v-if="opsOf(b, 5).length" class="bcard-row">
         <span class="k">出率提升 5★</span>
-        <span class="v"><OpTag v-for="o in opsOf(b, 5)" :key="o.name" :op="o" /></span>
+        <span class="v"><OpTag v-for="o in opsOf(b, 5)" :key="o.scCharName" :op="o" /></span>
       </div>
     </div>
   </div>

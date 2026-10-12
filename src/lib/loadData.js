@@ -96,30 +96,33 @@ export async function loadSiteData() {
   const rawOperators = await getJSON('operators.json');
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），
-     前端一律按干员名索引（卡池数据里的 upOperators 只有 name）。 */
+     前端一律按**干员中文名**索引 —— 字段名是 `scName`（2026-10-12 由 `name` 改名）。
+     ⚠️ 卡池的 `upOperators` 项自带 `scCharName` + `charId`，所以拿到名字后也能直接取 charId；
+     这张表仍是「名字 → 完整干员」的唯一入口（`OpTag` 用它回查星级 / 是否限定）。 */
   const operators = {};
-  for (const op of Object.values(unwrap(rawOperators, 'operators') || {})) operators[op.name] = op;
+  for (const op of Object.values(unwrap(rawOperators, 'operators') || {})) operators[op.scName] = op;
 
   /* 皮肤 / 密录 / 模组（下称 extras）**按服分文件**（`skins_<srv>.json` 等），每份都**可选** ——
      线上 CDN 还没产出时不能整站失败，缺了只是 UP 历史页不显示对应标记。
      这里把一份文件索引成「按干员名查」的三张表：
        · `skins`            → 该干员的时装数组（判定要用它 `onShelf[]` 里那些窗口）
        · `memoirs`/`modules` → 该干员的**推出日期数组**（判定只要日期）
-     密录一位可能有多批（`batches[].date`），模组一位可能有好几个（每条一个 `date`）。 */
+     密录一位可能有多批（`batches[].date`），模组一位可能有好几个（每条一个 `date`）。
+     ⚠️ 干员名字段是 `scCharName`（2026-10-12 由 `char` 改名），另有 `charId`（本站暂不用）。 */
   function indexExtras(rawSkins, rawMemoirs, rawModules) {
     const skins = {};
     for (const s of unwrap(rawSkins, 'skins') || []) {
-      if (s?.char) (skins[s.char] ||= []).push(s);
+      if (s?.scCharName) (skins[s.scCharName] ||= []).push(s);
     }
     const memoirs = {};
     for (const m of unwrap(rawMemoirs, 'memoirs') || []) {
-      if (!m?.char) continue;
+      if (!m?.scCharName) continue;
       const dates = (m.batches || []).map((b) => b.date).filter(Boolean);
-      if (dates.length) (memoirs[m.char] ||= []).push(...dates);
+      if (dates.length) (memoirs[m.scCharName] ||= []).push(...dates);
     }
     const modules = {};
     for (const m of unwrap(rawModules, 'modules') || []) {
-      if (m?.char && m.date) (modules[m.char] ||= []).push(m.date);
+      if (m?.scCharName && m.date) (modules[m.scCharName] ||= []).push(m.date);
     }
     return { skins, memoirs, modules };
   }
@@ -195,7 +198,10 @@ export async function loadSiteData() {
         `_syncCustom`，那里只算不删）。
      ⚠️ 自设**不并进 `bannersByServer`** —— 「进不进统计 / 图表」由 store 的全局开关决定，
         这里只按服整理好交给 store 去拼。 */
-  const stored = loadEntries();
+  /* ⚠️ 传 `charIdOf`：本地存储里的 v1 老数据要按名字补 `charId` 才能迁到 v2
+     （`loadEntries` 会**自动迁移并写回**，见 `customBanners.js`）。 */
+  const charIdOf = (name) => operators[name]?.charId ?? null;
+  const stored = loadEntries({ charIdOf });
   const customByServer = {};
   /** 每服**真正生效**的那些自设的 `uid`（去重后被吃掉的**不在**里面）—— 弹窗的「已生效」列表用 */
   const customActiveUids = {};
@@ -204,7 +210,7 @@ export async function loadSiteData() {
   const covered = new Set();
   for (const s of available) {
     const mine = stored.filter((e) => e.server === s.id);
-    const { kept, dropped } = dedupe(mine, toBannerList(bannersByServer[s.id]));
+    const { kept, dropped } = dedupe(mine, toBannerList(bannersByServer[s.id]), charIdOf);
     customByServer[s.id] = kept.map((x) => x.banner);
     customActiveUids[s.id] = kept.map((x) => x.entry.uid);
     for (const d of dropped) {

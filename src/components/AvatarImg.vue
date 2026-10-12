@@ -22,9 +22,10 @@
  */
 import { ref, computed, watch } from 'vue';
 import { avatarUrl, placeholderAvatar } from '../lib/avatars.js';
+import { opName } from '../lib/opFields.js';
 
 const props = defineProps({
-  /** 干员对象（需要 charId / name） */
+  /** 干员对象（两种形状都行 —— 取值走 `lib/opFields.js` 的 `opName`） */
   op: { type: Object, required: true },
   /** 形状：square / circle —— 只影响占位图（真素材都是同一张方形 PNG，形状交给 CSS） */
   shape: { type: String, default: 'square' },
@@ -34,8 +35,10 @@ const props = defineProps({
 
 /** 真素材地址（charId 缺失时它自己就是占位图 —— 那种情况不需要叠层） */
 const realSrc = computed(() => avatarUrl(props.op, props.shape));
+/** 干员显示名（完整干员取 `scName`、卡池 UP 项取 `scCharName`） */
+const name = computed(() => opName(props.op));
 /** 首字占位图（内联 data URI，不产生网络请求） */
-const fallbackSrc = computed(() => placeholderAvatar(props.op?.name, props.shape));
+const fallbackSrc = computed(() => placeholderAvatar(name.value, props.shape));
 /** 该干员有没有真素材（没 charId 时真素材本身就是占位图，不必再叠一层） */
 const hasReal = computed(() => !!props.op?.charId);
 
@@ -80,7 +83,7 @@ const fallbackStyle = computed(() => ({ backgroundImage: 'url("' + fallbackSrc.v
     <img
       v-if="!failed"
       :class="imgClass" class="avt-real" :src="realSrc"
-      :alt="op.name" :title="op.name" @load="onLoad" @error="onError"
+      :alt="name" :title="name" @load="onLoad" @error="onError"
     />
   </span>
 </template>

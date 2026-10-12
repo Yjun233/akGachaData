@@ -416,8 +416,9 @@ export function buildUpTimeline({
           const center = cx + d / 2;
 
           /* 该行干员的**完整对象**（取 charId 找头像；取不到就退化成一个只有名字的壳）。
-             ⚠️ `avatarReady` / `avatarUrl` 都吃这个对象。 */
-          const op = operatorByName[row.name] || { name: row.name };
+             ⚠️ `avatarReady` / `avatarUrl` 都吃这个对象；壳里的名字字段是 `scName`
+             （`lib/opFields.js` 只认 `scName` / `scCharName`）。 */
+          const op = operatorByName[row.name] || { scName: row.name };
 
           const children = [];
 

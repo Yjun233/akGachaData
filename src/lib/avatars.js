@@ -28,6 +28,7 @@
  * - `circle` —— 首次UP间隔（画在 canvas 上的点，圆形）
  */
 import { avatarFileUrl } from './resource.js';
+import { opName } from './opFields.js';
 
 const AVATAR_SIZE = 96; // 与本仓库 ../akGachaResource/avatars 里的素材一致（源图为 180，已压缩）
 const USE_REAL_AVATARS = true;
@@ -70,12 +71,12 @@ export function placeholderAvatar(name, shape = 'square') {
 
 /**
  * 干员头像地址。有真实素材就用素材，否则回退占位图。
- * @param {object} op    干员对象（需要 charId / name）
+ * @param {object} op    干员对象（取 `charId` 与显示名，见 `opFields.js`）
  * @param {'square'|'circle'} shape
  */
 export function avatarUrl(op, shape = 'square') {
   if (USE_REAL_AVATARS && op?.charId) return avatarFileUrl(op.charId);
-  return placeholderAvatar(op?.name, shape);
+  return placeholderAvatar(opName(op), shape);
 }
 
 /**

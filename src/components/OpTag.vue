@@ -8,6 +8,7 @@
  */
 import { computed } from 'vue';
 import AvatarImg from './AvatarImg.vue';
+import { opName } from '../lib/opFields.js';
 import { useSiteStore } from '../stores/site.js';
 
 const props = defineProps({
@@ -18,12 +19,13 @@ const props = defineProps({
 const site = useSiteStore();
 
 /**
- * ⚠️ 卡池数据里的 `upOperators` 只有 `name / rarity / isLimited / isShop`，**没有 `charId`**，
- * 而头像是按 `charId` 取的（`avatars/<charId>.png`）。所以这里必须用干员名回查 store 里的
- * 完整干员对象，否则 `avatarUrl()` 拿不到 charId、会静默退化成占位图
- * （表现：图片模式下卡池列表是方块占位图，而统计页却是真头像）。
+ * 显示名：完整干员取 `scName`、卡池 UP 项取 `scCharName`（见 `lib/opFields.js`）。
+ * ⚠️ 2026-10-12 起卡池的 `upOperators` **自带 `charId`**（以前没有），理论上不必再回查；
+ *    但 `fullOp` 这条回查仍留着 —— 它同时补上 `isLimited` 之外的完整字段（如头像模式下的
+ *    `rarity` 配色），而且自设卡池的项可能查不到（用户强存的新干员），回退成原对象即可。
  */
-const fullOp = computed(() => site.operators[props.op.name] || props.op);
+const name = computed(() => opName(props.op));
+const fullOp = computed(() => site.operators[name.value] || props.op);
 
 const isImage = computed(() => site.avatarMode === 'image');
 const hasBadge = computed(() => props.op.isLimited || props.op.isShop);
@@ -42,6 +44,6 @@ const hasBadge = computed(() => props.op.isLimited || props.op.isShop);
     <template v-if="mark">
       <i v-if="op.isLimited" class="mk mk-lim" title="限定干员（不参与统计）">限</i>
       <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">兑</i>
-    </template>{{ op.name }}
+    </template>{{ name }}
   </span>
 </template>

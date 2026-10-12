@@ -201,7 +201,7 @@ try {
   /* ---------------- 卡池列表：UP 干员**多选**（名字 / 全拼 / 首字母搜索） ----------------
      分两层守：① 右栏控件结构（搜索框 + 已选 chip）；② 选中后确实按「精确名 OR」筛。
      候选列表本身依赖输入框里的字（SSR 里打不了字），它的匹配 / 排序 / 去重在 verify-data 里测。 */
-  const opPool = [...new Set(banners.store.banners.flatMap((b) => b.upOperators.map((o) => o.name)))];
+  const opPool = [...new Set(banners.store.banners.flatMap((b) => b.upOperators.map((o) => o.scCharName)))];
   const opA = opPool[0];
   const opB = opPool[1];
 
@@ -214,12 +214,12 @@ try {
     /名字 \/ 全拼 \/ 首字母/.test(opSel.html), true);
   check('卡池列表：选中一位干员 = 该干员 UP 过的卡池数',
     opSel.store.bannerRows.length,
-    opSel.store.banners.filter((b) => b.upOperators.some((o) => o.name === opA)).length);
+    opSel.store.banners.filter((b) => b.upOperators.some((o) => o.scCharName === opA)).length);
 
   const opTwo = await renderRoute('/', (s) => { s.toggleBannerOp(opA); s.toggleBannerOp(opB); });
   check('卡池列表：多选两位 = 命中任意一位的卡池（OR 并集）',
     opTwo.store.bannerRows.length,
-    opTwo.store.banners.filter((b) => b.upOperators.some((o) => o.name === opA || o.name === opB)).length);
+    opTwo.store.banners.filter((b) => b.upOperators.some((o) => o.scCharName === opA || o.scCharName === opB)).length);
   check('卡池列表：多选两位后右栏有两个可移除的 chip',
     count(opTwo.html, /class="opchip"/g) === 2, true);
 
@@ -843,9 +843,9 @@ try {
     && /getJSONOptional\(`modules_\$\{s\.id\}\.json`\)/.test(loadSrc), true);
   check('时间重合：loadData 按干员名索引（skins 存整套、密录模组只留日期）',
     /function indexExtras\(/.test(loadSrc)
-    && /skins\[s\.char\]/.test(loadSrc)
-    && /memoirs\[m\.char\]/.test(loadSrc)
-    && /modules\[m\.char\]/.test(loadSrc), true);
+    && /skins\[s\.scCharName\]/.test(loadSrc)
+    && /memoirs\[m\.scCharName\]/.test(loadSrc)
+    && /modules\[m\.scCharName\]/.test(loadSrc), true);
   check('时间重合：store 把三个数据源（当前服的那份）都传进 computeUpHistory',
     /const ex = this\.extras;/.test(siteSrc)
     && /skinsByOperator: ex\.skins,/.test(siteSrc)
@@ -884,7 +884,7 @@ try {
   /* 「实装那次」的判据：卡池开始日 == 该干员实装日（**严格相等**，不是「首条标记」）。
      见 upHistory.js —— 用日期相等是为了不误伤开服那批（首条 UP ≠ 实装日）。 */
   check('实装那次：判据是「标记日 == 实装日」（严格相等，非 marks[0]）',
-    /relDateOf\(operatorByName\[op\.name\]\) === b\.startDate/.test(uhLibSrc), true);
+    /relDateOf\(operatorByName\[op\.scCharName\]\) === b\.startDate/.test(uhLibSrc), true);
   /* 绘制：polygon 手拼三点（zrender 无 triangle 类型）；底边半宽 = R·cos30° 是等边三角的特征 */
   check('时间重合：画成等边三角形（底边半宽 = R·cos30°）',
     /mark\.skinRelated \|\| mark\.memoirRelated \|\| mark\.moduleRelated/.test(tlSrc)
@@ -1390,10 +1390,12 @@ try {
   check('头像：已启用真实素材（USE_REAL_AVATARS = true）',
     /USE_REAL_AVATARS = true/.test(avSrc), true);
   const opTagSrc = fs.readFileSync(path.join(ROOT, 'src/components/OpTag.vue'), 'utf8');
-  /* 卡池数据里的 upOperators 没有 charId → 直接用它会静默退化成占位图
-     （表现为「卡池列表是方块、统计页却是真头像」） */
-  check('卡池列表 OpTag：用干员名回查 store 取 charId',
-    /site\.operators\[props\.op\.name\]/.test(opTagSrc), true);
+  /* ⚠️ 2026-10-12 起卡池的 `upOperators` **自带 charId**（以前没有）；
+     但 OpTag 仍用干员名回查 store 的完整对象（补 rarity 等），名字走 `lib/opFields.js`
+     的 `opName()` —— 两种形状（scName / scCharName）都能取到。 */
+  check('卡池列表 OpTag：用干员名回查 store 的完整干员对象（名字经 opName 归一）',
+    /import \{ opName \} from '\.\.\/lib\/opFields\.js'/.test(opTagSrc)
+    && /site\.operators\[name\.value\]/.test(opTagSrc), true);
   const fupViewSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpView.vue'), 'utf8');
   /* echarts 的 symbol:'image://…' 只是贴图、**不能裁剪**，所以图片模式改用手绘 + clipPath */
   check('进店间隔：图片模式用 custom 手绘 + clipPath 裁圆（不是 symbol:image://）',
@@ -1527,10 +1529,10 @@ try {
       EN.bannerCount + claCount('en'));
     /* ⚠️ 国际服卡池的 `name` 现在也是**国服中文名**（英文名挪到 `enName`、本站暂不展示），
        所以这里不能再断言「渲染出英文卡池名」。 */
-    check('国际服：卡池名已是国服中文名（name === scName）',
-      enHome.store.banners.every((b) => b.name === b.scName), true);
+    check('国际服：卡池名已是国服中文名（只有 scName，`name` 已删）',
+      enHome.store.banners.every((b) => !!b.scName && !('name' in b)), true);
     check('国际服：卡池列表渲染出卡池名',
-      enHome.store.banners.slice(0, 8).every((b) => enHome.html.includes(b.name)), true);
+      enHome.store.banners.slice(0, 8).every((b) => enHome.html.includes(b.scName)), true);
     check('国际服：英文名仍在数据里（enName 非空的都是纯 ASCII）',
       enHome.store.banners.filter((b) => b.enName).every((b) => /^[\x20-\x7e]+$/.test(b.enName)), true);
 
@@ -1582,7 +1584,7 @@ try {
   check('繁中服：metadata 里已启用（available）', TC?.available, true);
   if (TC?.available) {
     const tcHome = await renderRoute('/', (s) => s.setServer('tc'));
-    const tcNames = tcHome.store.banners.map((b) => b.name);
+    const tcNames = tcHome.store.banners.map((b) => b.scName);
     check('繁中服：当前服务器切到 tc', tcHome.store.server, 'tc');
     /* ⚠️ 繁中服有 2 个「已公布但还没开始」的池子（最新到 10-22）—— 卡池列表的结束日期默认取
        数据上界，所以它们照常显示、行数 = bannerCount；只有**统计页**按参考日期过滤。 */
@@ -1625,29 +1627,31 @@ try {
     app.use(pinia);
     const store = useSiteStore(pinia);
     await store.load();
+    /* ⚠️ 夹具用 **v2 结构**（2026-10-12 起）：卡池名是 `scName`、干员列表是对象数组 */
     const alive = {
-      uid: 1, server: 'sc', name: '', type: 'double',
-      startDate: '2099-01-07', endDate: '2099-01-21', star6: '甲、乙', star5: '丙', shop: '',
+      uid: 1, server: 'sc', scName: '', type: 'double',
+      startDate: '2099-01-07', star6: [{ scCharName: '甲' }, { scCharName: '乙' }],
+      star5: [{ scCharName: '丙' }], shop: [],
     };
     const eaten = {
-      uid: 2, server: 'sc', name: '被吃掉的', type: 'single',
-      startDate: '2099-02-01', endDate: '2099-02-15', star6: '丁', star5: '', shop: '',
+      uid: 2, server: 'sc', scName: '被吃掉的', type: 'single',
+      startDate: '2099-02-01', star6: [{ scCharName: '丁' }], star5: [], shop: [],
     };
     /* 直接按形状塞进去（不必真去写本地存储）—— 这三个字段正是 loadData / _syncCustom 的产物 */
     store.customEntries = [alive, eaten];
     store.customByServer = {
       sc: [{
-        id: '2099-01-07_double_custom_0001', name: '自定义_常驻标准寻访0107', type: 'double',
+        id: '2099-01-07_double_custom_0001', scName: '自定义_常驻标准寻访0107', type: 'double',
         startDate: '2099-01-07', endDate: '2099-01-21', upOperators: [], custom: true,
       }],
     };
     store.customActiveUids = { sc: [1] };
     store.customDropped = [
-      { entry: eaten, banner: {}, hit: { id: 'w', name: '某个已公布的池' }, gap: 2, server: 'sc' },
+      { entry: eaten, banner: {}, hit: { id: 'w', scName: '某个已公布的池' }, gap: 2, server: 'sc' },
     ];
     /* 加载时**已被自动删除**的那段也要能渲出来（说一声「为什么不见了」） */
     store.customAutoRemoved = [
-      { entry: { ...eaten, uid: 3 }, banner: {}, hit: { id: 'w2', name: '已被公布的那个池' }, gap: 5, server: 'sc' },
+      { entry: { ...eaten, uid: 3 }, banner: {}, hit: { id: 'w2', scName: '已被公布的那个池' }, gap: 5, server: 'sc' },
     ];
     const html = await renderToString(app);
 
@@ -1827,12 +1831,12 @@ try {
     );
     /* 照抄真实池的六星 / 五星 / 进店 —— 去重只比「六星集合相等 + 开始日相差 ≤15 天」，
        而**进店数量是硬校验**（`double` 必须恰好 1 六星 + 1 五星），所以三个都得对上 */
-    const names = (r) => real.upOperators.filter((o) => o.rarity === r).map((o) => o.name);
+    const names = (r) => real.upOperators.filter((o) => o.rarity === r).map((o) => o.scCharName);
     const covered = {
       uid: 901, server: 'sc', name: '', type: 'double',
       startDate: shiftDays(real.startDate, 3),
       star6: names(6), star5: names(5),
-      shop: real.upOperators.filter((o) => o.isShop).map((o) => o.name),
+      shop: real.upOperators.filter((o) => o.isShop).map((o) => o.scCharName),
     };
     const alive = {
       uid: 902, server: 'sc', name: '', type: 'double', startDate: '2099-05-01',

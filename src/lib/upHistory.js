@@ -152,14 +152,14 @@ export function computeUpHistory({
     const cat = categories[b.type] || '其他';
     for (const op of b.upOperators) {
       if ((op.rarity || 0) < 5) continue;
-      if (!byOp[op.name]) byOp[op.name] = { name: op.name, rarity: op.rarity, marks: [] };
+      if (!byOp[op.scCharName]) byOp[op.scCharName] = { name: op.scCharName, rarity: op.rarity, marks: [] };
       /* 「实装那次」—— 该次卡池开始日 == 该干员在本服的实装日（严格相等，见文件头）。
          实装日拿不到（null）时不算实装那次，照旧标三角。 */
-      const isRelease = !!relDateOf && relDateOf(operatorByName[op.name]) === b.startDate;
-      byOp[op.name].marks.push({
-        operator: op.name,
+      const isRelease = !!relDateOf && relDateOf(operatorByName[op.scCharName]) === b.startDate;
+      byOp[op.scCharName].marks.push({
+        operator: op.scCharName,
         bannerId: b.id,
-        bannerName: b.name,
+        bannerName: b.scName,
         type: b.type,
         cat,
         date: b.startDate,
@@ -170,9 +170,9 @@ export function computeUpHistory({
            皮肤 = 上架窗口与卡池窗口重叠；密录 / 模组 = 推出日落在卡池窗口内。
            三份数据都是**当前服**的（调用方按服取好传进来）。
            ⚠️ 「实装那次」强制为 false（三个都压掉）—— 见文件头的口径说明。 */
-        skinRelated: !isRelease && skinOverlapsBanner(skinsByOperator[op.name], b.startDate, b.endDate),
-        memoirRelated: !isRelease && anyDateInBanner(memoirsByOperator[op.name], b.startDate, b.endDate),
-        moduleRelated: !isRelease && anyDateInBanner(modulesByOperator[op.name], b.startDate, b.endDate),
+        skinRelated: !isRelease && skinOverlapsBanner(skinsByOperator[op.scCharName], b.startDate, b.endDate),
+        memoirRelated: !isRelease && anyDateInBanner(memoirsByOperator[op.scCharName], b.startDate, b.endDate),
+        moduleRelated: !isRelease && anyDateInBanner(modulesByOperator[op.scCharName], b.startDate, b.endDate),
       });
     }
   }

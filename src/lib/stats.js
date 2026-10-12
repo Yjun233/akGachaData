@@ -103,7 +103,7 @@ export function computeStats({
       /* ⚠️ 被排除的条目**连 rec() 都不进** —— 否则该干员会凭空多出一行
          （`upAll` 为空、却因为被 skip 的池子而占了一行）。 */
       if (skipUp) continue;
-      const r = rec(op.name);
+      const r = rec(op.scCharName);
       r.upAll.push(b);
       (mid ? r.upMid : r.upStd).push(b);
       if (op.isShop) {

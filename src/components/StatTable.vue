@@ -24,7 +24,7 @@ const site = useSiteStore();
 /** 图片模式：干员列显示头像；统计页用**长方形蒙版**（宽是高的 2 倍），见 main.css 的 .avt-rect */
 const isImage = computed(() => site.avatarMode === 'image');
 /** 头像按 charId 取 —— 表格行上只有名字，用名字回查完整干员对象（取不到就用 `{ name }` 退化） */
-const opOf = (name) => site.operators[name] || { name };
+const opOf = (name) => site.operators[name] || { scName: name };
 
 const refDate = computed(() => site.refDate || site.today);
 const sort = computed(() => site.statSort[props.tableId]);

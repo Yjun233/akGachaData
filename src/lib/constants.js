@@ -118,12 +118,13 @@ export const SERVER_FIELD = {
 
 /**
  * 干员**进入常驻中坚寻访**的日期字段：各服一份。
- * ⚠️ 国服那个叫 `classicDate`（没有 `sc` 前缀），别想当然写成 `scClassicDate`。
+ * ⚠️ 国服那个叫 `scClassicDate`（**2026-10-12 由 `classicDate` 改名**，一并补上了 `sc` 前缀，
+ * 三服命名终于对齐）；改名前的注释专门提醒过「别想当然写成 scClassicDate」，现在正好反过来。
  * 语义 = 该干员从标准寻访「移出」、开始在中坚寻访轮换的批次日期；
  * 想知道「某个时间点这位干员是不是中坚干员」就比这个日期。
  */
 export const SERVER_CLASSIC_FIELD = {
-  sc: 'classicDate',
+  sc: 'scClassicDate',
   en: 'enClassicDate',
   tc: 'tcClassicDate',
 };

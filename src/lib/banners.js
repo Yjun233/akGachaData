@@ -32,7 +32,7 @@ export function bannerRows(banners, filters, categories, sort) {
     /* 干员多选：卡池的 UP 干员里**有任意一个**被选中就保留（OR）。
        ⚠️ 这里是**精确名**比对，不是子串 —— 模糊/拼音那一步在右栏搜索框里做完了
        （lib/opSearch.js），进来的都已经是确定的干员名。 */
-    if (opSet && !b.upOperators.some((o) => opSet.has(o.name))) return false;
+    if (opSet && !b.upOperators.some((o) => opSet.has(o.scCharName))) return false;
     return true;
   });
 
