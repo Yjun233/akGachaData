@@ -22,15 +22,17 @@ const site = useSiteStore();
 
 const groups = computed(() => site.statGroups);
 
-/** 四张表各自的「复制」数据（含表头行）。⚠️ 中坚那两张多三列，用 `split: true` 区分 */
+/** 四张表各自的「复制」数据（含表头行）。⚠️ 中坚那两张多三列，用 `split: true` 区分；
+    再带上 `midOnly` —— 复制的内容必须与屏幕上看到的一致（含「只看中坚」口径）。 */
 const copyRows = computed(() => {
   const refDate = site.refDate || site.today;
+  const midOnly = site.statMidOnly;
   const g = groups.value;
   return {
-    '6-std': statCopyRows(g['6-std'], { refDate }),
-    '6-mid': statCopyRows(g['6-mid'], { split: true, refDate }),
-    '5-std': statCopyRows(g['5-std'], { refDate }),
-    '5-mid': statCopyRows(g['5-mid'], { split: true, refDate }),
+    '6-std': statCopyRows(g['6-std'], { refDate, midOnly }),
+    '6-mid': statCopyRows(g['6-mid'], { split: true, refDate, midOnly }),
+    '5-std': statCopyRows(g['5-std'], { refDate, midOnly }),
+    '5-mid': statCopyRows(g['5-mid'], { split: true, refDate, midOnly }),
   };
 });
 </script>

@@ -24,7 +24,7 @@ import { BANNER_CATEGORIES } from '../lib/constants.js';
 import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
-import { computeStats, endInfo, sortStatRows } from '../lib/stats.js';
+import { computeStats, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
@@ -93,6 +93,7 @@ export const useSiteStore = defineStore('site', {
     bannerSort: { key: 'startDate', dir: 'desc' },
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
+    statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
@@ -261,6 +262,8 @@ export const useSiteStore = defineStore('site', {
         relDateOf: this.relDateOf,
         /* 中坚甄选（clafes）默认不计入出率提升，由右栏开关决定（见 lib/stats.js 文件头） */
         includeClafesUp: s.statIncludeClafesUp,
+        /* 「只看中坚」时要拿本服的「迁入中坚寻访」日当兜底基准（同上） */
+        classicDateOf: this.classicDateOf,
       });
     },
 
@@ -326,11 +329,14 @@ export const useSiteStore = defineStore('site', {
     /** 四个分节：每组已按各自记录的排序排好 */
     statGroups(s) {
       const refDate = s.refDate || this.today;
+      /* ⚠️ `s.statMidOnly` 必须一路传到排序里 —— 否则「只看中坚」下按距今天数排序
+         会和屏幕上的数字对不上（排序与显示必须同一口径，见 lib/stats.js 的 viewEndInfo）。 */
       const pick = (rarity, everMid) =>
         sortStatRows(
           this.statRows.filter((r) => r.rarity === rarity && r.everMid === everMid),
           s.statSort[`${rarity}-${everMid ? 'mid' : 'std'}`],
           refDate,
+          s.statMidOnly,
         );
       return {
         '6-std': pick(6, false),
@@ -698,6 +704,11 @@ export const useSiteStore = defineStore('site', {
       this.statIncludeClafesUp = !!on;
     },
 
+    /** 中坚寻访是否**只看中坚**（默认关）—— 口径见 `lib/stats.js` 的 `viewEndInfo()` */
+    setStatMidOnly(on) {
+      this.statMidOnly = !!on;
+    },
+
     /** 重置卡池筛选：日期范围回到本服完整跨度（不是空框，见 fullBannerRange） */
     resetFilters() {
       this.filters = { ...emptyFilters(), ...this.fullBannerRange };
@@ -755,11 +766,6 @@ export const useSiteStore = defineStore('site', {
     /** 某张统计表当前的排序状态 */
     statSortOf(tableId) {
       return this.statSort[tableId];
-    },
-
-    /** 单行的「最后一次」信息（视图层用） */
-    endInfo(arr) {
-      return endInfo(arr, this.refDate || this.today);
     },
   },
 });

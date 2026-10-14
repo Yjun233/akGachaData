@@ -14,6 +14,20 @@
  *   （见下面的 `includeClafesUp`）。
  *   ⚠️ 排除只影响统计页的记录集，**卡池列表 / 图表 / 进行中判定都不受影响**（它们走各自的 getter）。
  *   ⚠️ 甄选池**没有进店位**（三服实测 0 个 isShop）→ 商店兑换**不需要**这个开关，故不做。
+ * - ⭐ **「中坚寻访只看中坚」**（2026-10-14 用户加，右栏开关 `statMidOnly`，默认关）：
+ *   勾上后，**中坚干员**（`everMid`）的「结束时间 / 距今天数」两组列改看**中坚记录**
+ *   （`upMid` / `shopMid`，与「中坚次数」列同一个口径 = 中坚寻访**大类**，含中坚甄选、
+ *   受上面那个甄选开关控制），而不是 `upAll` / `shopAll`。
+ *   · 之所以要它：干员迁入中坚后就**不再进标准寻访**，所以「上次 UP」本该在中坚里看；
+ *     而**迁入后一次都没轮过**的干员，`upAll` 里只剩他们**还在标准寻访时**的老记录 ——
+ *     那日期跟「中坚轮换」毫无关系，看着误导。
+ *   · 这种「从未在中坚 UP 过」的情况：**结束时间显示 `—`**，
+ *     **距今天数改从「迁入中坚寻访」那天起算**（`classicDate` = 本服的 `*ClassicDate`）。
+ *   · ⚠️ 迁入日**晚于参考日期**时（回看到迁入之前）两者都显示 `—` —— 那时他确实还没有中坚记录。
+ *   · ⚠️ 实测（2026-10-14）：116 位中坚干员里，**有中坚记录的，其「上次中坚 UP」与
+ *     「上次全口径 UP」100% 相同** → 这项切换实际只改变「一次都没轮过」的那些行
+ *     （国服 6 位 / 国际服·繁中服各 14 位）。
+ *   · ⚠️ **次数列不跟着变**（总 / 中坚 / 标准三列本来就分列，是看「轮过几次」的参考）。
  */
 import { diffDays } from './date.js';
 
@@ -59,6 +73,34 @@ export function endInfo(arr, refDate) {
 export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
 
 /**
+ * 表格真正显示用的「最后一次」信息 —— 在 `endInfo()` 之上套一层**「只看中坚」**口径。
+ *
+ * @param {object} row      统计行（含 `upAll/upMid/shopAll/shopMid/everMid/classicDate`）
+ * @param {'up'|'shop'} which  看「出率提升」还是「商店兑换」
+ * @param {string} refDate  参考日期
+ * @param {boolean} [midOnly=false] 右栏「中坚寻访只看中坚」开关
+ * @returns {{end:string|null, live:boolean, days:number|null, fromClassic:boolean}}
+ *          `fromClassic` = 该行的天数是**从迁入中坚寻访那天**起算的（界面据此挂 tooltip）
+ *
+ * 三种情形：
+ *   · 开关关着、或这位不是中坚干员 → 与以前完全一样（`upAll` / `shopAll`）；
+ *   · 开关开着 + 中坚干员 + **有**中坚记录 → 按中坚记录算（与「中坚次数」列同口径）；
+ *   · 开关开着 + 中坚干员 + **从未在中坚 UP 过** → 结束时间 `—`、天数自 `classicDate` 起算。
+ *     ⚠️ `classicDate` 缺失、或**晚于参考日期**（回看到迁入之前）时给「无数据」（`days: null`），
+ *        界面显示 `—` —— 那时他确实还没有中坚记录。
+ */
+export function viewEndInfo(row, which, refDate, midOnly = false) {
+  const all = which === 'shop' ? row.shopAll : row.upAll;
+  const mid = which === 'shop' ? row.shopMid : row.upMid;
+  if (!midOnly || !row.everMid) return { ...endInfo(all, refDate), fromClassic: false };
+  if (mid.length) return { ...endInfo(mid, refDate), fromClassic: false };
+  const cd = row.classicDate || null;
+  if (!cd || cd > refDate) return { end: null, live: false, days: null, fromClassic: false };
+  /* 「结束日当天算 1 天」的口径与 `endInfo` 保持一致（`diffDays + 1`） */
+  return { end: null, live: false, days: diffDays(refDate, cd) + 1, fromClassic: true };
+}
+
+/**
  * 计算参考日期下的统计表。
  * @param {object} ctx
  * @param {Array}  ctx.banners          当前服务器的卡池列表（含 id）
@@ -68,11 +110,12 @@ export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
  * @param {string} ctx.refDate          参考日期 YYYY-MM-DD
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
  * @param {boolean} [ctx.includeClafesUp=false]    中坚甄选是否计入**出率提升**
+ * @param {(op:object)=>string|null} [ctx.classicDateOf] 取「迁入中坚寻访」日（**只看中坚**用）
  * @returns {{ visible:Array, map:object }}
  */
 export function computeStats({
   banners, categories, operatorByName, operatorIndex, refDate, relDateOf,
-  includeClafesUp = false,
+  includeClafesUp = false, classicDateOf = () => null,
 }) {
   const visible = banners.filter((b) => b.startDate <= refDate);
   const map = {};
@@ -84,6 +127,7 @@ export function computeStats({
       name,
       rarity: operatorIndex[name] ? operatorIndex[name].rarity : 5,
       releaseDate: relDateOf(op),
+      classicDate: classicDateOf(op),   // 「迁入中坚寻访」日（只看中坚时的兜底基准）
       everMid: false,
       upAll: [], upMid: [], upStd: [],
       shopAll: [], shopMid: [], shopStd: [],
@@ -118,6 +162,7 @@ export function computeStats({
     const op = operatorByName[name];
     map[name].everMid = op ? isMidOp(op) : false;
     map[name].releaseDate = relDateOf(op);
+    map[name].classicDate = classicDateOf(op);
   }
 
   return { visible, map };
@@ -131,10 +176,14 @@ export function defaultStatSort(a, b) {
   return a.name.localeCompare(b.name);
 }
 
-/** 统计表某列的可比较值（key 与表头 data-sort 一致） */
-export function statMetric(row, key, refDate) {
-  const up = endInfo(row.upAll, refDate);
-  const shop = endInfo(row.shopAll, refDate);
+/**
+ * 统计表某列的可比较值（key 与表头 data-sort 一致）。
+ * ⚠️ 排序必须与**界面显示**同一口径 —— 所以走 `viewEndInfo`、并且 `midOnly` 一路传进来，
+ *    否则「只看中坚」下按距今天数排序会和屏幕上的数字对不上。
+ */
+export function statMetric(row, key, refDate, midOnly = false) {
+  const up = viewEndInfo(row, 'up', refDate, midOnly);
+  const shop = viewEndInfo(row, 'shop', refDate, midOnly);
   switch (key) {
     case 'releaseDate': return row.releaseDate || '9999';
     case 'name': return row.name;
@@ -152,14 +201,14 @@ export function statMetric(row, key, refDate) {
   }
 }
 
-/** 按指定列排序（不改原数组），无排序列时用默认排序 */
-export function sortStatRows(rows, sort, refDate) {
+/** 按指定列排序（不改原数组），无排序列时用默认排序。`midOnly` 见 `viewEndInfo` */
+export function sortStatRows(rows, sort, refDate, midOnly = false) {
   const arr = rows.slice();
   if (!sort) return arr.sort(defaultStatSort);
   const mul = sort.dir === 'asc' ? 1 : -1;
   return arr.sort((a, b) => {
-    const va = statMetric(a, sort.key, refDate);
-    const vb = statMetric(b, sort.key, refDate);
+    const va = statMetric(a, sort.key, refDate, midOnly);
+    const vb = statMetric(b, sort.key, refDate, midOnly);
     if (va === vb) return defaultStatSort(a, b);
     return va > vb ? mul : -mul;
   });

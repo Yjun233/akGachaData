@@ -1818,6 +1818,92 @@ try {
       firstUpCopyRows([], { word: '轮换' })[0][2], '首次轮换日');
   }
 
+  /* ---------------- 「中坚寻访只看中坚」（2026-10-14） ----------------
+     用户要求：加一个选项，勾选后**中坚干员**只显示「中坚寻访里的上次 up 和进店」；
+     若从未在中坚 UP 过，则从**迁入中坚寻访**那天起算距今天数。
+     拍板的三条：结束时间显示 `—`、中坚 = 大类（含甄选、仍受另一个开关控制）、**次数列不变**。
+     ⚠️ 这里**真跑** `viewEndInfo()` 钉行为；组件 / store 的接线只能读源码。
+     天数用实测真值（老鲤：全口径 2026-01-29 → 259 天；迁入 2026-03-26 → 203 天）。 */
+  {
+    const j = (v) => JSON.stringify(v);
+    const { viewEndInfo, statMetric } = await vite.ssrLoadModule('/src/lib/stats.js');
+    const ban = (startDate, endDate) => ({ startDate, endDate });
+    const REF = '2026-10-14';
+    /* 典型：迁入中坚后**一次都没轮过** —— upAll 里只剩他还在标准寻访时的老记录 */
+    const never = {
+      everMid: true, classicDate: '2026-03-26',
+      upAll: [ban('2026-01-15', '2026-01-29')], upMid: [], upStd: [ban('2026-01-15', '2026-01-29')],
+      shopAll: [ban('2026-01-15', '2026-01-29')], shopMid: [], shopStd: [ban('2026-01-15', '2026-01-29')],
+    };
+    check('只看中坚：开关**关**时与以前一字不差（走 upAll）',
+      j([viewEndInfo(never, 'up', REF, false).end, viewEndInfo(never, 'up', REF, false).days,
+        viewEndInfo(never, 'up', REF, false).fromClassic]),
+      j(['2026-01-29', 259, false]));
+    check('只看中坚：开关**开** + 从未在中坚 UP → 结束时间 `—`、天数自**迁入中坚寻访**起算',
+      j([viewEndInfo(never, 'up', REF, true).end, viewEndInfo(never, 'up', REF, true).days,
+        viewEndInfo(never, 'up', REF, true).fromClassic]),
+      j([null, 203, true]));
+    check('只看中坚：商店兑换同一套口径（也自迁入日起算）',
+      j([viewEndInfo(never, 'shop', REF, true).end, viewEndInfo(never, 'shop', REF, true).days]),
+      j([null, 203]));
+    /* 有中坚记录时：改看 upMid / shopMid（与「中坚次数」列同一个口径） */
+    const hasMid = { ...never, upMid: [ban('2026-09-01', '2026-09-15')], shopMid: [] };
+    check('只看中坚：有中坚记录 → 改按**中坚记录**算（不再是 upAll 的老日期）',
+      j([viewEndInfo(hasMid, 'up', REF, true).end, viewEndInfo(hasMid, 'up', REF, true).days,
+        viewEndInfo(hasMid, 'up', REF, true).fromClassic]),
+      j(['2026-09-15', 30, false]));
+    check('只看中坚：进店列各自独立（有中坚 UP、但没在中坚进过店 → 仍自迁入日起算）',
+      j([viewEndInfo(hasMid, 'shop', REF, true).end, viewEndInfo(hasMid, 'shop', REF, true).days]),
+      j([null, 203]));
+    check('只看中坚：进行中的中坚池照常显示「进行中」（不是天数）',
+      viewEndInfo({ ...never, upMid: [ban('2026-10-01', '2026-10-20')] }, 'up', REF, true).live, true);
+    /* 非中坚干员 / 缺迁入日 / 迁入日在参考日之后 —— 三种边界 */
+    check('只看中坚：**非中坚干员**不受影响（仍走 upAll）',
+      j([viewEndInfo({ ...never, everMid: false }, 'up', REF, true).days,
+        viewEndInfo({ ...never, everMid: false }, 'up', REF, true).fromClassic]),
+      j([259, false]));
+    check('只看中坚：缺「迁入中坚寻访」日 → 给无数据（显示 —），不做无基准的猜测',
+      viewEndInfo({ ...never, classicDate: null }, 'up', REF, true).days, null);
+    check('只看中坚：迁入日**晚于参考日期**（回看到迁入之前）→ 两者都显示 —',
+      j([viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, true).days,
+        viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, true).fromClassic]),
+      j([null, false]));
+    /* 排序必须与显示同口径，否则「按距今天数排」会和屏幕上的数字对不上 */
+    check('只看中坚：排序跟着切口径（upDays 259 → 203、upEnd 有值 → 空值排最后）',
+      j([statMetric(never, 'upDays', REF, true), statMetric(never, 'upEnd', REF, true),
+        statMetric(never, 'upDays', REF, false)]),
+      j([203, '0000', 259]));
+
+    /* ---- 接线（读源码）---- */
+    const statsLib = fs.readFileSync(path.join(ROOT, 'src/lib/stats.js'), 'utf8');
+    const statTblSrc = fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8');
+    const storeSrc = fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8');
+    const drawerSrc = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+    const copySrc = fs.readFileSync(path.join(ROOT, 'src/lib/tableCopy.js'), 'utf8');
+    const statsViewSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
+    check('只看中坚：computeStats 收 `classicDateOf` 并把迁入日挂到行上（`classicDate`）',
+      /classicDateOf = \(\) => null/.test(statsLib) && /classicDate: classicDateOf\(op\)/.test(statsLib), true);
+    check('只看中坚：表格用 `viewEndInfo`（不是裸 `endInfo`）算那两组列',
+      /import \{ viewEndInfo \} from '\.\.\/lib\/stats\.js'/.test(statTblSrc)
+      && !/import \{ endInfo \}/.test(statTblSrc)
+      && /viewEndInfo\(r, 'up', refDate\.value, midOnly\.value\)/.test(statTblSrc), true);
+    check('只看中坚：从未轮过的那些行挂了 tooltip（说清楚天数是自迁入日算的）',
+      /fromClassic \? fromClassicTitle\(r\) : null/.test(statTblSrc)
+      && /自迁入中坚寻访（\$\{r\.classicDate\}）起算/.test(statTblSrc), true);
+    check('只看中坚：store 有 `statMidOnly` 开关 + `setStatMidOnly`，并把迁入日传给 computeStats',
+      /statMidOnly: false/.test(storeSrc) && /setStatMidOnly\(on\)/.test(storeSrc)
+      && /classicDateOf: this\.classicDateOf/.test(storeSrc), true);
+    check('只看中坚：**排序**也吃到 `statMidOnly`（否则排序与显示会对不上）',
+      /s\.statSort\[`\$\{rarity\}-\$\{everMid \? 'mid' : 'std'\}`\],\n\s+refDate,\n\s+s\.statMidOnly,/.test(storeSrc), true);
+    check('只看中坚：右栏有那个复选框（挨着「中坚甄选计入出率提升」）',
+      /中坚寻访只看中坚/.test(drawerSrc) && /site\.setStatMidOnly\(\$event\.target\.checked\)/.test(drawerSrc), true);
+    check('只看中坚：**复制**出来的也用同一口径（tableCopy 走 viewEndInfo + 收 midOnly）',
+      /viewEndInfo\(r, 'up', refDate, midOnly\)/.test(copySrc) && /midOnly = false/.test(copySrc)
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly \}\)/.test(statsViewSrc), true);
+    check('只看中坚：**次数列不跟着变**（模板里仍读 upAll / upMid / upStd 三个长度）',
+      /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
+  }
+
   /* ---------------- 自定义卡池：**加载时自动删除**被覆盖的自设 ----------------
      用户 2026-10-06 定：撞上已公布卡池的自设要**自动删掉**（别一直堆在「已忽略」里）。
      做法：给一个假的 `localStorage`，塞两条 —— 一条**必然撞车**（照抄某个真实已公布池的

@@ -4,7 +4,7 @@
  *  - 卡池列表页   → 筛选表单（类型 / 大类 / 开始日期范围 / UP 干员多选）
  *    ⚠️ UP 干员是**多选**：搜索框支持 名字 / 全拼 / 首字母（lib/opSearch.js），
  *    点候选加进来、点 chip 移除；生效的是 store 里的 `filters.ops`（精确名数组）。
- *  - 统计页       → 参考日期 + 「中坚甄选计入出率提升」开关
+ *  - 统计页       → 参考日期 + 「中坚甄选计入出率提升」开关 + 「中坚寻访只看中坚」开关
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
@@ -290,6 +290,16 @@ function resetUp() {
           @change="site.setStatIncludeClafesUp($event.target.checked)"
         />
         <span>中坚甄选计入出率提升<small>默认不计入。甄选池每期会一次性放入 30 多位中坚干员</small></span>
+      </label>
+      <!-- 「中坚寻访只看中坚」（2026-10-14 用户加）：中坚干员的「结束时间 / 距今天数」
+           改按**中坚记录**算；从未在中坚 UP 过的，结束时间显示 —、天数自「迁入中坚寻访」日起算。
+           口径见 lib/stats.js 的 viewEndInfo()。 -->
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.statMidOnly"
+          @change="site.setStatMidOnly($event.target.checked)"
+        />
+        <span>中坚寻访只看中坚<small>默认关。勾选后中坚干员只看中坚寻访里的上次UP / 进店；从未轮过的按「迁入中坚寻访」日起算</small></span>
       </label>
       <div class="fresult">{{ statResult }}</div>
     </div>

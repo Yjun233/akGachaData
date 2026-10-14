@@ -6,10 +6,13 @@
  * - 中坚寻访表（split=true） ：每组 5 列 → 结束时间 / 距今天数 / 总次数 / 中坚次数 / 标准次数
  * - 列宽按内容自适应（table-layout:auto），列间竖线与 sticky 表头对齐由全局 CSS 处理
  * - 距今天数着色：≥180 天标黄、≥365 天标红；卡池进行中显示「进行中」
+ * - ⚠️ 「结束时间 / 距今天数」两组列走 `lib/stats.js` 的 **`viewEndInfo()`**（不是直接用 `endInfo`）——
+ *   右栏「中坚寻访只看中坚」勾上时，中坚干员改按**中坚记录**算；
+ *   从未在中坚 UP 过的，结束时间显示 `—`、天数自**迁入中坚寻访**那天起算（鼠标悬停有说明）。
  */
 import { computed } from 'vue';
 import { WARN_DAYS, DANGER_DAYS } from '../lib/constants.js';
-import { endInfo } from '../lib/stats.js';
+import { viewEndInfo } from '../lib/stats.js';
 import AvatarImg from './AvatarImg.vue';
 import { useSiteStore } from '../stores/site.js';
 
@@ -28,15 +31,20 @@ const opOf = (name) => site.operators[name] || { scName: name };
 
 const refDate = computed(() => site.refDate || site.today);
 const sort = computed(() => site.statSort[props.tableId]);
+/** 右栏「中坚寻访只看中坚」—— 只对中坚干员生效，见 lib/stats.js 的 viewEndInfo() */
+const midOnly = computed(() => site.statMidOnly);
 
 /** 预计算每行的「最后一次出率提升 / 商店兑换」信息，避免模板里反复遍历 */
 const viewRows = computed(() =>
   props.rows.map((r) => ({
     ...r,
-    up: endInfo(r.upAll, refDate.value),
-    shop: endInfo(r.shopAll, refDate.value),
+    up: viewEndInfo(r, 'up', refDate.value, midOnly.value),
+    shop: viewEndInfo(r, 'shop', refDate.value, midOnly.value),
   })),
 );
+
+/** 「只看中坚」+ 从未在中坚 UP 过 → 天数是自迁入日算的，给个 tooltip 说清楚 */
+const fromClassicTitle = (r) => `从未在中坚寻访 UP 过；距今天数自迁入中坚寻访（${r.classicDate}）起算`;
 
 const sortClass = (key) =>
   sort.value && sort.value.key === key ? `sort-${sort.value.dir}` : '';
@@ -122,10 +130,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <b v-else>{{ r.name }}</b>
           </td>
           <!-- 出率提升 -->
-          <td class="num">
+          <td class="num" :title="r.up.fromClassic ? fromClassicTitle(r) : null">
             <span v-if="!r.up.end" class="dash">—</span><template v-else>{{ r.up.end }}</template>
           </td>
-          <td class="num">
+          <td class="num" :title="r.up.fromClassic ? fromClassicTitle(r) : null">
             <span v-if="r.up.live" class="pill-live">进行中</span>
             <span v-else-if="r.up.days === null" class="dash">—</span>
             <span v-else-if="r.up.days >= DANGER_DAYS" class="hot">{{ r.up.days }}</span>
@@ -138,10 +146,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <td class="num">{{ r.upStd.length }}</td>
           </template>
           <!-- 商店兑换 -->
-          <td class="num">
+          <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
             <span v-if="!r.shop.end" class="dash">—</span><template v-else>{{ r.shop.end }}</template>
           </td>
-          <td class="num">
+          <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
             <span v-if="r.shop.live" class="pill-live">进行中</span>
             <span v-else-if="r.shop.days === null" class="dash">—</span>
             <span v-else-if="r.shop.days >= DANGER_DAYS" class="hot">{{ r.shop.days }}</span>

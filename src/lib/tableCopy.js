@@ -11,7 +11,7 @@
  *   · **照显示口径**：缺数据输出 `—`、进行中输出 `进行中`，**不**换算成排序用的 0 / -1；
  *   · **不读 DOM**：图片模式下表格里只有头像、没有干员名，读 DOM 会丢掉整列干员。
  */
-import { endInfo } from './stats.js';
+import { viewEndInfo } from './stats.js';
 
 /** 缺数据的占位（与表格里的 `.dash` 一致） */
 const DASH = '—';
@@ -26,19 +26,23 @@ const daysText = (info) => (info.live ? '进行中' : (info.days === null ? DASH
  *    否则粘到 Excel 里是一行空表头 + 一行真表头，AutoFilter 不好用。
  *
  * @param {Array<object>} rows 该表的行（**已按当前排序排好** —— 复制的是屏幕上那个顺序）
- * @param {{split?:boolean, refDate:string}} opts
- *        `split` = 中坚表（多「总次数 / 中坚次数 / 标准次数」三列）；`refDate` = 参考日期
+ * ⚠️ 「结束时间 / 距今天数」走 `viewEndInfo()` —— 与表格同一个口径，
+ *    所以**「中坚寻访只看中坚」勾上时，复制出来的也是那套值**（`midOnly` 由视图层传进来）。
+ *
+ * @param {{split?:boolean, refDate:string, midOnly?:boolean}} opts
+ *        `split` = 中坚表（多「总次数 / 中坚次数 / 标准次数」三列）；`refDate` = 参考日期；
+ *        `midOnly` = 右栏「中坚寻访只看中坚」
  * @returns {Array<Array<string|number>>} 第一行是表头
  */
-export function statCopyRows(rows, { split = false, refDate } = {}) {
+export function statCopyRows(rows, { split = false, refDate, midOnly = false } = {}) {
   const counts = split ? ['总次数', '中坚次数', '标准次数'] : ['次数'];
   const group = (name) => [
     `${name} 结束时间`, `${name} 距今天数`, ...counts.map((c) => `${name} ${c}`),
   ];
   const head = ['实装时间', '干员', ...group('出率提升'), ...group('商店兑换')];
   const body = (rows || []).map((r) => {
-    const up = endInfo(r.upAll, refDate);
-    const shop = endInfo(r.shopAll, refDate);
+    const up = viewEndInfo(r, 'up', refDate, midOnly);
+    const shop = viewEndInfo(r, 'shop', refDate, midOnly);
     return [
       r.releaseDate || DASH,
       r.name,
