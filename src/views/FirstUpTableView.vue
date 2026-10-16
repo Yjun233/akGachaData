@@ -24,8 +24,10 @@
  * 所以 verify-render 里对表头的期望值要按它们写，别照抄右栏那一套长文案。
  *
  * 图片模式的干员列用**长方形蒙版头像** —— 与「出率提升记录」（统计页 StatTable）同款，
- * 共用 main.css 里那一条 `.avt-rect`（宽是高 2 倍 + 四边渐隐）。这边没有冻结列，
- * 定位包含块与列宽要自己补，见 main.css「首次UP间隔 · 表格版」那段。
+ * 共用 main.css 里那一条 `.avt-rect`（宽是高 2 倍 + 四边渐隐）。定位包含块与列宽自己补，
+ * 见 main.css「首次UP间隔 · 表格版」那段。
+ * ⚠️ **2026-10-16 起前两列也冻结**（用户要求，与统计表同一套手法）—— `<colgroup>` 的定宽、
+ *   main.css 的 width/min/max 与第 2 列 `left` **三处必须一致**，改动时要一起改。
  *
  * ⚠️ 「干员」列**定宽 = 7 个汉字**（`th` / `td` 都挂 `opcell`，宽度写在 main.css）——
  * 别再让它随内容自适应：图片模式下头像是绝对定位、不撑列宽，列会当场塌掉。
@@ -110,6 +112,16 @@ const copyRows = computed(() => {
 
           <div v-else class="tbl-scroll plain">
             <table class="grid floating fup-tbl" :class="{ 'img-mode': isImage }">
+              <!-- 前两列要 sticky 冻结（2026-10-16 用户要求），第 2 列的 `left` 必须恒等于
+                   第 1 列的实际宽度 → 只能钉死。
+                   84px = 日期（`2026-10-01` 66px）+ 内边距 12px + **6px 余量**（与统计表第一列
+                     同一个值；为什么不是 78px 见 main.css 那段「零余量」的说明）。
+                   103px = **7 个汉字** 91px + 内边距 12px（与统计表同口径）。
+                   ⚠️ 改这两处要**同时**改 main.css 里「冻结前两列」那段的 width/min/max 与 left。 -->
+              <colgroup>
+                <col style="width: 84px" />
+                <col style="width: 103px" />
+              </colgroup>
               <thead>
                 <tr>
                   <th class="num">实装日</th>

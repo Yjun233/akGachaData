@@ -176,7 +176,7 @@ try {
 
   check('卡池列表页渲染出卡片/表格', count(bh, /class="grid floating"/g) >= 1, true);
   check('卡池数据行数 = 卡池总数',
-    count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr>/g), BANNER_N);
+    count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr[\s>]/g), BANNER_N);
   check('表头：出率提升（6★）', count(bh, /出率提升（6★）/g), 1);
   check('表头：出率提升（5★）', count(bh, /出率提升（5★）/g), 1);
   /* ⚠️ 别再用 `includes('width:1225px')` —— `min-width:1225px` 里也含这个子串，
@@ -287,7 +287,7 @@ try {
     const start = html.indexOf(`id="${anchor}"`);
     const t = html.indexOf('<tbody>', start);
     const e = html.indexOf('</tbody>', t);
-    return count(html.slice(t, e), /<tr>/g);
+    return count(html.slice(t, e), /<tr[\s>]/g);
   };
   const sizes = ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(sh, a));
   check('统计页：四张表行数 45 / 48 / 45 / 68', sizes.join(','), '45,48,45,68');
@@ -303,6 +303,71 @@ try {
   /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值。
      2026-10-10：204 → 206（快照新增 克莱门莎 / 德·托莱多）。 */
   check('统计页：参与统计干员 206 位', /参与统计干员 206 位/.test(sh), true);
+
+  /* ---------------- 出率提升记录：右栏「高亮干员」（2026-10-16 用户加） ----------------
+     纯视觉标记：命中的行加**浅黄底**（`.hl`），**不筛行、不改次数、不进复制内容**。
+     这里**真跑**一次带高亮的渲染 —— 直接改 store 的 `statHighlightOps` 再 renderToString。
+     高亮状态**不持久化**（刷新即清）、**切服不重置**（干员名三服通用），与「甄选计入」
+     「只看中坚」两个统计开关同处理。 */
+  check('高亮干员：默认不选 → store 里是空数组', JSON.stringify(stats.store.statHighlightOps), '[]');
+  check('高亮干员：右栏有这个控件（label + OpPicker 都渲染出来了）',
+    sh.includes('高亮干员') && count(sh, /class="oppick"/g) === 1, true);
+
+  let hlPicked = [];
+  const hlRendered = await renderRoute('/operators', (s) => {
+    /* ⚠️ 从 statRows 里现取名字，别写死 —— 表里的干员会随数据变 */
+    const names = s.statRows.map((r) => r.name);
+    hlPicked = [names[0], names[Math.floor(names.length / 2)]];
+    s.statHighlightOps = hlPicked;
+  });
+  const hlHtml = hlRendered.html;
+  /** 取某张表 tbody 里带指定 class 的行数 */
+  const rowsWithClass = (html, anchor, cls) => {
+    const start = html.indexOf(`id="${anchor}"`);
+    const t = html.indexOf('<tbody>', start);
+    const e = html.indexOf('</tbody>', t);
+    return count(html.slice(t, e), new RegExp(`<tr class="${cls}"`, 'g'));
+  };
+  const hlPerTable = ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid']
+    .map((a) => rowsWithClass(hlHtml, a, 'hl'));
+  check('高亮干员：选中的两位各命中一行（四张表合计 2 行）',
+    hlPerTable.reduce((a, b) => a + b, 0), 2);
+  check('高亮干员：命中的正是选中的那两位',
+    hlPicked.every((n) => new RegExp(`<tr class="hl">[\\s\\S]{0,260}?>${n}</b>`).test(hlHtml)), true);
+  check('高亮干员：**不筛行** —— 四张表行数仍是 45 / 48 / 45 / 68',
+    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(hlHtml, a)).join(','),
+    '45,48,45,68');
+
+  /* ⚠️ 底色是加在 **`<tr>`** 上的：前两列是 sticky 冻结列、走 `background:inherit`，
+     所以只要给行设底色，冻结列会自动跟上 —— 这两条 CSS 约定缺一不可。 */
+  check('高亮干员：浅黄底加在行上，hover 时再深一档（不与 warn 黄字 / 商店绿混）',
+    /table\.grid\.stat-tbl tbody tr\.hl\{background:#fff3c4\}/.test(cssAll)
+    && /table\.grid\.stat-tbl tbody tr\.hl:hover\{background:#ffedaa\}/.test(cssAll), true);
+  /* ⚠️ **顺序敏感**：`.hl` 与 `tr:hover` 特异性同为 (0,3,3)，只能靠先后取胜；
+     `tr:hover` 写在后面会把它盖掉 —— 表现为「鼠标划过时高亮突然消失」。 */
+  check('高亮干员：.hl 规则排在 tr:hover **之后**',
+    cssAll.indexOf('tbody tr.hl{') > cssAll.indexOf('tbody tr:hover{')
+    && cssAll.indexOf('tbody tr:hover{') > 0, true);
+  check('高亮干员：冻结的前两列走 background:inherit（行底色会自动跟上）',
+    /tbody td:nth-child\(-n\+2\)\{z-index:2;background:inherit\}/.test(cssAll), true);
+
+  /* 接线：右栏复用 OpPicker；候选池只给「当前统计口径下真的会出现在表里」的干员
+     （不在池里的选了也永远高亮不到） */
+  const storeSrc = fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8');
+  const fdSrc = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+  check('高亮干员：右栏用 OpPicker 多选，并接到 store 的 setStatHighlightOps',
+    /<OpPicker[\s\S]{0,220}?setStatHighlightOps/.test(fdSrc), true);
+  check('高亮干员：候选池取自统计表的行（选了必然能高亮到）',
+    /hlPool = computed\(\(\) => site\.statRows\.map\(\(r\) => r\.name\)\)/.test(fdSrc), true);
+  check('高亮干员：store 有初值（空数组）+ setStatHighlightOps',
+    /statHighlightOps: \[\]/.test(storeSrc) && /setStatHighlightOps\(list\) \{/.test(storeSrc), true);
+  /* 切服不重置（与两个统计开关同处理）—— 截 setServer 函数体那一小段来查 */
+  const setServerAt = storeSrc.indexOf('setServer(id)');
+  const setServerBody = storeSrc.slice(setServerAt, setServerAt + 1000);
+  check('高亮干员：切服**不重置**（setServer 里没动它）',
+    setServerBody.length > 200 && !setServerBody.includes('statHighlightOps'), true);
+  check('高亮干员：不进复制内容（tableCopy 不读高亮状态）',
+    !/highlight/i.test(fs.readFileSync(path.join(ROOT, 'src/lib/tableCopy.js'), 'utf8')), true);
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
   check('顶栏定位按钮 六星干员·标准寻访', /六星干员·标准寻访/.test(sh), true);
@@ -656,7 +721,8 @@ try {
     ftHtml.includes('id="fup-from"') && ftHtml.includes('id="fup-to"')
     && ftHtml.includes('按实装日期') && ftHtml.includes('距实装日期'), true);
   /* 表格样式契约：自己一套 .fup-tbl（内容自适应 + inset 竖线 + sticky 表头），别去蹭 .stat-tbl
-     —— 那套还带「冻结前两列」的定宽与 left 偏移 */
+     —— 那套是**两行表头**、定宽与 sticky 选择器都限定 `tr:first-child`，混用会互相误伤。
+     （2026-10-16 起两边**都有**冻结前两列，但仍是各自一套规则。） */
   check('表格版：表格样式走 .fup-tbl（自适应列宽 + inset 竖线 + sticky 表头）',
     /table\.grid\.fup-tbl\{[^}]*table-layout:auto/.test(cssAll)
     && /table\.grid\.fup-tbl thead th\{[^}]*box-shadow/.test(cssAll), true);
@@ -689,10 +755,11 @@ try {
     count(ftImg.html, /class="avt-rect[ "]/g), ftRows);
   check('表格版：图片模式下不再渲染干员名（<b> 标签）',
     count(ftImg.html, /<td class="opcell">\s*<b>/g), 0);
-  /* ⚠️ 这边没有冻结列 / colgroup：定位包含块与列宽都得自己补，否则头像会脱位（相对外层定位）、
-     干员列会塌到只剩表头宽度。详见 main.css「首次UP间隔 · 表格版」那段。 */
+  /* ⚠️ 干员格必须是**定位元素**（图片模式的 img 绝对定位以它为参照），否则头像会脱位、
+     干员列会塌到只剩表头宽度。2026-10-16 起这条由「冻结前两列」的 `position:sticky` 满足
+     （sticky 同样是定位元素），原先那行 `td.opcell{position:relative}` 已随之删掉。 */
   check('表格版图片模式：干员格是定位包含块（img 绝对定位的参照）',
-    /fup-tbl td\.opcell\{position:relative\}/.test(cssAll), true);
+    /fup-tbl tbody td:nth-child\(-n\+2\)\{position:sticky/.test(cssAll), true);
   /* 干员列**定宽 = 7 个汉字**（用户 2026-10-03 指定，设计常量、不随数据变）：
      13×7 = 91px 文字 + 左右内边距 6×2 = **103px**（padding `4px 6px`，与统计表同一套 ——
      旧值 111px 是 padding 还是 `6px 10px` 时的，2026-10-05 随行高统一一起改过来）。
@@ -1440,9 +1507,13 @@ try {
   /* 用户 2026-10-03 指定的口径（设计常量，不随数据变）：
      · 干员列 = **7 个汉字** 13×7=91px + 左右内边距 12px（`padding:4px 6px`）= **103px**
        —— 最长干员名正好 7 个字（`凯尔希·思衡托`，中间半角 `·`）≈ 81.5px，91px 有富余；
-     · 实装时间列 = 10 位日期 66px + 12px = **78px**，与内容同类的「结束时间」各列取一样宽。 */
-  check('统计表：干员列宽 = 7 个汉字 + 内边距（103px），实装时间列 = 78px',
-    colName === 103 && colDate === 78, true);
+     · 实装时间列 = 10 位日期 66px + 12px + **6px 余量** = **84px**。
+       ⚠️ **2026-10-16 由 78px 加到 84px**：78px 是「零余量」（内容区恰好 66px），
+       Windows 上够、手机字体下（PingFang / Roboto 的数字与连字符更宽）日期会溢出 1~3px，
+       被右边 sticky 的「干员」列（`background:inherit`，不透明）盖住 ——
+       这正是用户报的「实装时间显示不全」。加 6px（≈9%）余量后跨平台稳妥。 */
+  check('统计表：干员列宽 = 7 个汉字 + 内边距（103px），实装时间列 = 84px（含 6px 余量）',
+    colName === 103 && colDate === 84, true);
   check('统计表：冻结「实装时间」「干员」两列（CSS sticky + 第 2 列 left 跟着第 1 列走）',
     /stat-tbl thead tr:first-child th:nth-child\(-n\+2\),[\s\S]{0,80}tbody td:nth-child\(-n\+2\)\{position:sticky\}/.test(cssAll)
     && cssLeft === colDate, true);
@@ -1456,6 +1527,34 @@ try {
     && /stat-tbl thead tr:first-child th:nth-child\(1\),[\s\S]{0,80}tbody td:nth-child\(1\)\{/.test(cssAll), true);
   check('统计表：冻结列用 background:inherit 保证不透明（依赖 tbody tr 有背景色）',
     /stat-tbl tbody tr\{background:#fff\}/.test(cssAll), true);
+
+  /* ---------------- 首次UP间隔 · 表格版：冻结前两列（2026-10-16 用户要求） ----------------
+     与统计表同一套手法、同样的「三处一致」约束：FirstUpTableView.vue 的 `<colgroup>` 是真源，
+     main.css 的 width/min/max 与第 2 列 `left` 跟着它走。 */
+  const fupCols = Array.from(fupTableSrc.matchAll(/<col style="width: (\d+)px"/g))
+    .map((m) => Number(m[1]));
+  const fupDateW = cssNum(/fup-tbl tbody td:nth-child\(1\)\{[\s\S]{0,70}?width:(\d+)px/);
+  const fupLeft = cssNum(/fup-tbl tbody td:nth-child\(2\)\{[\s\S]{0,40}?left:(\d+)px/);
+  check('表格版：前两列冻结（colgroup 定宽 + sticky + 第 2 列 left 跟着第 1 列走）',
+    fupCols.length === 2 && fupCols[0] === 84 && fupCols[1] === 103
+    && fupDateW === fupCols[0] && fupLeft === fupCols[0]
+    && /fup-tbl tbody td:nth-child\(-n\+2\)\{position:sticky;z-index:2;background:inherit\}/
+      .test(cssAll), true);
+  /* ⚠️ 表头那两格的 z-index 必须**显式**抬到 8，且选择器写到 `.floating` + `tr:first-child`：
+     全局 `table.grid.floating thead tr:first-child th{z-index:6}` 的特异性是 (0,3,4)，
+     只写 `thead th:nth-child(-n+2)`（(0,3,3)）会被它压过 → 横滚时「干员」表头被后面的
+     表头列盖住、当场消失。统计表栽过同一个坑。 */
+  check('表格版：表头冻结列 z-index 显式抬到 8（压过表头其余列）',
+    /fup-tbl\.floating thead tr:first-child th:nth-child\(-n\+2\)\{z-index:8\}/.test(cssAll), true);
+  /* 日期列与统计表同一个值 —— 两表并排看时列宽对齐，也让「零余量溢出」的坑不会在这边复发 */
+  check('表格版：日期列定宽与统计表一致（84px，含余量）', fupCols[0] === colDate, true);
+  /* ⚠️⚠️ 冻结列走 `background:inherit`，**前提是 `<tr>` 自己有背景色** ——
+     全局只给了 `tbody tr:nth-child(even)`，奇数行没有 → inherit 拿到 transparent →
+     横滚时后面的内容透出来叠在冻结列上（**奇数行重叠、偶数行完好**，辨识度很高）。
+     统计表早有这两条，2026-10-16 给表格版加冻结列时漏抄，用户当场报了「文本重叠」。 */
+  check('表格版：tbody tr 有显式背景色（冻结列 inherit 不透明的前提，否则奇数行重叠）',
+    /fup-tbl tbody tr\{background:#fff\}/.test(cssAll)
+    && /fup-tbl tbody tr:nth-child\(even\)\{background:#fcfdff\}/.test(cssAll), true);
   /* ---------------- 图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
      ⚠️ 这条规则**统计页与首次UP间隔 · 表格版共用**（选择器两段）。2026-10-09 起几何从
      `img.avt-rect` 挪到了外层 `.avt-img`（头像改由 `<AvatarImg>` 渲染：外层定位 + 里面
@@ -1525,7 +1624,7 @@ try {
     const enHome = await renderRoute('/', (s) => s.setServer('en'));
     check('国际服：当前服务器切到 en', enHome.store.server, 'en');
     check('国际服：卡池行数 = metadata.en.bannerCount + 中坚条数',
-      count(enHome.html.slice(enHome.html.indexOf('<tbody>'), enHome.html.indexOf('</tbody>')), /<tr>/g),
+      count(enHome.html.slice(enHome.html.indexOf('<tbody>'), enHome.html.indexOf('</tbody>')), /<tr[\s>]/g),
       EN.bannerCount + claCount('en'));
     /* ⚠️ 国际服卡池的 `name` 现在也是**国服中文名**（英文名挪到 `enName`、本站暂不展示），
        所以这里不能再断言「渲染出英文卡池名」。 */
@@ -1589,7 +1688,7 @@ try {
     /* ⚠️ 繁中服有 2 个「已公布但还没开始」的池子（最新到 10-22）—— 卡池列表的结束日期默认取
        数据上界，所以它们照常显示、行数 = bannerCount；只有**统计页**按参考日期过滤。 */
     check('繁中服：卡池行数 = metadata.tc.bannerCount + 中坚条数',
-      count(tcHome.html.slice(tcHome.html.indexOf('<tbody>'), tcHome.html.indexOf('</tbody>')), /<tr>/g),
+      count(tcHome.html.slice(tcHome.html.indexOf('<tbody>'), tcHome.html.indexOf('</tbody>')), /<tr[\s>]/g),
       TC.bannerCount + claCount('tc'));
     check('繁中服：序号类卡池名（常驻标准寻访 / 常驻中坚寻访 / 中坚甄选 / 联合行动…）',
       tcNames.some((n) => /^常驻标准寻访\d+$/.test(n))

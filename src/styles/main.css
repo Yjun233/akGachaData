@@ -579,9 +579,15 @@ table.grid.stat-tbl td.wrapcell{
    数据行不用限定：tbody 每行的第 1、2 个 td 本来就是「实装时间 / 干员」。
 
    定宽取值（13px 字体、单元格左右内边距各 6px）：
-   - 实装时间 **78px** = 日期 `2026-10-01` 66px + 12px 内边距
-     —— 与「结束时间」各列内容完全同类，所以取一样的宽度（用户 2026-10-03 要求「也收到一样窄」）。
-     表格本身是 `width:auto`，这几列都不铺满，统一窄一点能让两组数字列贴得更近。
+   - 实装时间 **84px** = 日期 `2026-10-01` 66px + 12px 内边距 **+ 6px 余量**。
+     ⚠️⚠️ **2026-10-16 由 78px 加到 84px —— 78px 是「零余量」，手机上会出 bug**：
+       78px 的内容区恰好等于日期文字的 66px，在 Windows（数字/连字符较窄）上刚好够；
+       但手机字体（iOS PingFang / Android Roboto·Noto）同类字符宽 1~3px → 日期溢出。
+       而这一列**右边紧挨着 sticky 的「干员」列**（`background:inherit`，不透明），
+       溢出那一小截会被它盖住 —— 用户报的「实装时间显示不全」就是这个。
+       加 6px（≈9%）余量后跨平台稳妥。
+     与「结束时间」各列内容同类（用户 2026-10-03 要求「也收到一样窄」）—— 那几列是
+     **内容自适应**的、日期宽度相同，所以 84px 与它们仍然相近（只多 6px）。
    - 干员 **103px** = **7 个汉字** 91px + 12px 内边距（用户 2026-10-03 指定按 7 个汉字算）。
      最长干员名正是 7 个字（`凯尔希·思衡托` / `维娜·维多利亚`，中间是半角 `·` U+00B7）≈ 81.5px，
      91px 有富余，不会挤到相邻列。
@@ -591,17 +597,24 @@ table.grid.stat-tbl td.wrapcell{
      （`left` 必须恒等于第 1 列宽度），`verify-render` 有断言盯着这三处一致。 */
 table.grid.stat-tbl thead tr:first-child th:nth-child(1),
 table.grid.stat-tbl tbody td:nth-child(1){
-  width:78px;min-width:78px;max-width:78px;left:0;
+  width:84px;min-width:84px;max-width:84px;left:0;
 }
 table.grid.stat-tbl thead tr:first-child th:nth-child(2),
 table.grid.stat-tbl tbody td:nth-child(2){
-  width:103px;min-width:103px;max-width:103px;left:78px;
+  width:103px;min-width:103px;max-width:103px;left:84px;
 }
 table.grid.stat-tbl thead tr:first-child th:nth-child(-n+2),
 table.grid.stat-tbl tbody td:nth-child(-n+2){position:sticky}
 table.grid.stat-tbl tbody tr{background:#fff}
 table.grid.stat-tbl tbody tr:nth-child(even){background:#fcfdff}
 table.grid.stat-tbl tbody tr:hover{background:#f7fbff}
+/* 统计表：右栏「高亮干员」命中的行加浅黄底（2026-10-16 用户加）。
+   ⚠️ 必须写在 `tr:hover` **之后** —— 两者特异性相同 (0,3,3)，只能靠顺序取胜；
+      写在前面的话，鼠标划过时高亮会被 hover 的浅蓝盖掉，看着像「高亮失效」。
+   ⚠️ 前两列（sticky 冻结列）**不用单独设底色** —— 它们本来就走 `background:inherit`，
+      会在下面那行规则里跟着行一起变色。 */
+table.grid.stat-tbl tbody tr.hl{background:#fff3c4}
+table.grid.stat-tbl tbody tr.hl:hover{background:#ffedaa}
 table.grid.stat-tbl tbody td:nth-child(-n+2){z-index:2;background:inherit}
 /* 表头两层都要盖住 tbody 的冻结列。
    ⚠️ 选择器必须写到 .floating 这一级：全局规则
@@ -672,8 +685,10 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
       ⚠️ 若改用 `display:block` 让头像参与布局，会把干员格撑高、整行跟着变高。
    2. **垂直居中**：34px 的头像放在统计表 37.8px / 表格版 33.8px 的行里，都不溢出到相邻行
       （33.8px 时上下各约 0.1px，可忽略）。定位的包含块必须是 `td`：
-      统计表前两列是 `position:sticky`，本身就是定位元素；**表格版没有冻结列**，
-      得自己给 `td.opcell` 补 `position:relative`（见下面 fup-tbl 那段），否则会相对更外层定位。
+      **两边表格的前两列现在都是 `position:sticky`**（表格版是 2026-10-16 加的，
+      见下面 fup-tbl 那段），本身就是定位元素，`td` 自然成了包含块；
+      在此之前统计表靠 sticky、表格版靠一行 `td.opcell{position:relative}` 达到同样效果。
+      ⚠️ 若将来去掉某一侧的冻结列，那一侧**必须**补回 `position:relative`，否则会相对更外层定位。
    3. **`object-fit:cover`** → 素材（96×96 方形半身像）**不被拉伸**，按 2:1 裁掉上下各约 1/4；
       `object-position:50% 70%` 决定取景框落在哪里（往下取一点，多露脸、少露头顶留白）。
       ⚠️ 只作用于**这两处表格**：卡池列表仍是 26×26 方头像（那边的列窄，长方形会串味）。
@@ -736,7 +751,10 @@ table.grid.fup-tbl tbody td{
 /* ---------------- 首次UP间隔 · 表格版（FirstUpTableView.vue） ----------------
    与统计表（.stat-tbl）同一套手法：**内容自适应列宽** + inset box-shadow 画竖线
    + sticky 表头（都用 box-shadow 而不是 border，理由见上面 .stat-tbl 那段长注释）。
-   ⚠️ 不复用 `.stat-tbl`：那套还附带「冻结前两列」的定宽 + left 偏移，这里不需要。 */
+   ⚠️ 不复用 `.stat-tbl`：它有**两行表头**，定宽 / sticky 的选择器都得限定 `tr:first-child`
+      才不误伤第二行那些子表头；本表一行表头，自己写一套更短。
+   ⚠️ **2026-10-16 起本表也冻结前两列**（用户要求）—— 手法与统计表一致，
+      见下面「首次UP间隔 · 表格版：冻结前两列」那段。 */
 table.grid.fup-tbl{width:auto;table-layout:auto;border-collapse:separate}
 table.grid.fup-tbl th,
 table.grid.fup-tbl td{
@@ -786,11 +804,41 @@ table.grid.fup-tbl .opcell{
 }
 /* 图片模式的干员列：长方形蒙版头像 —— 与「出率提升记录」同款，几何 + 四边渐隐全在
    上面那条 `img.avt-rect` 里（用户 2026-10-03 指定，替换掉原来的 26px 圆形头像）。
-   与统计表的差异——这边没有冻结列，所以要自己补**定位包含块**：
-   td 不是定位元素 → 给 opcell 补 position:relative，否则 img 的 left/top:50%
-   会相对更外层（表格 / 滚动容器）定位。
+   图片模式的 img 是**绝对定位**，需要 `td.opcell` 当**定位包含块** —— td 默认不是定位元素，
+   否则 img 的 left/top:50% 会相对更外层（表格 / 滚动容器）定位、头像当场脱位。
+   2026-10-16 起这件事由下面「冻结前两列」的 `position:sticky` 顺带满足（sticky 同样是
+   定位元素，效果与原先的 `position:relative` 一致）。
+   ⚠️ 万一将来去掉冻结列，**必须**给 `td.opcell` 补回 `position:relative`。
    行高不用管：由上面「两表行高统一」的 `height:35px` 钉死。 */
-table.grid.fup-tbl td.opcell{position:relative}
+
+/* ---------------- 首次UP间隔 · 表格版：冻结前两列（2026-10-16 用户要求） ----------------
+   与统计表（`.stat-tbl`）同一套手法，差别只在这边**表头只有一行** —— 所以选择器不必像
+   统计表那样限定 `tr:first-child`（那边限定是为了不误伤第二行的子表头）。
+   · 第一列宽度**必须精确等于**第二列的 `left`；日期列取 **84px**，与统计表第一列同一个值
+     （为什么是 84 而不是 78，见上面 `.stat-tbl` 那段「零余量」的说明）；
+     真源写在 FirstUpTableView.vue 的 `<colgroup>` 里，这里是配套的 CSS 三件套。
+   · 底色走 `background:inherit`，跟着 `<tr>` 走，不用逐格设色。 */
+table.grid.fup-tbl thead th:nth-child(1),
+table.grid.fup-tbl tbody td:nth-child(1){
+  width:84px;min-width:84px;max-width:84px;left:0;
+}
+table.grid.fup-tbl thead th:nth-child(2),
+table.grid.fup-tbl tbody td:nth-child(2){left:84px}
+/* ⚠️ 表头前两列的 z-index 必须**显式**抬到 8，且选择器要写到 `.floating` + `tr:first-child`
+   这一级 —— 全局 `table.grid.floating thead tr:first-child th{top:0;z-index:6}` 的特异性是
+   (0,3,4)，只写 `table.grid.fup-tbl thead th:nth-child(-n+2)` 是 (0,3,3)，会被它压过
+   （z-index 仍是 6）→ 横滚时「干员」这个表头被后面滚过来的表头列盖住、当场消失。
+   统计表那边栽过同一个坑，见上面 `.stat-tbl` 的注释。 */
+/* ⚠️⚠️ 冻结列的 `background:inherit` 依赖 `<tr>` **自己**有背景色 ——
+   否则**奇数行**拿到的是 transparent（全局只给了 `tbody tr:nth-child(even)` 底色），
+   横滚时后面滚过来的内容会**透出来叠在冻结列上**。
+   表现很有辨识度：**奇数行文字重叠、偶数行完好**。用户 2026-10-16 报的就是这个。
+   统计表早就踩过并补了同样两条（见上面 `.stat-tbl` 那段的第 3 点），加冻结列时容易漏。 */
+table.grid.fup-tbl tbody tr{background:#fff}
+table.grid.fup-tbl tbody tr:nth-child(even){background:#fcfdff}
+table.grid.fup-tbl thead th:nth-child(-n+2){position:sticky}
+table.grid.fup-tbl.floating thead tr:first-child th:nth-child(-n+2){z-index:8}
+table.grid.fup-tbl tbody td:nth-child(-n+2){position:sticky;z-index:2;background:inherit}
 .badge{
   display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;
   border:1px solid var(--border);background:#f8fafc;color:var(--ink-2);margin-left: auto;

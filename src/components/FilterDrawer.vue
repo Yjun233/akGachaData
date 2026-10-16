@@ -5,6 +5,7 @@
  *    ⚠️ UP 干员是**多选**：搜索框支持 名字 / 全拼 / 首字母（lib/opSearch.js），
  *    点候选加进来、点 chip 移除；生效的是 store 里的 `filters.ops`（精确名数组）。
  *  - 统计页       → 参考日期 + 「中坚甄选计入出率提升」开关 + 「中坚寻访只看中坚」开关
+ *                    + 「高亮干员」多选（2026-10-16 加：选中的干员在四张表里那一行加浅黄底）
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
@@ -23,6 +24,7 @@ import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
 import TypeButtons from './TypeButtons.vue';
+import OpPicker from './OpPicker.vue';
 import { ensurePinyin, searchOperators } from '../lib/opSearch.js';
 
 const site = useSiteStore();
@@ -82,6 +84,11 @@ const statResult = computed(() => {
   const { visible, map } = site.statData;
   return `参考日期 ${site.refDate} · 可见卡池 ${visible.length} 个 · 参与统计干员 ${Object.keys(map).length} 位`;
 });
+
+/* 统计页「高亮干员」的候选池 —— 取当前统计口径下**真正会出现在四张表里**的干员。
+   ⚠️ 不铺全量干员表：不在池里的选了也永远高亮不到（该服还没实装 / 只在被排除的中坚甄选里
+      露过面 …），白选一次还会让人以为功能坏了。名字都是国服名，与表格行上的 `r.name` 同源。 */
+const hlPool = computed(() => site.statRows.map((r) => r.name));
 
 const firstUpResult = computed(() => {
   const { six, five, rows, mode } = site.firstUp;
@@ -301,6 +308,19 @@ function resetUp() {
         />
         <span>中坚寻访只看中坚<small>默认关。勾选后中坚干员只看中坚寻访里的上次UP / 进店；从未轮过的按「迁入中坚寻访」日起算</small></span>
       </label>
+      <!-- 「高亮干员」（2026-10-16 用户加）：选中的干员在下面四张表里那一行加**浅黄底**。
+           纯浏览辅助 —— 不筛行、不改次数、不进复制内容；切服不重置（见 store 的说明）。
+           交互复用 OpPicker（与卡池列表右栏的「UP 干员」同一套：名字 / 全拼 / 首字母 + chip）。 -->
+      <div class="fgroup">
+        <label>
+          高亮干员<span class="fcount">{{ site.statHighlightOps.length ? `已选 ${site.statHighlightOps.length} 位` : '可多选' }}</span>
+        </label>
+        <OpPicker
+          :model-value="site.statHighlightOps"
+          :pool="hlPool"
+          @update:model-value="site.setStatHighlightOps"
+        />
+      </div>
       <div class="fresult">{{ statResult }}</div>
     </div>
 

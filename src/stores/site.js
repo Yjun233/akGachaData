@@ -94,6 +94,7 @@ export const useSiteStore = defineStore('site', {
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
+    statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
@@ -707,6 +708,19 @@ export const useSiteStore = defineStore('site', {
     /** 中坚寻访是否**只看中坚**（默认关）—— 口径见 `lib/stats.js` 的 `viewEndInfo()` */
     setStatMidOnly(on) {
       this.statMidOnly = !!on;
+    },
+
+    /**
+     * 统计页「高亮干员」（默认空数组）—— 命中的行在四张表里加底色，方便盯某几位干员
+     * （用户 2026-10-16 加）。
+     *
+     * ⚠️ 与上面两个统计开关同理：**切服不重置**（干员名都是国服名，三服通用；
+     *    某位干员在该服不存在时，他本来就占不到行，高亮自然落空，无害）。
+     * ⚠️ 它**纯粹是渲染层的高亮**：不筛行、不改次数、不参与 `computeStats` 的任何输入，
+     *    也**不进复制内容**（复制的是数据，不是样式）。
+     */
+    setStatHighlightOps(list) {
+      this.statHighlightOps = Array.isArray(list) ? [...list] : [];
     },
 
     /** 重置卡池筛选：日期范围回到本服完整跨度（不是空框，见 fullBannerRange） */

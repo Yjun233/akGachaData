@@ -6,6 +6,8 @@
  * - 中坚寻访表（split=true） ：每组 5 列 → 结束时间 / 距今天数 / 总次数 / 中坚次数 / 标准次数
  * - 列宽按内容自适应（table-layout:auto），列间竖线与 sticky 表头对齐由全局 CSS 处理
  * - 距今天数着色：≥180 天标黄、≥365 天标红；卡池进行中显示「进行中」
+ * - 右栏「高亮干员」命中的行加**浅黄底**（`.hl`，见 main.css）—— 纯视觉标记，不筛行；
+ *   前两列是 sticky 冻结列、走 `background:inherit`，所以只需给 `<tr>` 设底色即可跟着高亮
  * - ⚠️ 「结束时间 / 距今天数」两组列走 `lib/stats.js` 的 **`viewEndInfo()`**（不是直接用 `endInfo`）——
  *   右栏「中坚寻访只看中坚」勾上时，中坚干员改按**中坚记录**算；
  *   从未在中坚 UP 过的，结束时间显示 `—`、天数自**迁入中坚寻访**那天起算（鼠标悬停有说明）。
@@ -34,6 +36,9 @@ const sort = computed(() => site.statSort[props.tableId]);
 /** 右栏「中坚寻访只看中坚」—— 只对中坚干员生效，见 lib/stats.js 的 viewEndInfo() */
 const midOnly = computed(() => site.statMidOnly);
 
+/** 右栏「高亮干员」—— 用 Set 查，避免每行都扫一遍数组（四张表合计几百行） */
+const hlOps = computed(() => new Set(site.statHighlightOps));
+
 /** 预计算每行的「最后一次出率提升 / 商店兑换」信息，避免模板里反复遍历 */
 const viewRows = computed(() =>
   props.rows.map((r) => ({
@@ -58,13 +63,15 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
     <table class="grid floating stat-tbl" :class="{ 'img-mode': isImage }">
       <!-- 只给前两列定宽：它们要 sticky 冻结，第 2 列的 left 偏移必须等于第 1 列的实际宽度，
            不能让它随内容变。
-           78px = 日期（`2026-10-01`，13px 常规字重 66px）+ 左右内边距 12px，
-             与「结束时间」各列内容同类，所以取一样的宽度（用户要求「也收到一样窄」）。
+           84px = 日期（`2026-10-01`，13px 常规字重 66px）+ 左右内边距 12px **+ 6px 余量**，
+             ⚠️ 2026-10-16 由 78px 加到 84px —— 78px 内容区恰好 66px、**零余量**，Windows 上够，
+                但手机字体（PingFang / Roboto）的数字与连字符更宽 → 溢出后被旁边 sticky 的
+                「干员」列盖住，表现就是「实装时间显示不全」。详见 main.css 那段。
            103px = **7 个汉字**（13px 下 91px）+ 左右内边距 12px（用户指定的口径）。
              最长干员名正好 7 个字（`凯尔希·思衡托`，中间是半角 `·`）≈ 81.5px，有富余。
            ⚠️ 改动这两个值要**同时**改 main.css 里对应的 width/min/max 与第 2 列的 left。 -->
       <colgroup>
-        <col style="width: 78px" />
+        <col style="width: 84px" />
         <col style="width: 103px" />
       </colgroup>
       <thead>
@@ -121,7 +128,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
         <tr v-if="!viewRows.length">
           <td :colspan="split ? 12 : 8"><div class="empty">暂无数据</div></td>
         </tr>
-        <tr v-for="r in viewRows" :key="r.name">
+        <tr v-for="r in viewRows" :key="r.name" :class="{ hl: hlOps.has(r.name) }">
           <td class="num">
             <span v-if="!r.releaseDate" class="dash">—</span><template v-else>{{ r.releaseDate }}</template>
           </td>
