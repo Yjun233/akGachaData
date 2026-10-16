@@ -94,6 +94,7 @@ export const useSiteStore = defineStore('site', {
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
+    statMidNoStd: false,               // 统计页：中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关）
     statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
@@ -708,6 +709,23 @@ export const useSiteStore = defineStore('site', {
     /** 中坚寻访是否**只看中坚**（默认关）—— 口径见 `lib/stats.js` 的 `viewEndInfo()` */
     setStatMidOnly(on) {
       this.statMidOnly = !!on;
+    },
+
+    /**
+     * 中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关，用户 2026-10-16 加）。
+     *
+     * 用途：干员迁入中坚后**不再进标准寻访**，标准寻访表里也见不到他们 ——
+     * 「标准次数」只是他们**迁入之前**的老记录，占着两列反而让中坚表显得嘈杂。
+     * 勾上后中坚寻访表每组只剩「结束时间 / 距今天数 / 中坚次数」三列（与标准表一样宽）。
+     * **总次数一并藏掉**：总 = 中坚 + 标准，既然不看标准，总数也就没有参考价值。
+     *
+     * ⚠️ **纯展示层开关**：不动 `computeStats` 的数据、不改任何数值、不动排序，
+     *    只影响中坚表（`split`）的表头与单元格渲染；标准寻访表那一列仍叫「次数」、不受影响。
+     * ⚠️ 复制内容**跟着一起收**（复制必须与屏幕一致，见 `lib/tableCopy.js`）。
+     * ⚠️ 与上面两个统计开关同处理：**切服不重置**。
+     */
+    setStatMidNoStd(on) {
+      this.statMidNoStd = !!on;
     },
 
     /**

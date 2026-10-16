@@ -44,6 +44,10 @@ import { useSiteStore } from '../stores/site.js';
 import AvatarImg from '../components/AvatarImg.vue';
 import CopyButton from '../components/CopyButton.vue';
 import { firstUpCopyRows } from '../lib/tableCopy.js';
+/* 干员名的**自适应字号** —— 列宽收窄后，超字数的名字降字号塞进去（口径见 lib/opNameFit.js）。
+   ⚠️ 别把这段说明写成 HTML 注释塞进 `<td>` 里：Vue SSR 会**原样输出**注释，于是
+     「`<td class="opcell">` 紧跟 `<b>`」这类相邻匹配就断了（2026-10-16 真踩过）。 */
+import { opNameStyle } from '../lib/opNameFit.js';
 import { axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel } from '../lib/firstUp.js';
 
 const site = useSiteStore();
@@ -116,11 +120,14 @@ const copyRows = computed(() => {
                    第 1 列的实际宽度 → 只能钉死。
                    84px = 日期（`2026-10-01` 66px）+ 内边距 12px + **6px 余量**（与统计表第一列
                      同一个值；为什么不是 78px 见 main.css 那段「零余量」的说明）。
-                   103px = **7 个汉字** 91px + 内边距 12px（与统计表同口径）。
-                   ⚠️ 改这两处要**同时**改 main.css 里「冻结前两列」那段的 width/min/max 与 left。 -->
+                   84px = 干员列。⚠️ 2026-10-16 由 103px（按「7 个汉字」）收到 84px ——
+                     超字数的名字改由**自适应字号**处理（13 → 11 → 10px），
+                     口径与算法收口在 `lib/opNameFit.js`，模板上走 `opNameStyle()`。
+                   ⚠️ 改这两处要**同时**改 main.css 里「冻结前两列」那段的 width/min/max 与 left，
+                      以及 `lib/opNameFit.js` 的 `OP_NAME_COL_W`。 -->
               <colgroup>
                 <col style="width: 84px" />
-                <col style="width: 103px" />
+                <col style="width: 84px" />
               </colgroup>
               <thead>
                 <tr>
@@ -147,7 +154,7 @@ const copyRows = computed(() => {
                   </td>
                   <td class="opcell">
                     <AvatarImg v-if="isImage" :op="opOf(r.name)" shape="square" img-class="avt-rect" />
-                    <b v-else>{{ r.name }}</b>
+                    <b v-else :style="opNameStyle(r.name)">{{ r.name }}</b>
                   </td>
                   <td class="num">{{ r.firstDate }}</td>
                   <td class="tl">{{ r.firstBanner || '—' }}</td>

@@ -588,20 +588,24 @@ table.grid.stat-tbl td.wrapcell{
        加 6px（≈9%）余量后跨平台稳妥。
      与「结束时间」各列内容同类（用户 2026-10-03 要求「也收到一样窄」）—— 那几列是
      **内容自适应**的、日期宽度相同，所以 84px 与它们仍然相近（只多 6px）。
-   - 干员 **103px** = **7 个汉字** 91px + 12px 内边距（用户 2026-10-03 指定按 7 个汉字算）。
-     最长干员名正是 7 个字（`凯尔希·思衡托` / `维娜·维多利亚`，中间是半角 `·` U+00B7）≈ 81.5px，
-     91px 有富余，不会挤到相邻列。
-     ⚠️ 旧注释写「约 91px + 左右内边距 22px → 116px」是**过时**的：22px 来自更早的
-     `padding:8px 10px`，后来 stat-tbl 覆盖成 `4px 6px` 却没顺手收窄宽度 → 白白多出 10px。
-   - 改这两个值时必须**同时**改 StatTable.vue 里 colgroup 的两条 `<col>` 与第 2 列的 `left`
-     （`left` 必须恒等于第 1 列宽度），`verify-render` 有断言盯着这三处一致。 */
+   - 干员 **84px** = 内边距 12px + 内容区 **72px**（≈5.5 个汉字）。
+     ⚠️ **2026-10-16 由 103px 收到 84px**：103px 是按「**7 个汉字**」定的
+     （用户 2026-10-03 的口径，为最长名 `凯尔希·思衡托` / `维娜·维多利亚` 留位），
+     但实测 2 字的名字占了 **123/232** 位 → 为极少数长名让**所有**名字跟着变宽不划算。
+     现在改成：**列宽按常见长度定 + 超字数的名字自动降字号**（13 → 11 → 10px），
+     口径与算法收口在 `src/lib/opNameFit.js`（纯函数、SSR 可测），模板上走 `opNameStyle()`。
+     ⚠️ 旧注释里「约 91px + 左右内边距 22px → 116px」更早就过时了：22px 来自
+     `padding:8px 10px`，后来 stat-tbl 覆盖成 `4px 6px` 却没顺手收窄宽度。
+   - 改这两个值时必须**同时**改：两个组件的 `<colgroup>`、第 2 列的 `left`
+     （恒等于第 1 列宽度）、以及 `lib/opNameFit.js` 的 `OP_NAME_COL_W`。
+     `verify-render` 有断言盯着这几处一致，并会拿**真实干员名**验算「一个都不会溢出」。 */
 table.grid.stat-tbl thead tr:first-child th:nth-child(1),
 table.grid.stat-tbl tbody td:nth-child(1){
   width:84px;min-width:84px;max-width:84px;left:0;
 }
 table.grid.stat-tbl thead tr:first-child th:nth-child(2),
 table.grid.stat-tbl tbody td:nth-child(2){
-  width:103px;min-width:103px;max-width:103px;left:84px;
+  width:84px;min-width:84px;max-width:84px;left:84px;
 }
 table.grid.stat-tbl thead tr:first-child th:nth-child(-n+2),
 table.grid.stat-tbl tbody td:nth-child(-n+2){position:sticky}
@@ -675,7 +679,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 }
 /* ---------------- 图片模式：长方形蒙版头像（用户 2026-10-03 指定） ----------------
    用在**两处表格**：统计页（出率提升记录）与首次UP间隔 · 表格版 —— 同一个 class、
-   同一条规则（选择器带两段）。出率提升记录的干员列宽 103px（按 7 个汉字定的），
+   同一条规则（选择器带两段）。出率提升记录的干员列宽 84px（2026-10-16 前是 103px），
    26px 的方头像丢在里面显得又小又空，所以改成**宽是高 2 倍**的长方形蒙版：**68×34**
    （都是用户手调的尺寸，取景 `object-position:50% 70%`，圆角与底色也由他去掉 —— 渐隐后都不需要了）。
 
@@ -788,19 +792,17 @@ table.grid.fup-tbl tbody td.metric-on{background:#eef5fd}
 /* 负间隔（按实装日期排序时，后实装却更早首次）—— 标黄，别让它看着像正常值 */
 table.grid.fup-tbl .neg{color:var(--warn);font-weight:600}
 /* ---------------- 首次UP间隔 · 表格版：「干员」列定宽 ----------------
-   干员列**固定 = 7 个汉字的宽度**（用户 2026-10-03 指定，与出率提升记录同一个口径）：
-   13×7 = 91px 文字 + 左右内边距 6×2 = **103px**（padding 与统计表同为 `4px 6px`，
-   所以两表的干员列一样宽 —— 旧值 111px 是 padding 还是 `6px 10px` 时的，已随 2026-10-05
-   的行高统一一起作废）。
+   干员列**固定 84px**（内边距 12px + 内容区 72px ≈ 5.5 个汉字），与出率提升记录同一个值。
+   ⚠️ **2026-10-16 由 103px 收到 84px**：103px 是按「7 个汉字」定的，而超字数的名字现在
+   改由**自适应字号**处理（13 → 11 → 10px，见 `src/lib/opNameFit.js`），不再靠列宽去兜。
    ⚠️ 宽度三件套要一起写：`table-layout:auto` 下光有 width，内容一长列还是会被撑开。
      · width / min-width —— 图片模式的**前提**：蒙版头像是绝对定位、不占位，
        不给宽度时这一列会缩到只剩表头「干员」两个字的宽度，68px 的头像就溢到日期列上；
-     · max-width —— 把列钉死，更长的名字会溢出到相邻列（与统计表同款行为；
-       上游最长名正好 7 个字：`凯尔希·思衡托`）。
+     · max-width —— 把列钉死（它还是 sticky 的第 2 列，`left` 偏移要求宽度精确）。
    ⚠️ 选择器按 **opcell 类**而不是 `:first-child` —— 认列名比认列位置稳
    （th 与 td 都挂 opcell，见 FirstUpTableView.vue）。 */
 table.grid.fup-tbl .opcell{
-  width:103px;min-width:103px;max-width:103px;
+  width:84px;min-width:84px;max-width:84px;
 }
 /* 图片模式的干员列：长方形蒙版头像 —— 与「出率提升记录」同款，几何 + 四边渐隐全在
    上面那条 `img.avt-rect` 里（用户 2026-10-03 指定，替换掉原来的 26px 圆形头像）。

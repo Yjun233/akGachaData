@@ -29,13 +29,17 @@ const daysText = (info) => (info.live ? '进行中' : (info.days === null ? DASH
  * ⚠️ 「结束时间 / 距今天数」走 `viewEndInfo()` —— 与表格同一个口径，
  *    所以**「中坚寻访只看中坚」勾上时，复制出来的也是那套值**（`midOnly` 由视图层传进来）。
  *
- * @param {{split?:boolean, refDate:string, midOnly?:boolean}} opts
- *        `split` = 中坚表（多「总次数 / 中坚次数 / 标准次数」三列）；`refDate` = 参考日期；
- *        `midOnly` = 右栏「中坚寻访只看中坚」
+ * @param {{split?:boolean, refDate:string, midOnly?:boolean, noStd?:boolean}} opts
+ *        `split` = 中坚表（默认多「总次数 / 中坚次数 / 标准次数」三列）；`refDate` = 参考日期；
+ *        `midOnly` = 右栏「中坚寻访只看中坚」；
+ *        `noStd` = 右栏「中坚寻访不看标准次数」（仅 `split` 下有意义）——
+ *                  **复制的列必须与屏幕一致**，所以勾上后中坚表也只留「中坚次数」一列
  * @returns {Array<Array<string|number>>} 第一行是表头
  */
-export function statCopyRows(rows, { split = false, refDate, midOnly = false } = {}) {
-  const counts = split ? ['总次数', '中坚次数', '标准次数'] : ['次数'];
+export function statCopyRows(rows, { split = false, refDate, midOnly = false, noStd = false } = {}) {
+  const counts = split
+    ? (noStd ? ['中坚次数'] : ['总次数', '中坚次数', '标准次数'])
+    : ['次数'];
   const group = (name) => [
     `${name} 结束时间`, `${name} 距今天数`, ...counts.map((c) => `${name} ${c}`),
   ];
@@ -43,13 +47,16 @@ export function statCopyRows(rows, { split = false, refDate, midOnly = false } =
   const body = (rows || []).map((r) => {
     const up = viewEndInfo(r, 'up', refDate, midOnly);
     const shop = viewEndInfo(r, 'shop', refDate, midOnly);
+    /* 次数与 `counts` 一一对应：默认 [总, 中坚, 标准]、藏标准后只剩 [中坚] */
+    const upCounts = split ? (noStd ? [r.upMid.length] : [r.upAll.length, r.upMid.length, r.upStd.length])
+      : [r.upAll.length];
+    const shopCounts = split ? (noStd ? [r.shopMid.length] : [r.shopAll.length, r.shopMid.length, r.shopStd.length])
+      : [r.shopAll.length];
     return [
       r.releaseDate || DASH,
       r.name,
-      up.end || DASH, daysText(up),
-      ...(split ? [r.upAll.length, r.upMid.length, r.upStd.length] : [r.upAll.length]),
-      shop.end || DASH, daysText(shop),
-      ...(split ? [r.shopAll.length, r.shopMid.length, r.shopStd.length] : [r.shopAll.length]),
+      up.end || DASH, daysText(up), ...upCounts,
+      shop.end || DASH, daysText(shop), ...shopCounts,
     ];
   });
   return [head, ...body];

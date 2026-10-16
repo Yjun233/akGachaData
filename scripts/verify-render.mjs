@@ -18,6 +18,10 @@ import { shiftDays, shiftYears, localToday } from '../src/lib/date.js';
 /* 配色常量（纯模块，可直接 import）—— 断言的期望值直接引用它，避免抄错色值；
    同理排序标签也从 `UP_SORT_ROWS` 取，别写死文案 */
 import { CAT_COLOR, SHOP, UP_SORT_ROWS } from '../src/lib/constants.js';
+/* 干员列的**自适应字号**（纯函数模块，可直接 import）—— 断言要用它的常量与算法 */
+import {
+  OP_NAME_COL_W, OP_NAME_PAD, OP_NAME_MAX_FS, OP_NAME_MIN_FS, opNameWidth, opNameFontSize,
+} from '../src/lib/opNameFit.js';
 /* 框架包用 Node 原生 import（Vite SSR 会把它们外部化，与组件里用的是同一份实例）；
    只有 .vue / 业务模块才走 vite.ssrLoadModule。 */
 import { createSSRApp } from 'vue';
@@ -236,13 +240,23 @@ try {
   /* ---------------- 统计页 ---------------- */
   const stats = await renderRoute('/operators');
   const sh = stats.html;
+  /* 分节切片：断言要落到「那张表」里数，**不能在全页 HTML 上数列名** ——
+     右栏那几个复选框的文案里就带「中坚次数 / 总次数 / 标准次数」这几个词。
+     取 `id="s-x-y"` 到下一个分节为止（最后一个分节取到结尾；右栏在正文之前渲染，不会混进来）。 */
+  const sectionHtml = (html, anchor, next) => {
+    const a = html.indexOf(`id="${anchor}"`);
+    return html.slice(a, next ? html.indexOf(`id="${next}"`) : html.length);
+  };
+  const mid6Section = sectionHtml(sh, 's-6-mid', 's-5-std');
+  const mid5Section = sectionHtml(sh, 's-5-mid');
 
   check('统计页：四张表', count(sh, /class="grid floating stat-tbl"/g), 4);
   check('统计页：两个并排容器', count(sh, /class="pair"/g), 2);
   check('统计页：四个分节标题', count(sh, /class="sec-title[ "]/g), 4);
   check('统计页：锚点 id 齐全',
     ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].every((id) => sh.includes(`id="${id}"`)), true);
-  check('统计页：中坚表有「中坚次数」列（2 表 × 出率提升/商店兑换）', count(sh, /中坚次数/g), 4);
+  check('统计页：中坚表有「中坚次数」列（2 表 × 出率提升/商店兑换）',
+    count(mid6Section, /中坚次数/g) + count(mid5Section, /中坚次数/g), 4);
 
   /* ---------------- 全站配色（大类三色 / 商店兑换绿色） ----------------
      一套颜色要同时落在 卡池列表徽章、统计页表与标题、UP 历史标记 上，
@@ -368,6 +382,89 @@ try {
     setServerBody.length > 200 && !setServerBody.includes('statHighlightOps'), true);
   check('高亮干员：不进复制内容（tableCopy 不读高亮状态）',
     !/highlight/i.test(fs.readFileSync(path.join(ROOT, 'src/lib/tableCopy.js'), 'utf8')), true);
+
+  /* ---------------- 出率提升记录：右栏「中坚寻访不看标准次数」（2026-10-16 用户加） ----------------
+     勾上后**中坚寻访表**藏掉「总次数 / 标准次数」两列（每组由 5 列收成 3 列），只留「中坚次数」；
+     标准寻访表**不受影响**（它那一列叫「次数」，本来就没有「标准次数」的概念）。
+     与「高亮干员」同理：**真跑**一次渲染来钉结构，而不是只读源码。
+     ⚠️ 断言**不能在全页 HTML 上直接数「标准次数」** —— 右栏那个复选框的**文案**里就带这四个字，
+        必须按分节切片（`sectionHtml`，见上面统计页开头）落到具体那张表里数。 */
+  const firstRowCells = (html) => {
+    const t = html.indexOf('<tbody>');
+    return count(html.slice(t, html.indexOf('</tr>', t)), /<td[\s>]/g);
+  };
+
+  /* 默认（开关关）：中坚表每组 5 列、标准表每组 3 列 —— 全部分节切片数，别在全页上数 */
+  check('不看标准次数：默认关 → 中坚表照常带「总次数 / 标准次数」（每组各一个）',
+    count(mid6Section, /总次数/g) === 2 && count(mid6Section, /标准次数/g) === 2
+    && count(mid5Section, /总次数/g) === 2, true);
+  check('不看标准次数：默认关 → 中坚表每组组头 colspan=5、数据行 12 个 td',
+    count(mid6Section, /class="group[^"]*"[^>]*colspan="5"/g) === 2
+    && firstRowCells(mid6Section) === 12, true);
+  check('不看标准次数：右栏有这个复选框，并接到 store 的 setStatMidNoStd',
+    /中坚寻访不看标准次数/.test(fdSrc) && /setStatMidNoStd\(\$event\.target\.checked\)/.test(fdSrc), true);
+
+  const noStdR = await renderRoute('/operators', (s) => { s.statMidNoStd = true; });
+  const nh = noStdR.html;
+  const std6 = sectionHtml(nh, 's-6-std', 's-6-mid');
+  const mid6 = sectionHtml(nh, 's-6-mid', 's-5-std');
+  const mid5 = sectionHtml(nh, 's-5-mid');
+  check('不看标准次数：两张中坚表里不再有「总次数 / 标准次数」',
+    !/总次数/.test(mid6) && !/标准次数/.test(mid6)
+    && !/总次数/.test(mid5) && !/标准次数/.test(mid5), true);
+  check('不看标准次数：中坚表仍保留「中坚次数」列（每组一个 → 每表 2 处）',
+    count(mid6, /中坚次数/g) === 2 && count(mid5, /中坚次数/g) === 2, true);
+  check('不看标准次数：中坚表两个组头的 colspan 由 5 收到 3',
+    count(mid6, /class="group[^"]*"[^>]*colspan="3"/g), 2);
+  check('不看标准次数：中坚表数据行由 12 个 td 收到 8 个（2 + 3 + 3）',
+    firstRowCells(mid6), 8);
+  check('不看标准次数：标准寻访表完全不受影响（仍是每组 3 列 + 列头「次数」）',
+    count(std6, /class="group[^"]*"[^>]*colspan="3"/g) === 2
+    && !/总次数/.test(std6) && count(std6, />次数<span class="arw">/g) === 2, true);
+  check('不看标准次数：**不筛行** —— 四张表行数仍是 45 / 48 / 45 / 68',
+    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(nh, a)).join(','),
+    '45,48,45,68');
+  /* ⚠️ 防复发：Vue SSR 会把**模板里的 HTML 注释原样输出** —— 只要有人再把
+     「总次数 / 标准次数」写进模板注释，分节切片里就会多出字面量、上面几条断言当场变红。
+     这条把「注释泄漏」本身也钉住（2026-10-16 真栽过：注释把列数断言搅乱）。 */
+  check('不看标准次数：渲染出的 HTML 里没有夹带「总次数 / 标准次数」的模板注释',
+    !/<!--[^>]*(?:总次数|标准次数)/.test(nh), true);
+
+  /* 接线（读源码）：store 的开关 + 组件里的三个 computed + 复制跟着收 */
+  const svSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
+  check('不看标准次数：store 有初值（默认关）+ setStatMidNoStd',
+    /statMidNoStd: false/.test(storeSrc) && /setStatMidNoStd\(on\) \{/.test(storeSrc), true);
+  check('不看标准次数：**切服不重置**（setServer 里没动它）',
+    setServerBody.length > 200 && !setServerBody.includes('statMidNoStd'), true);
+  check('不看标准次数：组件里 colspan / 单元格都走那几个 computed（不是各写各的）',
+    /const noStd = computed\(\(\) => site\.statMidNoStd\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8'))
+    && /:colspan="groupCols"/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8')), true);
+  check('不看标准次数：复制**跟着屏幕收**（StatsView 把 `noStd` 传给中坚表）',
+    /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd \}\)/.test(svSrc)
+    && /const noStd = site\.statMidNoStd/.test(svSrc), true);
+
+  /* 复制口径真跑一遍：勾上后中坚表只留「中坚次数」，且取的是 upMid / shopMid 那一列
+     （故意让 upStd 有 2 条、upMid 只有 1 条，取值写错就会露馅） */
+  {
+    const { statCopyRows: cp } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
+    const ban = (a, b) => ({ startDate: a, endDate: b });
+    const row = {
+      name: '甲', releaseDate: '2020-01-01',
+      upAll: [ban('2026-09-01', '2026-09-15')],
+      upMid: [ban('2026-09-01', '2026-09-15')],
+      upStd: [ban('2026-06-01', '2026-06-10'), ban('2026-07-01', '2026-07-10')],
+      shopAll: [ban('2026-10-01', '2026-10-20')],
+      shopMid: [ban('2026-10-01', '2026-10-20')],
+      shopStd: [ban('2026-05-01', '2026-05-10')],
+    };
+    const rr = cp([row], { split: true, refDate: '2026-10-11', noStd: true });
+    check('不看标准次数：复制的中坚表头只剩「中坚次数」（12 列 → 8 列）',
+      JSON.stringify(rr[0]), JSON.stringify(['实装时间', '干员',
+        '出率提升 结束时间', '出率提升 距今天数', '出率提升 中坚次数',
+        '商店兑换 结束时间', '商店兑换 距今天数', '商店兑换 中坚次数']));
+    check('不看标准次数：复制的中坚数据行取的是"中坚"那一列的次数',
+      JSON.stringify(rr[1]), JSON.stringify(['2020-01-01', '甲', '2026-09-15', 27, 1, '2026-10-20', '进行中', 1]));
+  }
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
   check('顶栏定位按钮 六星干员·标准寻访', /六星干员·标准寻访/.test(sh), true);
@@ -734,8 +831,11 @@ try {
   const ftRel = await renderRoute('/first-up/table', (s) => s.setFirstUpAxis('release'));
   check('表格版：卡片头行序跟随「横轴」口径',
     /行序按实装日期/.test(ftRel.html), true);
+  /* ⚠️ 干员名那个 `<b>` 现在带 `style="font-size:…"`（自适应字号，见 lib/opNameFit.js）
+     → 正则要**容忍属性**，别写死 `<b>名字</b>`（2026-10-16 因此红过一次）。 */
   check('表格版：行序确实重排了（首行干员 = 数据层按实装排序后的第一个）',
-    new RegExp(`<td class="opcell">\\s*<b>${ftRel.store.firstUp.six[0].name}</b>`).test(ftRel.html), true);
+    new RegExp(`<td class="opcell">\\s*<b(?:\\s[^>]*)?>${ftRel.store.firstUp.six[0].name}</b>`)
+      .test(ftRel.html), true);
 
   /* 统计模式切换：「首次X日」与分节标题跟着换词；「距上行 / 累计数」不跟
      （卡片头那一行仍走 lib 的 metricShort，出现「距上个首次轮换」是正常的，别一起断言） */
@@ -760,14 +860,15 @@ try {
      （sticky 同样是定位元素），原先那行 `td.opcell{position:relative}` 已随之删掉。 */
   check('表格版图片模式：干员格是定位包含块（img 绝对定位的参照）',
     /fup-tbl tbody td:nth-child\(-n\+2\)\{position:sticky/.test(cssAll), true);
-  /* 干员列**定宽 = 7 个汉字**（用户 2026-10-03 指定，设计常量、不随数据变）：
-     13×7 = 91px 文字 + 左右内边距 6×2 = **103px**（padding `4px 6px`，与统计表同一套 ——
-     旧值 111px 是 padding 还是 `6px 10px` 时的，2026-10-05 随行高统一一起改过来）。
+  /* 干员列**定宽 84px**（内边距 12px + 内容区 72px ≈ 5.5 个汉字）。
+     ⚠️ **2026-10-16 由 103px 收到 84px** —— 103px 是按「7 个汉字」定的（为最长名留位），
+     而超字数的名字现在改由**自适应字号**处理（`lib/opNameFit.js`：13 → 11 → 10px），
+     不再靠列宽去兜。宽度真源 = `OP_NAME_COL_W`，main.css 与 `<colgroup>` 都要跟它一致。
      width / min / max **三处必须一致**（真源 = main.css 的 .opcell）。 */
   const opColCss = (cssAll.match(/fup-tbl \.opcell\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   const opColW = Number((opColCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
-  check('表格版：干员列定宽 = 7 个汉字 + 内边距（13×7 + 6×2 = 103px），三处一致',
-    opColW === 103
+  check('表格版：干员列定宽 84px（内边距 + 内容区），width/min/max 三处一致',
+    opColW === OP_NAME_COL_W
     && opColCss.includes(`width:${opColW}px`)
     && opColCss.includes(`min-width:${opColW}px`)
     && opColCss.includes(`max-width:${opColW}px`), true);
@@ -1504,16 +1605,18 @@ try {
   check('统计表：冻结列宽度三处一致（colgroup / CSS 定宽 / 第 2 列 left 偏移）',
     [colDate, colName, cssDateW, cssNameW, cssLeft].every((v) => typeof v === 'number' && v > 0)
     && colDate === cssDateW && colName === cssNameW && cssLeft === colDate, true);
-  /* 用户 2026-10-03 指定的口径（设计常量，不随数据变）：
-     · 干员列 = **7 个汉字** 13×7=91px + 左右内边距 12px（`padding:4px 6px`）= **103px**
-       —— 最长干员名正好 7 个字（`凯尔希·思衡托`，中间半角 `·`）≈ 81.5px，91px 有富余；
+  /* 列宽的设计常量（不随数据变）：
+     · 干员列 = **84px**（内边距 12px + 内容区 72px ≈ 5.5 个汉字）。
+       ⚠️ **2026-10-16 由 103px 收到 84px** —— 103px 是按「7 个汉字」定的（为最长名
+       `凯尔希·思衡托` 留位），但实测 2 字的名字占了 123/232 位；现在超字数的名字改用
+       **自适应字号**（`lib/opNameFit.js`：13 → 11 → 10px），不再靠列宽兜；
      · 实装时间列 = 10 位日期 66px + 12px + **6px 余量** = **84px**。
        ⚠️ **2026-10-16 由 78px 加到 84px**：78px 是「零余量」（内容区恰好 66px），
        Windows 上够、手机字体下（PingFang / Roboto 的数字与连字符更宽）日期会溢出 1~3px，
        被右边 sticky 的「干员」列（`background:inherit`，不透明）盖住 ——
        这正是用户报的「实装时间显示不全」。加 6px（≈9%）余量后跨平台稳妥。 */
-  check('统计表：干员列宽 = 7 个汉字 + 内边距（103px），实装时间列 = 84px（含 6px 余量）',
-    colName === 103 && colDate === 84, true);
+  check('统计表：干员列 84px、实装时间列 84px（真源 = OP_NAME_COL_W），都含余量',
+    colName === OP_NAME_COL_W && colDate === 84, true);
   check('统计表：冻结「实装时间」「干员」两列（CSS sticky + 第 2 列 left 跟着第 1 列走）',
     /stat-tbl thead tr:first-child th:nth-child\(-n\+2\),[\s\S]{0,80}tbody td:nth-child\(-n\+2\)\{position:sticky\}/.test(cssAll)
     && cssLeft === colDate, true);
@@ -1536,7 +1639,7 @@ try {
   const fupDateW = cssNum(/fup-tbl tbody td:nth-child\(1\)\{[\s\S]{0,70}?width:(\d+)px/);
   const fupLeft = cssNum(/fup-tbl tbody td:nth-child\(2\)\{[\s\S]{0,40}?left:(\d+)px/);
   check('表格版：前两列冻结（colgroup 定宽 + sticky + 第 2 列 left 跟着第 1 列走）',
-    fupCols.length === 2 && fupCols[0] === 84 && fupCols[1] === 103
+    fupCols.length === 2 && fupCols[0] === 84 && fupCols[1] === OP_NAME_COL_W
     && fupDateW === fupCols[0] && fupLeft === fupCols[0]
     && /fup-tbl tbody td:nth-child\(-n\+2\)\{position:sticky;z-index:2;background:inherit\}/
       .test(cssAll), true);
@@ -1548,6 +1651,28 @@ try {
     /fup-tbl\.floating thead tr:first-child th:nth-child\(-n\+2\)\{z-index:8\}/.test(cssAll), true);
   /* 日期列与统计表同一个值 —— 两表并排看时列宽对齐，也让「零余量溢出」的坑不会在这边复发 */
   check('表格版：日期列定宽与统计表一致（84px，含余量）', fupCols[0] === colDate, true);
+
+  /* ---------------- 干员名的自适应字号（2026-10-16 用户要求） ----------------
+     干员列收窄（103 → 84px）后，**超字数的名字降字号塞进去**，而不是截断 / 撑换行 /
+     溢出到邻列。口径与算法收口在 `lib/opNameFit.js`（纯函数）→ 这里直接真跑它。 */
+  check('干员名宽度：半角字符按半格算（`Mon3tr` 不该被当成 6 个汉字那么宽）',
+    [opNameWidth('Mon3tr'), opNameWidth('凯尔希·思衡托'), opNameWidth('陈'), opNameWidth('')],
+    [3, 6.5, 1, 0]);
+  check('干员名字号：常见长度保持常规字号，超长才逐档降，且不低于下限',
+    [opNameFontSize('陈'), opNameFontSize('德·托莱多'), opNameFontSize('凯尔希·思衡托')],
+    [OP_NAME_MAX_FS, OP_NAME_MAX_FS, OP_NAME_MIN_FS]);
+  /* ⚠️⚠️ 核心保证：拿**全部真实干员名**验算「一个都不会溢出内容区」——
+     溢出的小尾巴会被右边相邻列的不透明背景盖住，等于用户看到的「名字显示不全」
+     （2026-10-16 的「实装时间」列就是这么出事的，所以这条必须守死）。 */
+  const allOpNames = Object.values(stats.store.operators).map((o) => o.scName).filter(Boolean);
+  const nameUsable = OP_NAME_COL_W - OP_NAME_PAD;
+  const nameOverflow = allOpNames
+    .filter((n) => opNameWidth(n) * opNameFontSize(n) > nameUsable);
+  check(`干员名字号：全部 ${allOpNames.length} 位真实干员名都装得下（不会溢出到邻列）`,
+    nameOverflow.length, 0);
+  check('干员名自适应字号：两个表格页都走 opNameStyle（不是写死字号）',
+    /:style="opNameStyle\(r\.name\)"/.test(statSrc)
+    && /:style="opNameStyle\(r\.name\)"/.test(fupTableSrc), true);
   /* ⚠️⚠️ 冻结列走 `background:inherit`，**前提是 `<tr>` 自己有背景色** ——
      全局只给了 `tbody tr:nth-child(even)`，奇数行没有 → inherit 拿到 transparent →
      横滚时后面的内容透出来叠在冻结列上（**奇数行重叠、偶数行完好**，辨识度很高）。
@@ -1998,7 +2123,7 @@ try {
       /中坚寻访只看中坚/.test(drawerSrc) && /site\.setStatMidOnly\(\$event\.target\.checked\)/.test(drawerSrc), true);
     check('只看中坚：**复制**出来的也用同一口径（tableCopy 走 viewEndInfo + 收 midOnly）',
       /viewEndInfo\(r, 'up', refDate, midOnly\)/.test(copySrc) && /midOnly = false/.test(copySrc)
-      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly \}\)/.test(statsViewSrc), true);
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd \}\)/.test(statsViewSrc), true);
     check('只看中坚：**次数列不跟着变**（模板里仍读 upAll / upMid / upStd 三个长度）',
       /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
   }

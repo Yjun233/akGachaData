@@ -4,6 +4,10 @@
  *
  * - 标准寻访表（split=false）：每组 3 列 → 结束时间 / 距今天数 / 次数
  * - 中坚寻访表（split=true） ：每组 5 列 → 结束时间 / 距今天数 / 总次数 / 中坚次数 / 标准次数
+ *   ⚠️ 右栏「中坚寻访不看标准次数」勾上时，中坚表藏掉**总次数 / 标准次数**两块，每组收成 3 列
+ *     （`noStd` / `groupCols` / `totalCols` 三个 computed 一起管这件事，别只改一处）。
+ *     ⚠️ 标准寻访表**不受影响** —— 它那一列叫「次数」、本来就没有「标准次数」的概念。
+ *     ⚠️ 藏列会改 colspan（组头 + 空行）与单元格个数，`verify-render` 有断言盯着。
  * - 列宽按内容自适应（table-layout:auto），列间竖线与 sticky 表头对齐由全局 CSS 处理
  * - 距今天数着色：≥180 天标黄、≥365 天标红；卡池进行中显示「进行中」
  * - 右栏「高亮干员」命中的行加**浅黄底**（`.hl`，见 main.css）—— 纯视觉标记，不筛行；
@@ -15,6 +19,10 @@
 import { computed } from 'vue';
 import { WARN_DAYS, DANGER_DAYS } from '../lib/constants.js';
 import { viewEndInfo } from '../lib/stats.js';
+/* 干员名的**自适应字号** —— 列宽收窄后，超字数的名字降字号塞进去（口径见 lib/opNameFit.js）。
+   ⚠️ 别把这段说明写成 HTML 注释塞进 `<td>` 里：Vue SSR 会**原样输出**注释，于是
+     「`<td class="opcell">` 紧跟 `<b>`」这类相邻匹配就断了（2026-10-16 真踩过）。 */
+import { opNameStyle } from '../lib/opNameFit.js';
 import AvatarImg from './AvatarImg.vue';
 import { useSiteStore } from '../stores/site.js';
 
@@ -35,6 +43,18 @@ const refDate = computed(() => site.refDate || site.today);
 const sort = computed(() => site.statSort[props.tableId]);
 /** 右栏「中坚寻访只看中坚」—— 只对中坚干员生效，见 lib/stats.js 的 viewEndInfo() */
 const midOnly = computed(() => site.statMidOnly);
+
+/** 右栏「中坚寻访不看标准次数」—— 只对中坚表（split）生效，见 store 的 setStatMidNoStd
+ *
+ * 「总次数」那一列的 `v-if="!split || !noStd"` 就是它：**标准表恒有**（叫「次数」），
+ * 中坚表在勾上开关时一并藏掉 —— 总 = 中坚 + 标准，既然不看标准，总数也就没参考价值。
+ * ⚠️ 解释写在这里、**别写进 `<template>`**：Vue SSR 会把模板里的 HTML 注释**原样输出**，
+ *    注释里的「总次数 / 标准次数」会被断言数进去（2026-10-16 又踩了一次）。 */
+const noStd = computed(() => site.statMidNoStd);
+/** 每组实际显示的列数：标准表恒为 3；中坚表默认 5，勾了上面那个开关收成 3（驱动组头 colspan） */
+const groupCols = computed(() => (props.split && !noStd.value ? 5 : 3));
+/** 整行「暂无数据」要跨的列数 = 2（实装时间 / 干员）+ 两组 */
+const totalCols = computed(() => 2 + groupCols.value * 2);
 
 /** 右栏「高亮干员」—— 用 Set 查，避免每行都扫一遍数组（四张表合计几百行） */
 const hlOps = computed(() => new Set(site.statHighlightOps));
@@ -67,12 +87,15 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
              ⚠️ 2026-10-16 由 78px 加到 84px —— 78px 内容区恰好 66px、**零余量**，Windows 上够，
                 但手机字体（PingFang / Roboto）的数字与连字符更宽 → 溢出后被旁边 sticky 的
                 「干员」列盖住，表现就是「实装时间显示不全」。详见 main.css 那段。
-           103px = **7 个汉字**（13px 下 91px）+ 左右内边距 12px（用户指定的口径）。
-             最长干员名正好 7 个字（`凯尔希·思衡托`，中间是半角 `·`）≈ 81.5px，有富余。
-           ⚠️ 改动这两个值要**同时**改 main.css 里对应的 width/min/max 与第 2 列的 left。 -->
+           84px = 干员列。⚠️ 2026-10-16 由 103px（按「7 个汉字」）收到 84px ——
+             实测 2 字的名字占 123/232 位，为最长名（`凯尔希·思衡托`，等效 6.5 字）让所有名字
+             一起变宽不划算；现在**按常见长度定宽 + 超字数的名字降字号**（13 → 11 → 10px），
+             口径与算法收口在 `lib/opNameFit.js`（纯函数、SSR 可测），模板上走 `opNameStyle()`。
+           ⚠️ 改动这两个值要**同时**改 main.css 里对应的 width/min/max 与第 2 列的 left，
+              以及 `lib/opNameFit.js` 的 `OP_NAME_COL_W`。 -->
       <colgroup>
         <col style="width: 84px" />
-        <col style="width: 103px" />
+        <col style="width: 84px" />
       </colgroup>
       <thead>
         <tr>
@@ -84,8 +107,8 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             rowspan="2" data-sort="name"
             :class="sortClass('name')" @click="onSort('name')"
           >干员<span class="arw">▲</span></th>
-          <th class="group" :colspan="split ? 5 : 3">出率提升</th>
-          <th class="group grp-shop" :colspan="split ? 5 : 3">商店兑换</th>
+          <th class="group" :colspan="groupCols">出率提升</th>
+          <th class="group grp-shop" :colspan="groupCols">商店兑换</th>
         </tr>
         <tr>
           <th class="num" data-sort="upEnd" :class="sortClass('upEnd')" @click="onSort('upEnd')">
@@ -94,16 +117,18 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
           <th class="num" data-sort="upDays" :class="sortClass('upDays')" @click="onSort('upDays')">
             距今天数<span class="arw">▲</span>
           </th>
-          <th class="num" data-sort="upTotal" :class="sortClass('upTotal')" @click="onSort('upTotal')">
-            {{ split ? '总次数' : '次数' }}<span class="arw">▲</span>
-          </th>
+          <th
+            v-if="!split || !noStd" class="num" data-sort="upTotal"
+            :class="sortClass('upTotal')" @click="onSort('upTotal')"
+          >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
           <template v-if="split">
             <th class="num" data-sort="upMid" :class="sortClass('upMid')" @click="onSort('upMid')">
               中坚次数<span class="arw">▲</span>
             </th>
-            <th class="num" data-sort="upStd" :class="sortClass('upStd')" @click="onSort('upStd')">
-              标准次数<span class="arw">▲</span>
-            </th>
+            <th
+              v-if="!noStd" class="num" data-sort="upStd"
+              :class="sortClass('upStd')" @click="onSort('upStd')"
+            >标准次数<span class="arw">▲</span></th>
           </template>
           <th class="num shopcol" data-sort="shopEnd" :class="sortClass('shopEnd')" @click="onSort('shopEnd')">
             结束时间<span class="arw">▲</span>
@@ -111,22 +136,24 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
           <th class="num shopcol" data-sort="shopDays" :class="sortClass('shopDays')" @click="onSort('shopDays')">
             距今天数<span class="arw">▲</span>
           </th>
-          <th class="num shopcol" data-sort="shopTotal" :class="sortClass('shopTotal')" @click="onSort('shopTotal')">
-            {{ split ? '总次数' : '次数' }}<span class="arw">▲</span>
-          </th>
+          <th
+            v-if="!split || !noStd" class="num shopcol" data-sort="shopTotal"
+            :class="sortClass('shopTotal')" @click="onSort('shopTotal')"
+          >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
           <template v-if="split">
             <th class="num shopcol" data-sort="shopMid" :class="sortClass('shopMid')" @click="onSort('shopMid')">
               中坚次数<span class="arw">▲</span>
             </th>
-            <th class="num shopcol" data-sort="shopStd" :class="sortClass('shopStd')" @click="onSort('shopStd')">
-              标准次数<span class="arw">▲</span>
-            </th>
+            <th
+              v-if="!noStd" class="num shopcol" data-sort="shopStd"
+              :class="sortClass('shopStd')" @click="onSort('shopStd')"
+            >标准次数<span class="arw">▲</span></th>
           </template>
         </tr>
       </thead>
       <tbody>
         <tr v-if="!viewRows.length">
-          <td :colspan="split ? 12 : 8"><div class="empty">暂无数据</div></td>
+          <td :colspan="totalCols"><div class="empty">暂无数据</div></td>
         </tr>
         <tr v-for="r in viewRows" :key="r.name" :class="{ hl: hlOps.has(r.name) }">
           <td class="num">
@@ -134,7 +161,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
           </td>
           <td class="wrapcell">
             <AvatarImg v-if="isImage" :op="opOf(r.name)" shape="square" img-class="avt-rect" />
-            <b v-else>{{ r.name }}</b>
+            <b v-else :style="opNameStyle(r.name)">{{ r.name }}</b>
           </td>
           <!-- 出率提升 -->
           <td class="num" :title="r.up.fromClassic ? fromClassicTitle(r) : null">
@@ -147,10 +174,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-else-if="r.up.days >= WARN_DAYS" class="warn">{{ r.up.days }}</span>
             <template v-else>{{ r.up.days }}</template>
           </td>
-          <td class="num">{{ r.upAll.length }}</td>
+          <td v-if="!split || !noStd" class="num">{{ r.upAll.length }}</td>
           <template v-if="split">
             <td class="num">{{ r.upMid.length }}</td>
-            <td class="num">{{ r.upStd.length }}</td>
+            <td v-if="!noStd" class="num">{{ r.upStd.length }}</td>
           </template>
           <!-- 商店兑换 -->
           <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
@@ -163,10 +190,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-else-if="r.shop.days >= WARN_DAYS" class="warn">{{ r.shop.days }}</span>
             <template v-else>{{ r.shop.days }}</template>
           </td>
-          <td class="num">{{ r.shopAll.length }}</td>
+          <td v-if="!split || !noStd" class="num">{{ r.shopAll.length }}</td>
           <template v-if="split">
             <td class="num">{{ r.shopMid.length }}</td>
-            <td class="num">{{ r.shopStd.length }}</td>
+            <td v-if="!noStd" class="num">{{ r.shopStd.length }}</td>
           </template>
         </tr>
       </tbody>
