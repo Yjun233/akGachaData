@@ -60,7 +60,8 @@ export const useSiteStore = defineStore('site', {
     categories: BANNER_CATEGORIES,
     bannersByServer: {},
     /* ---- 自定义卡池（浏览器本地自设）----
-       `customEntries` = 用户填的**原始字段**（三服混在一起，每条自带 server）；
+       `customEntries` = v3 条目（**与卡池数据同构**：`upOperators` + `endDate` +
+       `rerunKind`/`canRerun`，三服混在一起、每条自带 server）；
        `customByServer` / `customActiveUids` = 与已公布卡池**去重后**的结果（在 loadData 里算好）；
        `customDropped` = 「撞了但还没清理」的（= 用户**本次会话刚添加**的那种，见 `_syncCustom`）；
        `customAutoRemoved` = **加载时已被自动删除**的（撞上的自设在加载时就从存储里删掉了）。
@@ -387,7 +388,8 @@ export const useSiteStore = defineStore('site', {
 
     /* ---------------- 自定义卡池（浏览器本地自设） ----------------
        口径见 akGachaDocs/site/自定义卡池功能预研.md。四条约定：
-       · 存的是**用户填的原始字段**，由 lib/customBanners.js 负责读写与容错；
+       · 存的是 **v3 条目**（与 `banners_<server>.json` 的卡池对象同构，只多 `server` / `uid`），
+         由 lib/customBanners.js 负责读写与容错（v1 / v2 老数据自动迁移）；
        · **去重**（撞上已公布的就丢自设）在 loadData / _syncCustom 里统一做；
        · 增删改一律「先校验、再写盘、再重算」，校验不过**不写盘**；
        · `customInStats`（是否计入统计与图表）是**界面状态**，不持久化 ——
@@ -494,7 +496,7 @@ export const useSiteStore = defineStore('site', {
      * 「导出文件 / 导入文件」那对按钮）。
      * ⚠️ 与 `importCustom`（**追加**）不同：这里是**覆盖** —— 框里就是全部自设，
      *    删掉的行就等于删掉那条。uid 一律**重编**（从 1 开始），免得框里带的 uid 撞车。
-     * ⚠️ 框里若是**旧格式（v1）**的老 JSON，会自动迁移成 v2（返回值里 `migrated: true`）。
+     * ⚠️ 框里若是**旧格式（v1 / v2）**的老 JSON，会自动迁移成 v3（返回值里 `migrated: true`）。
      * @returns {{ok:boolean, error:string|null, count:number, skipped:Array, migrated:boolean}}
      */
     replaceCustom(text) {

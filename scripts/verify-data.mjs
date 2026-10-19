@@ -20,9 +20,10 @@ import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearc
 import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '../src/lib/date.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 import {
-  CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, buildName, dedupe, endDateOf,
-  migrateV1Entry, opNames, toOpList,
-  entryToBanner, loadEntries, midTag, parseImport, serialize, splitList, stripPrefix, validate,
+  CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, RERUN_KINDS, STORE_VERSION,
+  buildName, computeCanRerun, dedupe, endDateOf, entryToBanner, formToEntry,
+  loadEntries, migrateV1Entry, migrateV2Entry, midTag, opNames, parseImport, serialize,
+  splitList, stripPrefix, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -227,84 +228,127 @@ check('自定义卡池：splitList 容忍顿号 / 逗号 / 分号 / 空白（四
 /* ⚠️ 弹窗改多选后**新数据存数组**，但 2026-10-06 之前的自设是顿号文本 —— 两种都得吃 */
 check('自定义卡池：splitList 数组 / 顿号文本两种形态都吃',
   splitList(['甲', '乙']).length === 2 && splitList('甲、乙').length === 2, true);
-/* ⚠️ 2026-10-12 起存储结构是 v2：干员列表存 `[{ scCharName, charId }]`；
-   `toOpList` 必须**三种形态都吃**（v2 对象 / v1 名字数组 / v0 顿号文本），否则老数据全废。
-   charId 查不到时按名字补，仍查不到就是 null（允许强存新干员）。 */
-const fakeId = (n) => ({ 甲: 'char_a', 乙: 'char_b' }[n] ?? null);
-check('自定义卡池：toOpList 吃 v2 对象数组（charId 原样保留）',
+/* ⚠️ 2026-10-12 起干员列表存对象数组；`toOpList` 必须**三种形态都吃**
+   （对象 / 名字数组 / 顿号文本），否则老数据全废。charId 查不到时按名字补，仍查不到就是 null。 */
+const fakeId = (n) => ({ 甲: 'char_a', 乙: 'char_b', 玛恩纳: 'char_m', 涤火杰西卡: 'char_j', 海霓: 'char_n' }[n] ?? null);
+check('自定义卡池：toOpList 吃对象数组（charId 原样保留）',
   JSON.stringify(toOpList([{ scCharName: '甲', charId: 'char_a' }], fakeId)),
   JSON.stringify([{ scCharName: '甲', charId: 'char_a' }]));
-check('自定义卡池：toOpList 吃 v1 名字数组 / v0 顿号文本，并按名字补 charId',
+check('自定义卡池：toOpList 吃名字数组 / 顿号文本，并按名字补 charId',
   JSON.stringify(toOpList(['甲', '乙'], fakeId)) + toOpList('甲、乙', fakeId).length,
   JSON.stringify([{ scCharName: '甲', charId: 'char_a' }, { scCharName: '乙', charId: 'char_b' }]) + 2);
 check('自定义卡池：toOpList 给查不到的人写 charId = null（不丢条目）',
   JSON.stringify(toOpList(['查无此人'])), JSON.stringify([{ scCharName: '查无此人', charId: null }]));
-check('自定义卡池：时长固定 14 天，结束日 = 开始日 + 14（不设结束日期）',
+check('自定义卡池：时长固定 14 天，结束日 = 开始日 + 14（表单路径）',
   DURATION_DAYS === 14 && endDateOf('2026-10-08') === '2026-10-22', true);
 
-const cbEntry = {
-  uid: 7,
-  server: 'sc',
-  scName: '',
-  type: 'double',
-  startDate: '2026-10-08',
-  star6: [{ scCharName: '玛恩纳', charId: 'char_a' }, { scCharName: '涤火杰西卡', charId: 'char_b' }],
-  star5: [{ scCharName: '海霓', charId: 'char_c' }],
-  shop: [{ scCharName: '玛恩纳', charId: 'char_a' }, { scCharName: '海霓', charId: 'char_c' }],
+/* ---------------- v3：条目形状与卡池数据同构（2026-10-19） ----------------
+   用户要求「字段和数据库里每个卡池的 json 差不多一致」：
+   顶层 = scName / type / startDate / endDate / upOperators /（单六另有 rerunKind、canRerun），
+   只多 server / uid；干员项 = scCharName / charId / rarity / isLimited / isShop。 */
+check('自定义卡池：存储版本 = 3', STORE_VERSION, 3);
+check('自定义卡池：开启类型白名单 = 首发 / 返场 / 复刻', JSON.stringify(RERUN_KINDS),
+  JSON.stringify(['首发', '返场', '复刻']));
+check('canRerun：单六 + 首发 → true；单六 + 复刻 / 返场 → false；非单六 → false',
+  JSON.stringify([
+    computeCanRerun('single', '首发'), computeCanRerun('single', '复刻'),
+    computeCanRerun('single', '返场'), computeCanRerun('double', '首发'),
+  ]), JSON.stringify([true, false, false, false]));
+
+const cbForm = {
+  scName: '', type: 'double', startDate: '2026-10-08', rerunKind: '首发', server: 'sc',
+  star6: ['玛恩纳', '涤火杰西卡'], star5: ['海霓'], shop: ['玛恩纳', '海霓'],
 };
-const cbBanner = entryToBanner(cbEntry);
-check('自定义卡池：id = YYYYMMDD_<type>_custom_<uid>', cbBanner.id, '20261008_double_custom_0007');
-check('自定义卡池：打 custom:true 来源标记', cbBanner.custom, true);
-check('自定义卡池：产出的 banner **只有 scName**（`name` 已随卡池 schema 一起删掉）',
-  cbBanner.scName.startsWith(NAME_PREFIX) && !('name' in cbBanner), true);
-check('自定义卡池：upOperators 与卡池同构（scCharName + charId + rarity + isLimited + isShop）',
-  JSON.stringify(Object.keys(cbBanner.upOperators[0])),
+const cbEntry = formToEntry(cbForm, fakeId);
+check('自定义卡池：条目键序与 DB 一致（scName/type/startDate/endDate/upOperators，尾部 server）',
+  JSON.stringify(Object.keys(cbEntry)),
+  JSON.stringify(['scName', 'type', 'startDate', 'endDate', 'upOperators', 'server']));
+check('自定义卡池：非单六**不写** rerunKind / canRerun（与 DB 的 schema 一致）',
+  !('rerunKind' in cbEntry) && !('canRerun' in cbEntry), true);
+check('自定义卡池：upOperators 与卡池逐键同构',
+  JSON.stringify(Object.keys(cbEntry.upOperators[0])),
   JSON.stringify(['scCharName', 'charId', 'rarity', 'isLimited', 'isShop']));
 check('自定义卡池：进店打对「跨星级」的 isShop（1 六星 + 1 五星）',
-  cbBanner.upOperators.filter((o) => o.isShop).map((o) => `${o.scCharName}/${o.rarity}`).join(','),
+  cbEntry.upOperators.filter((o) => o.isShop).map((o) => `${o.scCharName}/${o.rarity}`).join(','),
   '玛恩纳/6,海霓/5');
 
-/* ---- v1 → v2 迁移 ---- */
+const cbSingleForm = {
+  scName: '', type: 'single', startDate: '2026-10-08', rerunKind: '首发', server: 'sc',
+  star6: ['怒潮凛冬'], star5: [], shop: [],
+};
+const cbSingleEntry = formToEntry(cbSingleForm, fakeId);
+check('自定义卡池：单六条目带 rerunKind，且 canRerun 自动为 true',
+  JSON.stringify([cbSingleEntry.rerunKind, cbSingleEntry.canRerun]), JSON.stringify(['首发', true]));
+check('自定义卡池：单六改选「复刻」→ canRerun 自动变 false',
+  formToEntry({ ...cbSingleForm, rerunKind: '复刻' }, fakeId).canRerun, false);
+
+const cbBanner = entryToBanner({ ...cbEntry, uid: 7 });
+check('自定义卡池：id = YYYYMMDD_<type>_custom_<uid>', cbBanner.id, '20261008_double_custom_0007');
+check('自定义卡池：打 custom:true 来源标记', cbBanner.custom, true);
+check('自定义卡池：产出的 banner 只有 scName（`name` 已随卡池 schema 一起删掉）、且是带前缀的最终名',
+  cbBanner.scName.startsWith(NAME_PREFIX) && !('name' in cbBanner), true);
+check('自定义卡池：banner 的 endDate 用的是条目里那个（不是每次重算）',
+  cbBanner.endDate, '2026-10-22');
+check('自定义卡池：单六条目的 rerunKind / canRerun 也透传到 banner',
+  (() => { const b = entryToBanner({ ...cbSingleEntry, uid: 1 }); return `${b.rerunKind}/${b.canRerun}`; })(),
+  '首发/true');
+
+/* ---- 归一化 `toEntry()`：幂等 + 吃老形态 + 手工 endDate ---- */
+check('自定义卡池：toEntry 幂等（v3 进 v3 出，一字不差）',
+  JSON.stringify(toEntry(cbEntry)), JSON.stringify(cbEntry));
+check('自定义卡池：toEntry 吃 v2 形态（star6/star5/shop → upOperators）',
+  (() => {
+    const e = toEntry({ scName: '旧池', type: 'double', startDate: '2026-10-08', star6: ['玛恩纳'], star5: ['海霓'], shop: ['玛恩纳', '海霓'], server: 'sc' }, fakeId);
+    return `${e.scName}|${e.upOperators.length}|${e.upOperators.filter((o) => o.isShop).length}|${e.endDate}`;
+  })(), '自定义_旧池|2|2|2026-10-22');
+check('自定义卡池：手工改 JSON 时 endDate **以你写的为准**（不强制 14 天）',
+  toEntry({ ...cbEntry, endDate: '2026-11-30' }).endDate, '2026-11-30');
+check('自定义卡池：endDate 缺失 / 格式不对 → 回落到 开始日 + 14',
+  toEntry({ ...cbEntry, endDate: 'oops' }).endDate, '2026-10-22');
+
+/* ---- v1 / v2 → v3 迁移 ---- */
 const v1 = { uid: 3, server: 'sc', name: '旧池', type: 'double', startDate: '2026-10-08', star6: ['甲', '乙'], star5: [], shop: ['甲'] };
-check('自定义卡池：migrateV1Entry 把 name→scName、列表→对象数组并补 charId',
-  JSON.stringify(migrateV1Entry(v1, fakeId)),
-  JSON.stringify({
-    scName: '旧池', type: 'double', startDate: '2026-10-08',
-    star6: [{ scCharName: '甲', charId: 'char_a' }, { scCharName: '乙', charId: 'char_b' }],
-    star5: [], shop: [{ scCharName: '甲', charId: 'char_a' }], server: 'sc', uid: 3,
-  }));
+check('自定义卡池：migrateV1Entry → v3（name→scName 并补前缀、三个列表 → upOperators）',
+  (() => {
+    const e = migrateV1Entry(v1, fakeId);
+    return JSON.stringify([e.scName, e.type, e.startDate, e.endDate, e.upOperators.length,
+      e.upOperators.filter((o) => o.isShop).length, e.server, e.uid]);
+  })(),
+  JSON.stringify(['自定义_旧池', 'double', '2026-10-08', '2026-10-22', 2, 1, 'sc', 3]));
+check('自定义卡池：migrateV2Entry 的**单六**默认填「首发」并据此算 canRerun',
+  (() => {
+    const e = migrateV2Entry({ uid: 4, server: 'sc', scName: '旧单六', type: 'single', startDate: '2026-10-08', star6: [{ scCharName: '甲', charId: 'char_a' }], star5: [], shop: [] }, fakeId);
+    return `${e.scName}|${e.rerunKind}|${e.canRerun}`;
+  })(), '自定义_旧单六|首发|true');
 
 /* ---- 校验：硬校验（拒存）---- */
-const cbOk = {
-  type: 'double', startDate: '2026-10-08',
-  star6: '甲、乙', star5: '丙、丁、戊', shop: '甲、丙',
-};
-check('自定义卡池：正常的 double 通过', validate(cbOk).ok, true);
-check('自定义卡池：限定类型被拒（不在白名单）', validate({ ...cbOk, type: 'limcel' }).ok, false);
-/* ⚠️ 「结束 > 开始」这条校验**已经删了** —— 结束日是派生的，用户根本没机会填错（2026-10-06 改） */
-check('自定义卡池：结束日由开始日派生，用户传什么 endDate 都不影响判定',
-  validate({ ...cbOk, endDate: '2020-01-01' }).ok, true);
+check('自定义卡池：正常的 double 通过', validate(formToEntry(cbForm, fakeId)).ok, true);
+check('自定义卡池：限定类型被拒（不在白名单）',
+  validate(formToEntry({ ...cbForm, type: 'limcel' }, fakeId)).ok, false);
+check('自定义卡池：结束时间早于 / 等于开始时间被拒（手工改 JSON 才可能发生）',
+  JSON.stringify([
+    validate({ ...cbEntry, endDate: '2026-10-01' }).ok,
+    validate({ ...cbEntry, endDate: '2026-10-08' }).ok,
+  ]), JSON.stringify([false, false]));
+check('自定义卡池：结束时间格式不对被拒',
+  validate({ ...cbEntry, endDate: '2026/10/22' }).ok, false);
 check('自定义卡池：double 进店只有 1 个被拒（硬校验：必须 1+1）',
-  validate({ ...cbOk, shop: '甲' }).ok, false);
+  validate(formToEntry({ ...cbForm, shop: ['玛恩纳'] }, fakeId)).ok, false);
 check('自定义卡池：double 进店填了 2 个六星被拒（同上）',
-  validate({ ...cbOk, shop: '甲、乙' }).ok, false);
+  validate(formToEntry({ ...cbForm, shop: ['玛恩纳', '涤火杰西卡'] }, fakeId)).ok, false);
 check('自定义卡池：joint 填了进店被拒（该类进店恒为 0）',
-  validate({ ...cbOk, type: 'joint', shop: '甲' }).ok, false);
-check('自定义卡池：single 五星留空 → 通过（复刻单六允许）',
-  validate({ type: 'single', startDate: '2026-10-08', star6: '甲', star5: '', shop: '' }).ok, true);
+  validate(formToEntry({ ...cbForm, type: 'joint', shop: ['玛恩纳'] }, fakeId)).ok, false);
+check('自定义卡池：single 五星留空 → 通过（复刻单六允许）', validate(cbSingleEntry).ok, true);
+check('自定义卡池：single **缺 rerunKind** 被拒（开启类型必填）',
+  validate({ ...cbSingleEntry, rerunKind: null }).ok, false);
 check('自定义卡池：six 数量不符只**提醒**、不拦（ok 且 warnings 非空）',
-  (() => { const r = validate({ ...cbOk, star6: '甲', shop: '甲、丙' }); return r.ok && r.warnings.length > 0; })(),
-  true);
-/* 三种形态都要能过校验（v2 对象 / v1 名字数组 / v0 顿号文本） */
-check('自定义卡池：v2 对象数组形态也通过校验',
-  validate({ ...cbOk, star6: [{ scCharName: '甲' }, { scCharName: '乙' }], star5: [{ scCharName: '丙' }], shop: [{ scCharName: '甲' }, { scCharName: '丙' }] }).ok,
-  true);
+  (() => {
+    const r = validate(formToEntry({ ...cbForm, star6: ['玛恩纳'] }, fakeId));
+    return r.ok && r.warnings.length > 0;
+  })(), true);
 
 /* ---- 去重（两条判据同时成立才算同一场）---- */
-const cbSingle = [{
-  uid: 1, server: 'sc', scName: '', type: 'single', startDate: '2026-10-08',
-  star6: [{ scCharName: '怒潮凛冬', charId: 'char_x' }], star5: [], shop: [],
-}];
+const cbSingle = [{ ...cbSingleEntry, uid: 1 }];
 /* ⚠️ 「已公布卡池」这一侧的 `upOperators` 也是**新 schema**（scCharName + charId） */
 const existAt = (start, six = '怒潮凛冬') => [{
   id: 'w', scName: '已公布的池', type: 'single', startDate: start, endDate: '2026-12-01',
@@ -317,14 +361,22 @@ check('自定义卡池：六星不一致 → 不算同一场',
   dedupe(cbSingle, existAt('2026-10-09', '别的干员')).kept.length, 1);
 
 /* ---- 导出 / 导入 / 容错 ---- */
-check('自定义卡池：导出的是 v2（version = 2）', JSON.parse(serialize(cbSingle)).version, 2);
+check('自定义卡池：导出的是 v3（version = 3）', JSON.parse(serialize(cbSingle)).version, 3);
 check('自定义卡池：导出 → 导入 往返一致',
   JSON.stringify(parseImport(serialize(cbSingle)).entries), JSON.stringify(cbSingle));
 check('自定义卡池：导入 v1 老文件 → 自动迁移（migrated = true）',
   (() => {
     const r = parseImport(JSON.stringify({ version: 1, banners: [v1] }), { charIdOf: fakeId });
-    return r.ok && r.migrated && r.entries[0].scName === '旧池' && r.entries[0].star6[0].charId === 'char_a';
+    return r.ok && r.migrated && r.entries[0].scName === '自定义_旧池'
+      && r.entries[0].upOperators[0].charId === 'char_a';
   })(), true);
+check('自定义卡池：导入 v2 老文件 → 自动迁移（migrated = true）',
+  (() => {
+    const r = parseImport(JSON.stringify({ version: 2, banners: [{ ...v1, scName: '旧池2' }] }), { charIdOf: fakeId });
+    return r.ok && r.migrated && r.entries[0].upOperators.length === 2;
+  })(), true);
+check('自定义卡池：导入 v3 文件 → 不算迁移（migrated = false）',
+  parseImport(serialize(cbSingle)).migrated, false);
 check('自定义卡池：导入坏 JSON → 报错（不抛异常）', parseImport('{oops').ok, false);
 check('自定义卡池：导入版本不符 → 报错', parseImport('{"version":9,"banners":[]}').ok, false);
 /* ⚠️ SSR（verify-render 走的那条路）里没有 localStorage，必须静默返回空而不是炸 */

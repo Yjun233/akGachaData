@@ -13,7 +13,9 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { TYPE_LABEL } from '../lib/constants.js';
-import { CUSTOM_TYPES, endDateOf, midTag, opNames, toOpList } from '../lib/customBanners.js';
+import {
+  CUSTOM_TYPES, RERUN_KINDS, buildName, computeCanRerun, endDateOf, entryToForm, formToEntry, midTag,
+} from '../lib/customBanners.js';
 import { localToday } from '../lib/date.js';
 import OpPicker from './OpPicker.vue';
 import CustomJsonDialog from './CustomJsonDialog.vue';
@@ -27,9 +29,13 @@ const today = localToday();
 const blank = () => ({
   scName: '',
   /* 默认「常驻标准寻访 + 今天」——最常见的自设场景，用户按需改。
-     ⚠️ **没有 `endDate`**：结束日由开始日派生（用户 2026-10-06 定，见 lib 的 `endDateOf`） */
+     ⚠️ **没有 `endDate`**：结束日由开始日派生（用户 2026-10-06 定，见 lib 的 `endDateOf`）；
+        存进存储时才会写成具体日期（v3 与 DB 同构）。 */
   type: 'double',
   startDate: today,
+  /* 「卡池开启类型」（= DB 的 `rerunKind`，用户 2026-10-19 加）——**只有单六寻访才用得到**，
+     默认「首发」；`canRerun` 由它自动推导（单六 + 首发），不单独给输入框。 */
+  rerunKind: RERUN_KINDS[0],
   star6: [],
   star5: [],
   shop: [],
@@ -46,8 +52,15 @@ const dropped = computed(() => site.myDroppedCustom);
 /** 加载时**已被自动删除**的自设（撞上已公布的池 → 从存储删掉了，这里只作告知） */
 const autoRemoved = computed(() => site.myAutoRemovedCustom);
 
-/** 实时校验（与「保存」用的是同一套规则） */
-const preview = computed(() => site.validateCustom({ ...form }));
+/** 实时校验（与「保存」用的是同一套规则）。
+ *  ⚠️ 校验的入参是**要存进存储的 v3 条目**（不是表单）—— 先过 `formToEntry()`，
+ *     这样「进店星级」「结束时间」这些只有在条目里才齐全的东西才能真校验。 */
+const preview = computed(() => site.validateCustom(toEntry(form)));
+
+/** 表单 → v3 条目（`scName` 补前缀、`endDate` 派生、`rerunKind` / `canRerun` 自动填） */
+function toEntry(f) {
+  return formToEntry({ ...f, server: site.server }, site.charIdOf);
+}
 
 /* 三个候选池：六星 / 五星取该星级的**全部**干员；**进店只给「已选的六星 + 五星」**
    —— 用户 2026-10-06 定：进店只能是前两者里选过的人。 */
@@ -74,12 +87,23 @@ watch(shopPool, (pool) => {
     用户 2026-10-06 定：不设结束日期，恒为开始日 + 14 天（`endDateOf`） */
 const endPreview = computed(() => endDateOf(form.startDate) || '—');
 
+/** 「会不会复刻」的预览 —— 单六 + 首发 才 true；只展示，不给输入框（用户 2026-10-19 定） */
+const canRerunPreview = computed(() => computeCanRerun(form.type, form.rerunKind));
+
+/* ---------------- 模板里那个「卡池开启类型」下拉（2026-10-19） ----------------
+   它就是 DB 的 `rerunKind`，**只有单六寻访才有这个概念** —— DB 里 85 个带它的池全是单六，
+   所以模板上挂了 `v-if="form.type === 'single'"`，别的类型连键都不写进条目。
+   `canRerun` **不给输入框**：单六 + 首发 才为 true，自动推导（见 lib 的 `computeCanRerun`），
+   界面上只在旁边显示一行「canRerun 自动为 true/false」。
+
+   ⚠️ 这段说明**只能放这儿** —— 写进 `<template>` 当 HTML 注释的话，Vue SSR 会**原样输出**，
+      `verify-render` 里「默认（double）时不该出现『卡池开启类型』」那条断言会当场红
+      （2026-10-19 又踩了一次，同 `OpTag` / `StatTable` 那两回）。 */
+
 /** 名字预览（让用户看到「留空会自动叫什么叫」） */
 const namePreview = computed(() => {
   if (form.scName.trim()) return '';
-  return form.type === 'single' && form.star6.length
-    ? `将自动命名为「自定义_${form.star6[0]}池」`
-    : `将自动命名为「自定义_${TYPE_LABEL[form.type] || form.type}${String(form.startDate).slice(5, 10).replace('-', '')}」`;
+  return `将自动命名为「${buildName({ ...form, six: form.star6 })}」`;
 });
 
 function reset() {
@@ -87,21 +111,10 @@ function reset() {
   editingUid.value = null;
 }
 
-/* 表单里三个干员列表是**名字数组**（`OpPicker` 的 v-model 就是名字），
-   存进本地存储时换成 `[{ scCharName, charId }]`（v2 结构，与卡池的 upOperators 同构）。
-   ⚠️ charId 查不到写 null —— 用户可能提前知道解包信息，允许强存（不阻止保存）。 */
-function toEntry(form) {
-  return {
-    scName: form.scName,
-    type: form.type,
-    startDate: form.startDate,
-    star6: toOpList(form.star6, site.charIdOf),
-    star5: toOpList(form.star5, site.charIdOf),
-    shop: toOpList(form.shop, site.charIdOf),
-    server: site.server,
-  };
-}
-
+/**
+ * 表单 → v3 条目，然后交给 store 校验/写盘。
+ * ⚠️ 条目形状与 `banners_<server>.json` 的卡池对象同构（多 `server` / `uid`），见 lib 文件头。
+ */
 function save() {
   if (!preview.value.ok) return;
   const entry = toEntry(form);
@@ -110,18 +123,10 @@ function save() {
   reset();
 }
 
+/** 条目 → 表单（`scName` 会剥掉 `自定义_` 前缀、`upOperators` 拆回三个名字数组） */
 function edit(entry) {
   editingUid.value = entry.uid;
-  Object.assign(form, {
-    scName: entry.scName || '',
-    type: entry.type,
-    startDate: entry.startDate,
-    /* ⚠️ 存储里是 `[{ scCharName, charId }]`，表单用的是名字数组 —— 这里只取名字。
-       `toOpList` 三种形态都吃（v2 对象 / v1 名字数组 / v0 顿号文本），老数据也能编辑。 */
-    star6: opNames(entry.star6),
-    star5: opNames(entry.star5),
-    shop: opNames(entry.shop),
-  });
+  Object.assign(form, blank(), entryToForm(entry));
 }
 
 function remove(uid) {
@@ -161,6 +166,13 @@ const showJson = ref(false);
           <select v-model="form.type">
             <option v-for="t in CUSTOM_TYPES" :key="t" :value="t">{{ TYPE_LABEL[t] }}</option>
           </select>
+        </label>
+        <label v-if="form.type === 'single'">
+          卡池开启类型
+          <select v-model="form.rerunKind">
+            <option v-for="k in RERUN_KINDS" :key="k" :value="k">{{ k }}</option>
+          </select>
+          <span class="cbd-endnote">canRerun 自动为 <b>{{ canRerunPreview }}</b></span>
         </label>
         <label>
           开始时间
@@ -212,9 +224,9 @@ const showJson = ref(false);
       <p v-if="!myList.length" class="cbd-hint">还没有添加过。</p>
       <ul v-else class="cbd-list">
         <li v-for="e in myList" :key="e.uid" :class="{ editing: e.uid === editingUid }">
-          <span class="d">{{ e.startDate }} ~ {{ endDateOf(e.startDate) }}</span>
+          <span class="d">{{ e.startDate }} ~ {{ e.endDate }}</span>
           <span class="n">{{ e.scName || '(自动命名)' }}</span>
-          <span class="t">{{ TYPE_LABEL[e.type] }}</span>
+          <span class="t">{{ TYPE_LABEL[e.type] }}<template v-if="e.rerunKind">·{{ e.rerunKind }}</template></span>
           <button class="cbd-mini" type="button" @click="edit(e)">编辑</button>
           <button class="cbd-mini" type="button" @click="remove(e.uid)">删除</button>
         </li>

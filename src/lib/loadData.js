@@ -198,7 +198,7 @@ export async function loadSiteData() {
         `_syncCustom`，那里只算不删）。
      ⚠️ 自设**不并进 `bannersByServer`** —— 「进不进统计 / 图表」由 store 的全局开关决定，
         这里只按服整理好交给 store 去拼。 */
-  /* ⚠️ 传 `charIdOf`：本地存储里的 v1 老数据要按名字补 `charId` 才能迁到 v2
+  /* ⚠️ 传 `charIdOf`：本地存储里的 v1 / v2 老数据要按名字补 `charId` 才能迁到 v3
      （`loadEntries` 会**自动迁移并写回**，见 `customBanners.js`）。 */
   const charIdOf = (name) => operators[name]?.charId ?? null;
   const stored = loadEntries({ charIdOf });

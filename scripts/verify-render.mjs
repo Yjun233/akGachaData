@@ -1920,25 +1920,41 @@ try {
     app.use(pinia);
     const store = useSiteStore(pinia);
     await store.load();
-    /* ⚠️ 夹具用 **v2 结构**（2026-10-12 起）：卡池名是 `scName`、干员列表是对象数组 */
+    /* ⚠️ 夹具用 **v3 结构**（2026-10-19 起与 DB 同构）：
+       卡池名是带前缀的 `scName`、干员列表是 `upOperators`、另有 `endDate`。 */
     const alive = {
-      uid: 1, server: 'sc', scName: '', type: 'double',
-      startDate: '2099-01-07', star6: [{ scCharName: '甲' }, { scCharName: '乙' }],
-      star5: [{ scCharName: '丙' }], shop: [],
+      uid: 1, server: 'sc', scName: '自定义_常驻标准寻访0107', type: 'double',
+      startDate: '2099-01-07', endDate: '2099-01-21',
+      upOperators: [
+        { scCharName: '甲', charId: null, rarity: 6, isLimited: false, isShop: false },
+        { scCharName: '乙', charId: null, rarity: 6, isLimited: false, isShop: false },
+        { scCharName: '丙', charId: null, rarity: 5, isLimited: false, isShop: false },
+      ],
     };
     const eaten = {
-      uid: 2, server: 'sc', scName: '被吃掉的', type: 'single',
-      startDate: '2099-02-01', star6: [{ scCharName: '丁' }], star5: [], shop: [],
+      uid: 2, server: 'sc', scName: '自定义_被吃掉的', type: 'single',
+      startDate: '2099-02-01', endDate: '2099-02-15', rerunKind: '首发', canRerun: true,
+      upOperators: [
+        { scCharName: '丁', charId: null, rarity: 6, isLimited: false, isShop: false },
+      ],
+    };
+    /* 一条**单六**的已生效条目 —— 用来验列表行会把开启类型都标出来 */
+    const singleAlive = {
+      uid: 4, server: 'sc', scName: '自定义_戊池', type: 'single',
+      startDate: '2099-03-01', endDate: '2099-03-15', rerunKind: '首发', canRerun: true,
+      upOperators: [
+        { scCharName: '戊', charId: null, rarity: 6, isLimited: false, isShop: false },
+      ],
     };
     /* 直接按形状塞进去（不必真去写本地存储）—— 这三个字段正是 loadData / _syncCustom 的产物 */
-    store.customEntries = [alive, eaten];
+    store.customEntries = [alive, singleAlive, eaten];
     store.customByServer = {
       sc: [{
         id: '2099-01-07_double_custom_0001', scName: '自定义_常驻标准寻访0107', type: 'double',
         startDate: '2099-01-07', endDate: '2099-01-21', upOperators: [], custom: true,
       }],
     };
-    store.customActiveUids = { sc: [1] };
+    store.customActiveUids = { sc: [1, 4] };
     store.customDropped = [
       { entry: eaten, banner: {}, hit: { id: 'w', scName: '某个已公布的池' }, gap: 2, server: 'sc' },
     ];
@@ -1951,6 +1967,23 @@ try {
     check('自定义卡池弹窗：六个表单字段都在（**没有结束日期**，它是派生值）',
       ['寻访名字', '寻访类型', '开始时间', '六星', '五星', '进店'].every((k) => html.includes(k)),
       true);
+    /* 「卡池开启类型」= DB 的 `rerunKind`（2026-10-19 加）—— **只在单六寻访下渲染**，
+       默认表单是 `double`，所以这里应该**看不到**它；渲染条件读源码钉住。 */
+    check('自定义卡池弹窗：「卡池开启类型」默认不显示（只有单六寻访才有这个概念）',
+      !html.includes('卡池开启类型'), true);
+    {
+      const dlgSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
+      check('自定义卡池弹窗：开启类型下拉接在 `form.rerunKind` 上，且限定 `form.type === \'single\'`',
+        /v-if="form\.type === 'single'"/.test(dlgSrc)
+        && /v-model="form\.rerunKind"/.test(dlgSrc)
+        && /v-for="k in RERUN_KINDS"/.test(dlgSrc), true);
+      check('自定义卡池弹窗：canRerun **不给输入框**（自动推导，只在旁边写一行结果）',
+        /canRerun 自动为/.test(dlgSrc) && !/v-model="form\.canRerun"/.test(dlgSrc), true);
+    }
+    check('自定义卡池弹窗：列表行用的是条目自带的 `endDate`（不再每次重算开始日+14）',
+      html.includes('2099-01-07 ~ 2099-01-21'), true);
+    check('自定义卡池弹窗：列表行标出开启类型（单六那条显示「·首发」）',
+      html.includes('·首发'), true);
     check('自定义卡池弹窗：三个干员多选（六星 / 五星 / 进店）都在',
       count(html, /class="oppick"/g), 3);
     check('自定义卡池弹窗：结束日期**没有输入框**，只在开始时间下写一行小字',
@@ -1958,8 +1991,8 @@ try {
       true);
     check('自定义卡池弹窗：不带服务器选择（跟随当前浏览的服）',
       html.includes('归属服务器跟随当前浏览的服'), true);
-    check('自定义卡池弹窗：「已生效」只数去重后活下来的（1 个）',
-      html.includes('已生效（1 个）'), true);
+    check('自定义卡池弹窗：「已生效」只数去重后活下来的（2 个）',
+      html.includes('已生效（2 个）'), true);
     check('自定义卡池弹窗：「已忽略」写明撞上了谁 + 差几天',
       html.includes('已忽略') && html.includes('某个已公布的池') && html.includes('相差 2 天'), true);
     check('自定义卡池弹窗：「已自动删除」单列一段（告知「为什么不见了」）+ 提示下次会自动清理',
