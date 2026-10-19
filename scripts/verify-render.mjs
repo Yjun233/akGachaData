@@ -188,7 +188,10 @@ try {
   check('卡池表：铺满可用宽度 + 1225px 兜底下限',
     /width:100%;min-width:1225px/.test(bh.replace(/\s+/g, '')), true);
   check('「进行中」胶囊', count(bh, /pill-live/g) >= 1, true);
-  check('商店兑换标记「兑」', count(bh, /mk-shop/g) >= 1, true);
+  /* 标记的**字**是「店」（2026-10-19 用户要求由「兑」改来）—— 这里钉字面量，
+     因为这是个纯文案改动，光数 `mk-shop` 的个数是抓不到「改了但没生效」的。 */
+  check('商店兑换标记「店」（2026-10-19 由「兑」改来）',
+    count(bh, /mk-shop[^>]*>店</g) >= 1 && !/mk-shop[^>]*>兑</.test(bh), true);
   check('限定标记「限」', count(bh, /mk-lim/g) >= 1, true);
   check('结果提示（命中 N / M）',
     new RegExp(`命中 ${BANNER_N} / ${BANNER_N} 个卡池`).test(bh), true);
@@ -266,7 +269,7 @@ try {
   check('配色常量：商店兑换 = 绿色', SHOP.color, '#15803d');
   check('卡池列表：大类徽章按三色上色（c-std / c-mid / c-lim）',
     ['c-std', 'c-mid', 'c-lim'].every((c) => bh.includes(c)), true);
-  check('卡池列表：「兑」标记走全站绿色变量',
+  check('卡池列表：「店」标记走全站绿色变量',
     /\.mk-shop\{background:var\(--shop-600\)\}/.test(cssAll)
     && /--shop-600:#15803d/.test(cssAll), true);
   check('统计页：分节标题按大类着色（标准 = 黄 / 中坚 = 蓝）',
@@ -894,7 +897,9 @@ try {
   const imgBanners = await renderRoute('/', (s) => s.setAvatarMode('image'));
   /* ⚠️ 头像 `<img>`（`<AvatarImg>` 渲染）的 class 现在是 `av avt-real` —— 按类名 token 匹配 */
   check('图片模式：卡池列表换成头像', count(imgBanners.html, /class="av[ "]/g) > 400, true);
-  check('图片模式：头像带「限」「兑」角标', count(imgBanners.html, /class="corners"/g) > 0, true);
+  check('图片模式：头像带「限」「店」角标（两个标记走同一条路径，字也跟着换）',
+    count(imgBanners.html, /class="corners"/g) > 0
+    && count(imgBanners.html, /mk-shop[^>]*>店</g) >= 1, true);
   check('图片模式：不再渲染名字标签', count(imgBanners.html, /class="tag r/g), 0);
   /* 头像是真的素材了（不是内联占位图 —— 占位图只在素材缺失时兜底）。
      ⚠️ 来源随环境变：**dev 走本地**（`/avatars/...`，方便直接看本地新素材），

@@ -7,7 +7,7 @@
  * 于是**宽屏时表格铺满可用宽度、窄屏时退到 1225px 后横向滚动**。
  * （2026-09-30 起由「固定 1225px 不拉伸」改成这样。）
  *
- * 商店兑换不单独占列，而是在干员名前加「兑」标记（见 OpTag）。
+ * 商店兑换不单独占列，而是在干员名前加「店」标记（见 OpTag；2026-10-19 由「兑」改来）。
  */
 import { computed } from 'vue';
 import { TYPE_LABEL, BANNER_COLS, CAT_CLASS } from '../lib/constants.js';

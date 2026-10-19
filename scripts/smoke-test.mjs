@@ -252,7 +252,8 @@ const checks = [
   ['宽屏：已删去「距结束」字段', wide.banners.includes('距结束'), false],
   ['宽屏：不再有独立商店兑换列', /no-sort ops">商店兑换/.test(wide.banners), false],
   ['宽屏：限 标记出现', count(wide.banners, /mk-lim/g) > 0, true],
-  ['宽屏：兑 标记出现', count(wide.banners, /mk-shop/g) > 0, true],
+  ['宽屏：店 标记出现（2026-10-19 由「兑」改来）',
+    count(wide.banners, /mk-shop[^>]*>店</g) > 0 && !/mk-shop[^>]*>兑</.test(wide.banners), true],
   ['宽屏：每行 7 列', count(wide.banners.split('</tr>')[1] || '', /<td/g), 7],
   ['宽屏：colgroup 固定列宽', count(wide.banners, /<colgroup>/g), 1],
   // ⚠️ 冒烟测的是 prototype/index.html —— **原型已冻结**，卡池表仍是「固定 1225px 不拉伸」的旧排版；

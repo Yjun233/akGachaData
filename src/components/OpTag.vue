@@ -2,9 +2,11 @@
 /**
  * 干员标签，两种展示模式（由左栏底部的「简洁 / 图片」切换）：
  * - 简洁模式：星级配色的名字标签
- * - 图片模式：正方形头像（图片模式下不显示名字，「限」「兑」两个标记挪到右上角）
+ * - 图片模式：正方形头像（图片模式下不显示名字，「限」「店」两个标记挪到右上角）
  *
- * 两种模式都带状态标记：限 = 限定干员（卡池列表展示、统计页排除）；兑 = 商店兑换。
+ * 两种模式都带状态标记：限 = 限定干员（卡池列表展示、统计页排除）；店 = 商店兑换。
+ *   ⚠️ 2026-10-19 把「兑」改成「店」（用户要求）—— 只动**显示的字**，class（`mk-shop`）、
+ *      颜色、`title` 与所有判据仍是「商店兑换」，别跟着改名。
  */
 import { computed } from 'vue';
 import AvatarImg from './AvatarImg.vue';
@@ -36,14 +38,14 @@ const hasBadge = computed(() => props.op.isLimited || props.op.isShop);
     <AvatarImg :op="fullOp" shape="square" img-class="av" />
     <span v-if="mark && hasBadge" class="corners">
       <i v-if="op.isLimited" class="mk mk-lim" title="限定干员（不参与统计）">限</i>
-      <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">兑</i>
+      <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">店</i>
     </span>
   </span>
 
   <span v-else class="tag" :class="'r' + op.rarity">
     <template v-if="mark">
       <i v-if="op.isLimited" class="mk mk-lim" title="限定干员（不参与统计）">限</i>
-      <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">兑</i>
+      <i v-if="op.isShop" class="mk mk-shop" title="商店兑换">店</i>
     </template>{{ name }}
   </span>
 </template>

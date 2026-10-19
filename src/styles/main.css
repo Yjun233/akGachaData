@@ -29,7 +29,7 @@
   --r5-bg:#fdf8e2;
   --ok:#0f8a5f;
   --ok-bg:#e6f6ef;
-  /* 商店兑换：全站统一用绿色（卡池列表的「兑」标记、统计表的「商店兑换」组、
+  /* 商店兑换：全站统一用绿色（卡池列表的「店」标记、统计表的「商店兑换」组、
      UP 历史里进店的小圆点、各处 tooltip） */
   --shop-600:#15803d;
   --shop-100:#e8f7ee;
@@ -641,7 +641,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 }
 .tag.r6{color:var(--r6);background:var(--r6-bg);border-color:#f6d9b0;font-weight:700}
 .tag.r5{color:var(--r5);background:var(--r5-bg);border-color:#ecdfae;font-weight:700}
-/* 干员名左侧的状态标记：限 = 限定干员，兑 = 商店兑换 */
+/* 干员名左侧的状态标记：限 = 限定干员，店 = 商店兑换（2026-10-19 由「兑」改来，只改显示的字） */
 .mk{
   display:inline-block;min-width:15px;height:15px;line-height:15px;text-align:center;
   padding:0 2px;border-radius:4px;font-size:11px;font-style:normal;font-weight:700;
@@ -654,7 +654,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
    头像是**真实素材**（96×96 PNG，来自资源仓库经 jsDelivr CDN，见 src/lib/avatars.js），
    显示尺寸 26px。卡池列表 / 出率提升记录用圆角正方形（CSS 裁出来），
    首次UP间隔与 UP 历史的点是圆形（素材本身是方形半身像，由 zrender 的 clipPath 裁圆）。
-   「限」「兑」两个标记挪到头像右上角（并排挂在头像外侧一点点）。
+   「限」「店」两个标记挪到头像右上角（并排挂在头像外侧一点点）。
 
    ⚠️ 头像由 `<AvatarImg>` 渲染（一个 `.avt-img` 外层 + 里面 `.avt-real` 真图 + `.avt-fallback`
    首字占位层）。**加载中 / 加载失败**时露出底下的占位层 —— 用户 2026-10-09 要求
