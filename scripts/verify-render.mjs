@@ -205,6 +205,70 @@ try {
   check(`左栏元信息：干员 ${OP_N} 位`, new RegExp(`干员 <b>${OP_N}<\\/b> 位`).test(bh), true);
   check('左栏元信息：卡池数', new RegExp(`卡池 <b>${BANNER_N}</b> 个`).test(bh), true);
 
+  /* ---------------- 卡池列表：点名称复制这个卡池的信息（2026-10-19 加） ----------------
+     格式 = **多行「字段：值」**（与表格那七列一一对应），干员名后带「（限）/（店）」标记。
+     ⚠️ 这里**真跑** `bannerText()` 钉文案；点击后的剪贴板行为测不了（SSR 没有 navigator /
+        document），所以那部分只能读源码钉接线（与「复制按钮」那组同样的取舍）。 */
+  {
+    const { bannerText } = await vite.ssrLoadModule('/src/lib/bannerCopy.js');
+    const j = (s) => JSON.stringify(s);
+    const sample = {
+      id: 'x', scName: '测试卡池', type: 'limcel', startDate: '2026-10-01', endDate: '2026-10-15',
+      upOperators: [
+        { scCharName: '甲', rarity: 6, isLimited: true, isShop: true },
+        { scCharName: '乙', rarity: 6 },
+        { scCharName: '丙', rarity: 5, isShop: true },
+      ],
+    };
+    check('点名称复制：多行「字段：值」，字段与表格七列一一对应',
+      j(bannerText(sample, { limcel: '限定寻访' })), j([
+        '卡池名称：测试卡池', '类型：限定寻访·庆典', '大类：限定寻访',
+        '开始日期：2026-10-01', '结束日期：2026-10-15',
+        '出率提升 6★：甲（限·店）、乙', '出率提升 5★：丙（店）',
+      ].join('\n')));
+    check('点名称复制：某星级 UP 为空 → 该行给「—」（与表格的空列一致）',
+      /出率提升 5★：—$/m.test(bannerText(
+        { scName: '甲', type: 'classic', startDate: '2026-01-01', endDate: '2026-01-14' },
+        { classic: '中坚寻访' },
+      )), true);
+    check('点名称复制：缺字段也不炸（空对象照样输出七行）',
+      bannerText(null).split('\n').length, 7);
+  }
+  check('卡池列表：每个卡池名称都是一个可点击的按钮（宽屏表格）',
+    count(bh, /class="bn-name"/g), BANNER_N);
+  check('卡池列表：名称按钮带「点击复制」提示，且默认不渲染「已复制」',
+    /title="点击复制这个卡池的信息"/.test(bh) && count(bh, /class="copy-tip/g), 0);
+  /* 窄屏卡片视图**真跑**一次：切 `useLayout().isCard`，渲完**立刻还原**——
+     后面那些断言全按宽屏表格写，忘了还原会连环变红。 */
+  {
+    const { useLayout } = await vite.ssrLoadModule('/src/composables/useLayout.js');
+    useLayout().isCard.value = true;
+    const cards = await renderRoute('/');
+    useLayout().isCard.value = false;
+    check('卡池列表（窄屏卡片）：名称同样可点击复制（与表格共用同一套交互）',
+      count(cards.html, /class="bcard-name bn-name"/g) === BANNER_N
+      && count(cards.html, /class="grid floating"/g) === 0, true);
+  }
+  /* 接线（读源码）：两个视图都走同一个 composable，剪贴板走带兜底的 copyText */
+  {
+    const btSrc = fs.readFileSync(path.join(ROOT, 'src/components/BannerTable.vue'), 'utf8');
+    const bcSrc = fs.readFileSync(path.join(ROOT, 'src/components/BannerCards.vue'), 'utf8');
+    const ubcSrc = fs.readFileSync(path.join(ROOT, 'src/composables/useBannerCopy.js'), 'utf8');
+    check('点名称复制：两个视图都接到 useBannerCopy（不是各写一套状态机）',
+      /useBannerCopy\(\)/.test(btSrc) && /useBannerCopy\(\)/.test(bcSrc)
+      && /copyBanner\(b, site\.categories\)/.test(btSrc)
+      && /copyBanner\(b, site\.categories\)/.test(bcSrc), true);
+    check('点名称复制：写剪贴板走 copyText（带 execCommand 兜底，局域网 http 也能用）',
+      /import \{ copyText \} from '\.\.\/lib\/clipboard\.js'/.test(ubcSrc)
+      && /copyText\(bannerText\(banner, categories\)\)/.test(ubcSrc), true);
+    check('点名称复制：提示 1.6 秒后自动消失，卸载时清定时器',
+      /const TIP_MS = 1600/.test(ubcSrc) && /onBeforeUnmount\(\(\) => clearTimeout\(timer\)\)/.test(ubcSrc), true);
+    check('点名称复制：按钮与提示都有配套样式（不是裸按钮 / 裸文字）',
+      /\.bn-name\{/.test(cssAll) && /\.bn-name:hover\{/.test(cssAll)
+      && /\.copy-tip\{/.test(cssAll) && /\.copy-tip\.ok\{/.test(cssAll)
+      && /\.copy-tip\.fail\{/.test(cssAll), true);
+  }
+
   /* ---------------- 卡池列表：UP 干员**多选**（名字 / 全拼 / 首字母搜索） ----------------
      分两层守：① 右栏控件结构（搜索框 + 已选 chip）；② 选中后确实按「精确名 OR」筛。
      候选列表本身依赖输入框里的字（SSR 里打不了字），它的匹配 / 排序 / 去重在 verify-data 里测。 */
