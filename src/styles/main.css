@@ -1032,9 +1032,12 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .ybar-r .unit{left:14px}
 
 /* ---------------- 自定义卡池：添加 / 编辑弹窗 ---------------- */
-/* 抽屉太窄放不下这些字段，所以用弹窗（宽度自由）；样式与左栏那几块卡片同色系 */
+/* 抽屉太窄放不下这些字段，所以用弹窗（宽度自由）；样式与左栏那几块卡片同色系。
+   ⚠️ z-index 必须**高于**顶栏（70）与左右抽屉（75）—— 否则弹窗被它们压住：
+      宽屏下弹窗居中、左边缘会钻进左栏底下被切掉一截，顶部也压着顶栏
+      （2026-10-24 实测 1184px 宽时标题第一个字被盖住）。子窗再高一层（见 `.cbd-mask-top`）。 */
 .cbd-mask{
-  position:fixed;inset:0;z-index:60;padding:24px;
+  position:fixed;inset:0;z-index:80;padding:24px;
   background:rgba(15,23,42,.42);
   display:flex;align-items:center;justify-content:center;
 }
@@ -1047,7 +1050,20 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .cbd-hd .h{font-size:14px;font-weight:700;color:var(--blue-700)}
 .cbd-tip{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
 .cbd-tip b{color:var(--blue-700)}
-.cbd-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 10px}
+/* 前四个字段（名字 / 类型 / 开启类型 / 开始时间）要能**挤在同一行**：
+   弹窗内容宽 706px，4 列时每列 (706 − 3×10) / 4 = 169px。
+   ⚠️ 原来用 `auto-fit minmax(200px,1fr)`（只排得下 3 列），选「单六寻访」多出的
+      「卡池开启类型」就被挤到第二行（用户 2026-10-24 报的「多一行出来」）。
+   ⚠️ 也不能简单把 min 调到 160：**空轨道不会折叠**（下面那些 `.cbd-wide` 跨 `1 / -1`，
+      把每条轨道都算作「被占用」）→ 只有 3 个字段时每列仍是 169px、右边留一格空白。
+      所以按**字段数**显式给列数：默认 3 列（229px，与改动前一致），单六时 4 列（169px）。 */
+.cbd-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+.cbd-form.top4{grid-template-columns:repeat(4,minmax(0,1fr))}
+/* 窄屏（手机）回到 2 列 —— 4 列在 375px 上每列只有 ~85px，日期框都放不下。
+   ⚠️ 必须写在本段**之后**：同特异性靠先后取胜。 */
+@media (max-width:600px){
+  .cbd-form,.cbd-form.top4{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 .cbd-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--blue-700)}
 .cbd-form input,.cbd-form select{
   width:100%;border:1px solid var(--blue-200);border-radius:8px;padding:7px 9px;
@@ -1060,8 +1076,35 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 /* 干员多选那三行占满整行（chip 会换行，窄列放不下） */
 .cbd-form label.cbd-wide{grid-column:1 / -1}
 .cbd-form .cbd-sub{margin-left:6px;font-size:11.5px;font-weight:400;color:var(--muted)}
+/* 六星 / 五星那一行的表头：标题 + 候选数。
+   `.cbd-lhd` 用 `gap` 排，得把 `.cbd-sub` 的 `margin-left` 归零，否则叠成 12px。 */
+.cbd-lhd{display:flex;align-items:center;gap:6px}
+.cbd-lhd .cbd-sub{margin-left:0}
+/* 搜索框 + 右侧「清空」按钮：与上面「批量粘贴」那行（输入 + `.btn`）**同构**，
+   按钮**常驻**、没选人时置灰（与「填入」的 `:disabled` 规则一致）。 */
+.cbd-oprow{display:flex;align-items:flex-start;gap:6px}
+.cbd-oprow .oppick{flex:1 1 auto;min-width:0}
+.cbd-oprow .btn{flex:0 0 auto}
+/* 「批量粘贴」那一行：输入框撑满、按钮贴右；下面一行显示填入结果（三种颜色）。
+   ⚠️ 提示文字要显式 `font-weight:400` —— `.cbd-form label` 是 700，否则整段加粗。 */
+.cbd-paste{display:flex;align-items:center;gap:6px}
+.cbd-paste input{flex:1 1 auto;min-width:0}
+.cbd-paste .btn{flex:0 0 auto;white-space:nowrap}
+.cbd-paste-msg{font-size:11.5px;font-weight:400;line-height:1.6;color:var(--blue-700)}
+.cbd-paste-msg.warn{color:var(--warn)}
+.cbd-paste-msg.err{color:var(--danger)}
 /* 干员多选（OpPicker）—— 内部复用右栏那套 .opchips / .opsug 样式 */
 .oppick{display:flex;flex-direction:column;gap:6px}
+/* 禁用态（自定义卡池里「该类没有进店」时）—— 灰掉、不可编辑，**保持占位**不隐藏：
+   位置固定不跳动，也让人看得出「这里本来有个框、只是这类卡池用不上」（2026-10-24）。 */
+.oppick.is-disabled input,
+.oppick.is-disabled input:disabled{
+  background:#f4f6fa;color:var(--muted);cursor:not-allowed;
+}
+.oppick.is-disabled .opchip,
+.oppick.is-disabled .opchip:hover{
+  background:#f4f6fa;border-color:var(--border);color:var(--muted);cursor:not-allowed;
+}
 .cbd-hint{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
 /* 提示框：**左黄（提醒）右红（错误）并列**；只有一类时占满整行 */
 .cbd-msgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -1108,8 +1151,9 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 }
 .cbd-json:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
 /* JSON 编辑是**另一个窗**（2026-10-06 用户定：编辑框别挤在主弹窗里）——
-   同一个 `.cbd-mask` 只是层级更高 → 叠在主弹窗上面；窗更窄、编辑框更高（独立窗不缺地方）。 */
-.cbd-mask-top{z-index:70}
+   同一个 `.cbd-mask` 只是层级更高（90 > 主弹窗 80）→ 叠在主弹窗上面；
+   窗更窄、编辑框更高（独立窗不缺地方）。 */
+.cbd-mask-top{z-index:90}
 .cbd-box-json{width:min(620px,100%)}
 .cbd-json-big{min-height:320px;max-height:56vh}
 .cbd-iorow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

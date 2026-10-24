@@ -115,6 +115,15 @@ export const midTag = (classicDate, today) =>
  */
 const SHOP_COUNT = { double: 2, classic: 2, joint: 0, stdfes: 0, single: 0, clafes: 0 };
 
+/**
+ * 该类型的卡池**有没有「进店」（商店兑换）** —— 口径与上面的硬校验同源（`SHOP_COUNT > 0`）。
+ * 只有**两种常驻寻访**（常驻标准 `double` / 常驻中坚 `classic`）才有进店；
+ * 其余四类恒为 0 → 弹窗里那个框**灰掉、不可编辑**（2026-10-24 用户定：先做成隐藏，当天改灰显）。
+ * ⚠️ 别在 UI 里另写一份 `type === 'double' || type === 'classic'` —— 以后加类型会漏。
+ * @param {string} type
+ */
+export const hasShop = (type) => (SHOP_COUNT[type] ?? 0) > 0;
+
 /** 常见构成 `[六星数, 五星数]` —— **只用于「提醒」，不做硬校验**（见 validate 的说明） */
 const COMPOSE_HINT = {
   double: [2, 3], joint: [4, 6], stdfes: [6, 6], single: [1, 2], classic: [2, 3], clafes: [12, 24],
@@ -125,16 +134,74 @@ const COMPOSE_HINT = {
 const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
 
 /**
+ * 名字数组**追加并去重**（保持原顺序，新的接在后面）。
+ *
+ * 用途：弹窗「批量粘贴」按星级分流后**追加**进六星 / 五星两栏（用户 2026-10-24 定：
+ * 五星和六星要分开粘，所以不能替换 —— 第一次粘六星、第二次粘五星，两次都得留住）。
+ * 抽成纯函数是为了能直接测顺序与去重（组件那层 SSR 测不到交互）。
+ * @param {string[]} existing 现有选择
+ * @param {string[]} incoming 新来的（`distributeOps` 已去过重）
+ * @returns {string[]}
+ */
+export function mergeOps(existing, incoming) {
+  const out = [...existing];
+  const seen = new Set(existing);
+  for (const n of incoming) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+/**
  * 干员名列表 → 数组。
  * ⚠️ **两种都吃**：新数据是**数组**（弹窗里用多选框），老数据是**顿号分隔的文本**
  *    （2026-10-06 之前的存法）—— 老数据不能因为改了 UI 就废掉。
+ * ⚠️ 分隔符包含 **`/` `／` `|` `｜`**（2026-10-24 加，给弹窗的「批量粘贴」用：
+ *    用户给的格式是 `老鲤/艾丽妮/凯尔希`，也常写成 `林 / 赤刃明霄陈` 这种带空格的）。
+ *    安全前提：**干员表里没有任何 `scName` 含空白或 `/ |`**（实测 232 位，见当日日志）→
+ *    按空白切不会切断名字；`·`（凯尔希·思衡托 / 德·托莱多 / 维娜·维多利亚）不在分隔符里。
  */
 export const splitList = (v) => {
   const arr = Array.isArray(v)
     ? v
-    : String(v ?? '').split(/[、,，;；\s]+/);
+    : String(v ?? '').split(/[、,，;；/／|｜\s]+/);
   return arr.map((s) => String(s).trim()).filter(Boolean);
 };
+
+/**
+ * 「批量粘贴」的干员名 → 按星级分流（2026-10-24 用户要求）。
+ *
+ * 输入是一整串名字（`老鲤/艾丽妮/凯尔希` 或 `林 / 赤刃明霄陈 / 可露希尔`），
+ * 分隔符与空白处理全交给 `splitList`，这里只做**按星级归类 + 去重 + 报未识别**。
+ *
+ * 口径（用户 2026-10-24 拍板）：
+ * - **按干员表里的星级自动分流**（六星 → `six`、五星 → `five`），不额外猜；
+ * - **查不到的名字跳过**，进 `unknown` 让界面列出来（不错字就一个字都填不了太苛刻）；
+ * - 同一串里**重复的名字只算一次**，返回顺序 = 粘贴顺序。
+ *
+ * @param {string|string[]} text
+ * @param {(name:string)=>number|null} rarityOf 名字 → 星级（查不到给 null）
+ * @returns {{six:string[], five:string[], unknown:string[]}}
+ */
+export function distributeOps(text, rarityOf = () => null) {
+  const six = [];
+  const five = [];
+  const unknown = [];
+  const seen = new Set();
+  for (const n of splitList(text)) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    const r = rarityOf(n);
+    if (r === 6) six.push(n);
+    else if (r === 5) five.push(n);
+    /* 查不到 → unknown；⚠️ 万一将来出现 4★ 等其它星级也按「放不进去」处理，
+       别默默塞进五星（那会让数据错得很难查）。 */
+    else unknown.push(n);
+  }
+  return { six, five, unknown };
+}
 
 /**
  * 干员列表归一化 → `[{ scCharName, charId }]`（**表单层**用，v3 的 `upOperators` 由它加工而来）。
@@ -365,7 +432,10 @@ export const nextUid = (list) =>
  */
 export function formToEntry(form, charIdOf = () => null) {
   const type = form.type;
-  const shopSet = new Set(opNames(form.shop));
+  /* ⚠️ **没有进店的类型直接忽略 `form.shop`**（2026-10-24）：弹窗里这个框在其余四类是
+     **灰掉不可编辑**的，但用户可能「先选了进店、再把类型切成单六」→ 残留的名字会被打成 `isShop`，
+     撞上「该类恒为 0」的硬校验，而框已经灰掉、界面上无从取消。这里静默丢掉即可。 */
+  const shopSet = new Set(hasShop(type) ? opNames(form.shop) : []);
   const mk = (rarity, list) => toOpList(list, charIdOf).map((o) => ({
     scCharName: o.scCharName,
     charId: o.charId,

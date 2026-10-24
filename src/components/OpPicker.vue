@@ -13,6 +13,8 @@
  * ⚠️ **候选列表是浮层**（`.opbox` 里绝对定位）：它出现 / 消失**不会改变容器高度**
  *    （2026-10-06 用户要求 —— 以前打字时整个弹窗会被撑高、选完又缩回去，很晃）。
  *    下方空间不够时改成**向上弹**（`dropUp`），免得被父级的 `overflow` 裁掉。
+ * ⚠️ **`disabled`**（2026-10-24）：整块**灰掉、不可编辑** —— 自定义卡池里「该类没有进店」时用它。
+ *    灰显而不是隐藏：位置固定不跳动，用户也能看出「这里本来有个框，只是这类卡池用不上」。
  */
 import { computed, nextTick, ref } from 'vue';
 import { ensurePinyin, searchOperators } from '../lib/opSearch.js';
@@ -27,6 +29,8 @@ const props = defineProps({
   emptyHint: { type: String, default: '' },
   /** 可选：`(name) => '标' | '中' | ''` —— 名字前面那个一字的标记（空串则不画） */
   tagOf: { type: Function, default: null },
+  /** 禁用：灰掉、不可编辑（不加载拼音、不出候选、不能加 / 删） */
+  disabled: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -42,6 +46,7 @@ const dropUp = ref(false);
 const SUG_MAX = 200; // ≈ `.opsug` 的 max-height + 一点余量
 
 function focusIn() {
+  if (props.disabled) return;
   askPinyin();
   nextTick(() => {
     const el = boxEl.value;
@@ -58,27 +63,29 @@ function askPinyin() {
 }
 
 const candidates = computed(() => {
-  if (!pinyinReady.value) return [];
+  if (props.disabled || !pinyinReady.value) return [];
   return searchOperators(props.pool, q.value, { exclude: props.modelValue });
 });
 
 function pick(n) {
+  if (props.disabled) return;
   if (!props.modelValue.includes(n)) emit('update:modelValue', [...props.modelValue, n]);
   q.value = '';
 }
 
 function drop(n) {
+  if (props.disabled) return;
   emit('update:modelValue', props.modelValue.filter((x) => x !== n));
 }
 </script>
 
 <template>
-  <div class="oppick">
+  <div class="oppick" :class="{ 'is-disabled': disabled }">
     <!-- ⚠️ 输入框与候选列表包在 `.opbox` 里：`.opsug` 相对它**绝对定位** →
          候选出现 / 消失**不占流**、容器高度恒定（用户 2026-10-06 要求） -->
     <div ref="boxEl" class="opbox">
       <input
-        v-model="q" type="text" autocomplete="off" :placeholder="placeholder"
+        v-model="q" type="text" autocomplete="off" :placeholder="placeholder" :disabled="disabled"
         @focus="focusIn"
         @keyup.enter="candidates.length && pick(candidates[0])"
         @keyup.esc="q = ''"
@@ -94,9 +101,9 @@ function drop(n) {
     <!-- 已选：点一下移除 -->
     <div v-if="modelValue.length" class="opchips">
       <button
-        v-for="n in modelValue" :key="n" class="opchip" type="button"
-        :title="`移除 ${n}`" @click="drop(n)"
-      ><em v-if="tag(n)" :class="tag(n) === '中' ? 'optag mid' : 'optag std'">{{ tag(n) }}</em>{{ n }}<i>×</i></button>
+        v-for="n in modelValue" :key="n" class="opchip" type="button" :disabled="disabled"
+        :title="disabled ? n : `移除 ${n}`" @click="drop(n)"
+      ><em v-if="tag(n)" :class="tag(n) === '中' ? 'optag mid' : 'optag std'">{{ tag(n) }}</em>{{ n }}<i v-if="!disabled">×</i></button>
     </div>
   </div>
 </template>

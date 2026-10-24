@@ -21,7 +21,8 @@ import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 import {
   CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, RERUN_KINDS, STORE_VERSION,
-  buildName, computeCanRerun, dedupe, endDateOf, entryToBanner, formToEntry,
+  buildName, computeCanRerun, dedupe, distributeOps, endDateOf, entryToBanner, formToEntry, hasShop,
+  mergeOps,
   loadEntries, migrateV1Entry, migrateV2Entry, midTag, opNames, parseImport, serialize,
   splitList, stripPrefix, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
@@ -336,8 +337,16 @@ check('自定义卡池：double 进店只有 1 个被拒（硬校验：必须 1+
   validate(formToEntry({ ...cbForm, shop: ['玛恩纳'] }, fakeId)).ok, false);
 check('自定义卡池：double 进店填了 2 个六星被拒（同上）',
   validate(formToEntry({ ...cbForm, shop: ['玛恩纳', '涤火杰西卡'] }, fakeId)).ok, false);
-check('自定义卡池：joint 填了进店被拒（该类进店恒为 0）',
-  validate(formToEntry({ ...cbForm, type: 'joint', shop: ['玛恩纳'] }, fakeId)).ok, false);
+/* ⚠️ 2026-10-24 起**走表单造不出这种条目**了：弹窗对没有进店的类型不渲染那个框，
+   `formToEntry()` 还会把残留的 `form.shop` 静默丢掉 → 这里改成**直接手搓条目**，
+   模拟「导入 / 手改 JSON」写进来的脏数据，硬校验必须照样拦住。 */
+check('自定义卡池：joint 却带进店的条目被拒（模拟手改 JSON，该类进店恒为 0）',
+  validate({
+    scName: '自定义_x', type: 'joint', startDate: '2026-10-08', endDate: '2026-10-22',
+    upOperators: [
+      { scCharName: '玛恩纳', charId: 'char_a', rarity: 6, isLimited: false, isShop: true },
+    ],
+  }).ok, false);
 check('自定义卡池：single 五星留空 → 通过（复刻单六允许）', validate(cbSingleEntry).ok, true);
 check('自定义卡池：single **缺 rerunKind** 被拒（开启类型必填）',
   validate({ ...cbSingleEntry, rerunKind: null }).ok, false);
@@ -346,6 +355,83 @@ check('自定义卡池：six 数量不符只**提醒**、不拦（ok 且 warning
     const r = validate(formToEntry({ ...cbForm, star6: ['玛恩纳'] }, fakeId));
     return r.ok && r.warnings.length > 0;
   })(), true);
+
+/* ---- 进店只属于「两种常驻寻访」（2026-10-24）----
+   弹窗里这一整块只在 hasShop() 为真时才渲染；判据与硬校验同源（SHOP_COUNT > 0），
+   UI 别另写一份类型列表，否则以后加类型会漏。 */
+check('自定义卡池：hasShop 只对两种常驻寻访为真（double / classic）',
+  ['double', 'classic'].every((t) => hasShop(t))
+  && ['joint', 'stdfes', 'single', 'clafes'].every((t) => !hasShop(t)), true);
+/* ⚠️ 先选了进店、再把类型切成「没有进店」的那类 → 表单里残留的名字**不能**进条目，
+   否则会撞上「该类恒为 0」的硬校验，而框已经藏起来、界面上无从取消（保存按钮会一直灰）。 */
+check('自定义卡池：formToEntry 对没有进店的类型**静默丢掉** form.shop 残留',
+  formToEntry({
+    type: 'single', startDate: '2026-10-08', rerunKind: '首发',
+    scName: 'x', star6: ['甲'], star5: [], shop: ['甲'],
+  }).upOperators.every((o) => o.isShop === false), true);
+check('自定义卡池：有进店的类型照旧打 isShop',
+  formToEntry({
+    type: 'double', startDate: '2026-10-08',
+    scName: 'x', star6: ['甲'], star5: ['丙'], shop: ['甲'],
+  }).upOperators.filter((o) => o.isShop).map((o) => o.scCharName).join(','), '甲');
+
+
+/* ---- 批量粘贴：名字串 → 按星级分流（2026-10-24）----
+   弹窗里那一行「批量粘贴」用它。分隔符与空白处理在 splitList，这里验归类 + 去重 + 未识别。
+   ⚠️ 真实干员表里**没有** `scName` 含空白或 `/ |`（232 位实测）→ 按空白切不会切断名字，
+      但 `·`（凯尔希·思衡托 / 德·托莱多）绝不能进分隔符集合。 */
+const RARITY = {
+  老鲤: 6, 艾丽妮: 6, 凯尔希: 6, 水月: 6, 林: 6, 赤刃明霄陈: 6, 可露希尔: 6, 焰影苇草: 6,
+  '德·托莱多': 5, 海霓: 5,
+};
+const rarityOf = (n) => RARITY[n] ?? null;
+const dist = (t) => distributeOps(t, rarityOf);
+
+check('批量粘贴：斜杠分隔的一串六星 → 全进 six', (() => {
+  const r = dist('老鲤/艾丽妮/凯尔希/水月');
+  return `${r.six.join(',')}|${r.five.length}|${r.unknown.length}`;
+})(), '老鲤,艾丽妮,凯尔希,水月|0|0');
+/* ⚠️ 用户的真实写法带空格：`林 / 赤刃明霄陈 / 可露希尔 / 焰影苇草` —— 按空白 / 斜杠切开后要 trim */
+check('批量粘贴：斜杠两侧带空格也认（`林 / 赤刃明霄陈 / 可露希尔 / 焰影苇草`）',
+  dist('林 / 赤刃明霄陈 / 可露希尔 / 焰影苇草').six.join(','), '林,赤刃明霄陈,可露希尔,焰影苇草');
+check('批量粘贴：六星五星混着粘 → 按干员表星级各归各的',
+  (() => { const r = dist('凯尔希/德·托莱多/海霓'); return `${r.six.join(',')}|${r.five.join(',')}`; })(),
+  '凯尔希|德·托莱多,海霓');
+check('批量粘贴：顿号 / 逗号 / 分号 / 空白 都算分隔符',
+  dist('凯尔希，海霓；林 水月').six.length + dist('凯尔希，海霓；林 水月').five.length, 4);
+check('批量粘贴：认不出的名字跳过并列进 unknown（不整条否决）',
+  (() => { const r = dist('凯尔希/兜帽人/德·托莱多'); return `${r.six.join(',')}|${r.five.join(',')}|${r.unknown.join(',')}`; })(),
+  '凯尔希|德·托莱多|兜帽人');
+check('批量粘贴：同一串里重复的名字只算一次（保持粘贴顺序）',
+  dist('海霓、凯尔希/凯尔希 海霓').six.join(',') + '|' + dist('海霓、凯尔希/凯尔希 海霓').five.join(','),
+  '凯尔希|海霓');
+check('批量粘贴：非五六星（表里没有的星级）也按「放不进去」进 unknown',
+  distributeOps('某人', () => 4).unknown.length, 1);
+check('批量粘贴：空串 / null 全空、不抛',
+  (() => { const a = dist(''); const b = dist(null); const c = dist('   '); return [a, b, c].every((r) => !r.six.length && !r.five.length && !r.unknown.length); })(), true);
+check('批量粘贴：splitList 已把 `/` 纳成分隔符（老数据兼容不受影响）',
+  splitList('A/B').length === 2 && splitList('林 / 陈').length === 2 && splitList('甲、乙').length === 2, true);
+/* ⚠️ 追加而不是替换（用户 2026-10-24：「五星和六星需要分开粘贴」）—— 先粘六星、再粘五星，
+   两次都得留住；同名只算一次。顺序 = 原有的在前、新来的接在后面。 */
+check('批量粘贴：mergeOps 追加到已有选择之后（原有顺序不动、新名字接在后面）',
+  mergeOps(['甲', '乙'], ['丙', '丁']).join(','), '甲,乙,丙,丁');
+check('批量粘贴：mergeOps 按名字去重（重复的不再加一遍）',
+  mergeOps(['甲', '乙'], ['乙', '丙', '甲']).join(','), '甲,乙,丙');
+check('批量粘贴：mergeOps 不修改入参（纯函数 —— 组件里是整份替换 form.star6）', (() => {
+  const a = ['甲'];
+  const b = ['乙'];
+  mergeOps(a, b);
+  return a.length === 1 && b.length === 1;
+})(), true);
+check('批量粘贴：两栏各自追加 → 先六星后五星，互不影响', (() => {
+  let six = [];
+  let five = [];
+  const r1 = dist('凯尔希/老鲤');
+  six = mergeOps(six, r1.six); five = mergeOps(five, r1.five);
+  const r2 = dist('德·托莱多/海霓');
+  six = mergeOps(six, r2.six); five = mergeOps(five, r2.five);
+  return `${six.join(',')}|${five.join(',')}`;
+})(), '凯尔希,老鲤|德·托莱多,海霓');
 
 /* ---- 去重（两条判据同时成立才算同一场）---- */
 const cbSingle = [{ ...cbSingleEntry, uid: 1 }];
@@ -796,8 +882,10 @@ const fupShop = computeFirstUp({ banners, operatorByName: operators, relDateOf }
 const fupRot = computeFirstUp({ banners, operatorByName: operators, relDateOf, mode: 'rotation' });
 
 check('默认统计模式 = 首次进店', fupShop.mode, 'shop');
-check('有首次进店记录的干员数', fupShop.rows.length, 160);
-check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '69/91');
+/* ⚠️ 这两个数**随新卡池增长**（每来一期带进店的常驻标准寻访就会 +2 位）。
+   2026-10-23 快照：常驻标准寻访196（10-22，进店 妮芙 / 波卜）→ 160/69/91 → 162/70/92。 */
+check('有首次进店记录的干员数', fupShop.rows.length, 162);
+check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '70/92');
 
 /* 同上：首次UP间隔的日期框默认拿 bounds 当值，必须与「不限」等价（两种统计模式各验一遍） */
 for (const [label, base] of [['进店', fupShop], ['轮换', fupRot]]) {
@@ -1038,8 +1126,9 @@ const upStd = computeUpHistory({
 });
 check('UP 历史：按类型筛选后只含该类型',
   upStd.all.every((r) => r.marks.every((m) => m.type === 'double')), true);
+/* 同上：随新卡池增长（2026-10-23 快照新增 常驻标准寻访196 → 187/975 → 188/980） */
 check('UP 历史：只选 double 的干员 / 标记数',
-  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '187/975');
+  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '188/980');
 
 const upSort = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, sort: 'lastUp-desc',

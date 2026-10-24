@@ -1986,6 +1986,51 @@ try {
       html.includes('·首发'), true);
     check('自定义卡池弹窗：三个干员多选（六星 / 五星 / 进店）都在',
       count(html, /class="oppick"/g), 3);
+    /* 「进店」在**没有进店的类型**下**灰掉不可编辑**（2026-10-24 由「隐藏」改来，用户要求）。
+       SSR 无法交互切换类型 → 把「何时灰、怎么灰」钉在源码上。
+       ⚠️ 判据必须是 lib 的 `hasShop()`，模板里**不许**手写 `type === 'double' || …`。 */
+    {
+      const dlgSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
+      check('自定义卡池弹窗：「进店」在非两种常驻寻访时**灰掉不可编辑**（不是隐藏；判据走 hasShop）',
+        /:disabled="!hasShop\(form\.type\)"/.test(dlgSrc)
+        && !/v-if="hasShop\(form\.type\)"/.test(dlgSrc)
+        && /hasShop,/.test(dlgSrc)
+        && !/form\.type === 'double'\s*\|\|/.test(dlgSrc), true);
+      check('自定义卡池弹窗：切到「没有进店」的类型时清空 form.shop（灰掉的 chip 不能留在那儿）',
+        /watch\(\(\) => form\.type[\s\S]{0,160}form\.shop = \[\]/.test(dlgSrc), true);
+      const pickerSrc = fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8');
+      check('干员多选：支持 `disabled`（输入框 disabled / 不加不删 / 不加载拼音 / 灰显样式）',
+        /disabled: \{ type: Boolean, default: false \}/.test(pickerSrc)
+        && /:disabled="disabled"/.test(pickerSrc)
+        && /if \(props\.disabled\) return;/.test(pickerSrc)
+        && /\.oppick\.is-disabled input/.test(cssAll), true);
+      /* 「批量粘贴」（2026-10-24）：粘一串名字 → 按星级分到六星 / 五星两栏，**追加**进现有选择。
+         归类与去重的口径全在 lib 的 `distributeOps()` / `mergeOps()`（verify-data 里逐条断言），
+         这里只钉接线。 */
+      check('自定义卡池弹窗：有「批量粘贴」输入框 + 填入按钮，并对空输入置灰',
+        /批量粘贴/.test(html) && /placeholder="例如 老鲤/.test(html)
+        && /:disabled="!pasteText\.trim\(\)"/.test(dlgSrc), true);
+      check('自定义卡池弹窗：粘贴走 lib 的 distributeOps + mergeOps（**追加**去重，不动进店）',
+        /distributeOps\(txt, \(n\) => site\.operators\[n\]\?\.rarity \?\? null\)/.test(dlgSrc)
+        && /form\.star6 = mergeOps\(form\.star6, six\);[\s\S]{0,90}form\.star5 = mergeOps\(form\.star5, five\);/.test(dlgSrc)
+        && (dlgSrc.match(/form\.shop = \[\]/g) || []).length === 1
+        && /未识别/.test(dlgSrc), true);
+      check('自定义卡池弹窗：六星 / 五星的「清空」按钮**常驻**、用 `.btn`（与「填入」同款），空时置灰',
+        /class="btn" type="button" :disabled="!form\.star6\.length"[\s\S]{0,150}clearOps\('star6'\)/.test(dlgSrc)
+        && /class="btn" type="button" :disabled="!form\.star5\.length"[\s\S]{0,150}clearOps\('star5'\)/.test(dlgSrc)
+        && !/cbd-clear/.test(dlgSrc) && !/\.cbd-clear\{/.test(cssAll)
+        && /\.cbd-oprow\{/.test(cssAll), true);
+      /* 名字那一行要能容下 4 个字段（名字 / 类型 / 开启类型 / 开始时间）：
+         弹窗内容宽 706px，4 列时每列 (706 − 3×10) / 4 = 169px。
+         ⚠️ 原来是 `auto-fit minmax(200px,1fr)`（只排 3 列），选单六时第 4 个字段被挤到
+            第二行（用户 2026-10-24 报的）；也不能只把 min 调小 —— `.cbd-wide` 跨 `1 / -1`
+            会让空轨道不折叠、3 个字段时右边留白。所以按字段数显式给列数（`.top4`）。 */
+      check('自定义卡池弹窗：名字那一行 3 列 / 单六 4 列（.cbd-form/.top4），窄屏回到 2 列',
+        /\.cbd-form\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/.test(cssAll)
+        && /\.cbd-form\.top4\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}/.test(cssAll)
+        && /\.cbd-form,\.cbd-form\.top4\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/.test(cssAll)
+        && /:class="\{ top4: form\.type === 'single' \}"/.test(dlgSrc), true);
+    }
     check('自定义卡池弹窗：结束日期**没有输入框**，只在开始时间下写一行小字',
       count(html, /readonly/g) === 0 && /结束时间将设为/.test(html),
       true);
@@ -2051,8 +2096,15 @@ try {
       && html.includes('应用') && html.includes('放弃修改') && html.includes('关闭'), true);
     check('JSON 子窗：编辑框里预填了当前自设（`serialize` 的 `{ version, exportedAt, banners }`）',
       html.includes('version') && html.includes('exportedAt') && html.includes('banners'), true);
-    check('JSON 子窗：叠在主弹窗**之上**（`.cbd-mask-top`，z-index 70 > 主弹窗 60）',
+    check('JSON 子窗：叠在主弹窗**之上**（`.cbd-mask-top`，z-index 90 > 主弹窗 80）',
       /class="cbd-mask cbd-mask-top"/.test(html), true);
+    /* ⚠️ 弹窗的遮罩必须压在**顶栏（70）与左右抽屉（75）之上** —— 否则宽屏下弹窗居中、
+       左边会钻进左栏底下被切掉、顶部压着顶栏（2026-10-24 实测 1184px 宽时标题第一个字被盖住）。 */
+    const zOf = (sel) => Number(
+      (cssAll.match(new RegExp(`${sel.replace(/\./g, '\\.')}\\{[^}]*z-index:(\\d+)`)) || [])[1],
+    );
+    check('自定义卡池弹窗：遮罩层级高过顶栏（70）/ 抽屉（75），JSON 子窗再高一层',
+      zOf('.cbd-mask') > 75 && zOf('.cbd-mask-top') > zOf('.cbd-mask'), true);
     check('JSON 子窗：讲清了「应用」是**整体覆盖**（不是追加）',
       /整体覆盖/.test(html), true);
   }
