@@ -42,6 +42,30 @@ export function latest(arr) {
 }
 
 /**
+ * **某几个大类里最晚的卡池结束日期**（`YYYY-MM-DD`，一个都没有则 `null`）。
+ *
+ * 用途：统计页右栏的两个快捷参考日 ——「**标准最晚**」= 标准寻访 + 限定寻访、
+ * 「**中坚最晚**」= 中坚寻访（2026-10-29 用户加）。
+ *
+ * ⚠️ 传进来的 `banners` 必须是**当前统计口径**的那一份（store 的 `banners`：
+ *    `customInStats` 关 = 只有已公布；开 = 加上自定义）—— 用户特意强调：
+ *    **自定义卡池计不计入统计会改变这个日期**。
+ * ⚠️ **不按参考日期过滤**（不看 `startDate`）：要的就是「这堆池子里最晚的那个结束日」，
+ *    否则结果会随当前参考日自己漂移、点一下还可能跳回去。
+ * ⚠️ 大类查不到（`categories[type]` 为空）的卡池直接略过，别把它当「标准寻访」。
+ *
+ * @param {Array<object>} banners 卡池（含 `type` / `endDate`）
+ * @param {Record<string,string>} categories type → 大类（`BANNER_CATEGORIES`）
+ * @param {string[]} wanted 要统计的大类名
+ * @returns {string|null}
+ */
+export function latestEndDate(banners, categories, wanted) {
+  const set = new Set(wanted || []);
+  const hit = latest((banners || []).filter((b) => b?.endDate && set.has(categories?.[b.type])));
+  return hit ? hit.endDate : null;
+}
+
+/**
  * 「最后一次出现」的信息：结束时间 + 是否进行中 + 距今天数。
  * 进行中时 days 为 null（界面显示「进行中」）。
  *

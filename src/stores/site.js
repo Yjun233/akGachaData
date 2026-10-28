@@ -24,7 +24,7 @@ import { BANNER_CATEGORIES } from '../lib/constants.js';
 import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
-import { computeStats, sortStatRows } from '../lib/stats.js';
+import { computeStats, latestEndDate, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
@@ -273,6 +273,20 @@ export const useSiteStore = defineStore('site', {
     /** 统计行数组（含 everMid / releaseDate） */
     statRows(s) {
       return Object.values(this.statData.map);
+    },
+
+    /**
+     * 右栏「**标准最晚**」快捷参考日 —— 标准寻访 + 限定寻访里**最晚的卡池结束日**（2026-10-29）。
+     * ⚠️ 走 `this.banners`（当前统计口径）→ **自定义池计不计入统计会改变这个日期**（用户特意强调）。
+     * ⚠️ 不看参考日期（不是「可见卡池」的最晚），见 `lib/stats.js` 的 `latestEndDate()`。
+     */
+    stdLatestDate(s) {
+      return latestEndDate(this.banners, s.categories, ['标准寻访', '限定寻访']);
+    },
+
+    /** 右栏「**中坚最晚**」—— 中坚寻访大类里最晚的卡池结束日（口径同上，随 `customInStats` 变） */
+    midLatestDate(s) {
+      return latestEndDate(this.banners, s.categories, ['中坚寻访']);
     },
 
     /** 首次UP间隔页：全部干员按选定口径排序后的序列（含六星 / 五星分组） */

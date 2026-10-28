@@ -224,6 +224,10 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .btn.primary:hover{background:var(--blue-700)}
 .btn-row{display:flex;gap:6px}
 .btn-row .btn{flex:1 1 0}
+/* 统计页「今天 / 标准最晚 / 中坚最晚」挤在一行：抽屉内容宽只有 ~221px，
+   三个等分后每个 ~70px —— 「标准最晚」4 个汉字在默认内边距下会折成两行（实测高度 50px），
+   所以这一行单独收紧内边距 + 字号，并禁掉换行。 */
+.btn-row.ref-row .btn{padding-left:4px;padding-right:4px;font-size:12.5px;white-space:nowrap}
 
 /* 右栏：一行放「文字 + 输入框 + 确认」的紧凑行（近 N 年 / 日期范围） */
 .btn.sm{padding:7px 12px;font-size:12.5px;flex:0 0 auto}

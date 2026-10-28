@@ -325,6 +325,28 @@ try {
   check('统计页：中坚表有「中坚次数」列（2 表 × 出率提升/商店兑换）',
     count(mid6Section, /中坚次数/g) + count(mid5Section, /中坚次数/g), 4);
 
+  /* 参考日期的三个快捷键：今天 / 标准最晚 / 中坚最晚（后两个 2026-10-29 加）。
+     ⚠️ 按**按钮**数（`<button` + 文案），不数全页出现次数 —— 右栏的提示文字里也有这两个词。 */
+  check('统计页右栏：参考日期有「今天 / 标准最晚 / 中坚最晚」三个按钮',
+    ['今天', '标准最晚', '中坚最晚'].every((t) => new RegExp(`<button[^>]*>${t}</button>`).test(sh)), true);
+  {
+    const fdSrc = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+    check('「标准最晚 / 中坚最晚」接到 store 的对应 getter，且取不到值时置灰',
+      /@click="site\.setRefDate\(site\.stdLatestDate\)"/.test(fdSrc)
+      && /@click="site\.setRefDate\(site\.midLatestDate\)"/.test(fdSrc)
+      && /:disabled="!site\.stdLatestDate"/.test(fdSrc)
+      && /:disabled="!site\.midLatestDate"/.test(fdSrc), true);
+    const siteSrc = fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8');
+    check('store：两个 getter 都走 `latestEndDate(this.banners, …)`（当前口径 → 随 customInStats 变）',
+      /stdLatestDate\(s\)\s*\{[\s\S]{0,120}latestEndDate\(this\.banners, s\.categories, \['标准寻访', '限定寻访'\]\)/.test(siteSrc)
+      && /midLatestDate\(s\)\s*\{[\s\S]{0,120}latestEndDate\(this\.banners, s\.categories, \['中坚寻访'\]\)/.test(siteSrc), true);
+    /* 三个按钮挤在一行：抽屉内容宽 ~221px → 各 ~70px，「标准最晚」默认内边距下会折两行
+       （实测高度 50px）。`.ref-row` 收紧 padding / 字号并禁换行（实测回到 32px）。 */
+    check('统计页右栏：三个快捷按钮所在行用 `.ref-row`（收紧内边距 + nowrap，避免折行）',
+      /class="btn-row ref-row"/.test(fdSrc)
+      && /\.btn-row\.ref-row \.btn\{[^}]*white-space:nowrap\}/.test(cssAll), true);
+  }
+
   /* ---------------- 全站配色（大类三色 / 商店兑换绿色） ----------------
      一套颜色要同时落在 卡池列表徽章、统计页表与标题、UP 历史标记 上，
      所以断言分两层：常量正确 + 各处确实引用了它 + CSS 里的落地色值。 */
@@ -1962,6 +1984,31 @@ try {
     store.customAutoRemoved = [
       { entry: { ...eaten, uid: 3 }, banner: {}, hit: { id: 'w2', scName: '已被公布的那个池' }, gap: 5, server: 'sc' },
     ];
+
+    /* 「标准最晚 / 中坚最晚」两个快捷参考日（2026-10-29 用户加）的**口径**：
+       它们读 store 的 `banners` = 当前统计口径 → **自定义池计不计入统计会改变这个日期**
+       （用户特意强调）。这里正好有一个 endDate = 2099-01-21 的自设（type=double），
+       开 / 关 `customInStats` 各读一次就能钉住。 */
+    {
+      const { latestEndDate } = await vite.ssrLoadModule('/src/lib/stats.js');
+      const cats = ['标准寻访', '限定寻访'];
+      const was = store.customInStats;
+      store.customInStats = false;
+      const offStd = store.stdLatestDate;
+      const offMid = store.midLatestDate;
+      const expStd = latestEndDate(store.publishedBanners, store.categories, cats);
+      store.customInStats = true;
+      const onStd = store.stdLatestDate;
+      const onMid = store.midLatestDate;
+      store.customInStats = was;
+      check('「标准最晚」：不含自定义时 = 已公布卡池里标准/限定的最晚结束日',
+        offStd, expStd);
+      check('「标准最晚」：把自定义池计入统计后 → 变成自设的 2099-01-21',
+        onStd, '2099-01-21');
+      check('「中坚最晚」：只算中坚大类 → 不受「标准池」自设影响',
+        onMid === offMid && !!offMid, true);
+    }
+
     const html = await renderToString(app);
 
     check('自定义卡池弹窗：六个表单字段都在（**没有结束日期**，它是派生值）',

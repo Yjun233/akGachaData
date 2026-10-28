@@ -86,6 +86,15 @@ const statResult = computed(() => {
   return `参考日期 ${site.refDate} · 可见卡池 ${visible.length} 个 · 参与统计干员 ${Object.keys(map).length} 位`;
 });
 
+/* 「今天 / 标准最晚 / 中坚最晚」三个快捷参考日（后两个 2026-10-29 用户加）：
+   · 标准最晚 = **标准寻访 + 限定寻访**里最晚的卡池结束日；
+   · 中坚最晚 = **中坚寻访**大类里最晚的卡池结束日。
+   ⚠️ 取值走 store 的 `stdLatestDate` / `midLatestDate`，它们基于**当前统计口径**（`banners`）——
+      **自定义卡池计不计入统计会改变这个日期**（用户特意强调）。
+   ⚠️ 不按参考日期过滤（不是「可见卡池」的最晚），否则点一次之后结果会自己漂。
+   ⚠️ 说明**只能放这儿**：写进 `<template>` 的 HTML 注释会被 SSR 原样输出，
+      里面的「标准最晚 / 中坚最晚」会被字面量断言数进去。 */
+
 /* 「中坚寻访不看标准次数」（用户 2026-10-16 加）：中坚干员迁入后就不再进标准寻访，
    「标准次数」只是他们**迁入之前**的老记录 → 勾上后中坚表藏掉「总次数 / 标准次数」两列，
    每组只剩「结束时间 / 距今天数 / 中坚次数」（**总次数一并藏**：总 = 中坚 + 标准）。
@@ -289,8 +298,22 @@ function resetUp() {
           @change="site.setRefDate($event.target.value)"
         />
       </div>
-      <div class="btn-row">
+      <div class="btn-row ref-row">
         <button class="btn" type="button" @click="site.setRefDate(site.today)">今天</button>
+        <button
+          class="btn" type="button" :disabled="!site.stdLatestDate"
+          :title="site.stdLatestDate
+            ? `跳到「标准 + 限定」里最晚的卡池结束日：${site.stdLatestDate}（${site.customInStats ? '含' : '不含'}自定义卡池）`
+            : '本服没有标准 / 限定卡池'"
+          @click="site.setRefDate(site.stdLatestDate)"
+        >标准最晚</button>
+        <button
+          class="btn" type="button" :disabled="!site.midLatestDate"
+          :title="site.midLatestDate
+            ? `跳到「中坚寻访」里最晚的卡池结束日：${site.midLatestDate}（${site.customInStats ? '含' : '不含'}自定义卡池）`
+            : '本服没有中坚寻访卡池'"
+          @click="site.setRefDate(site.midLatestDate)"
+        >中坚最晚</button>
       </div>
       <div class="fhint">
         仅统计 <code>卡池开启日期 ≤ 参考日期</code> 的卡池，用于回看任意历史时点的出率提升记录。

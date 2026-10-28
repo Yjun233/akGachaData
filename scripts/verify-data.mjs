@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { computeStats, endInfo, sortStatRows, daysSortValue } from '../src/lib/stats.js';
+import { computeStats, endInfo, latestEndDate, sortStatRows, daysSortValue } from '../src/lib/stats.js';
 import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
@@ -799,6 +799,38 @@ const wz = map['推进之王'];
 /* ⚠️ 2026-10-08 起默认**排除中坚甄选**，两条都是排除后的值（计入甄选的黄金值在下一段）。 */
 check('推进之王 · 出率提升次数', wz?.upAll.length, 16);
 check('推进之王 · 商店兑换次数', wz?.shopAll.length, 10);
+
+/* ---------------- 「标准最晚 / 中坚最晚」两个快捷参考日（2026-10-29 用户加） ----------------
+   算法在 `lib/stats.js` 的 `latestEndDate(banners, categories, wanted)`：按**大类**取最晚 endDate。
+   ⚠️ 传进来的是**当前统计口径**的卡池（store 的 `banners`：`customInStats` 关=只有已公布、
+      开=加上自定义）→ 用户特意强调「自定义卡池计不计入统计会影响这个日期」
+      （store 层的那条对照断言在 verify-render 里，那里能真切开关）。 */
+{
+  const CATS = BANNER_CATEGORIES;
+  const fx = [
+    { type: 'double', startDate: '2026-10-01', endDate: '2026-10-15' },
+    { type: 'limsum', startDate: '2026-10-05', endDate: '2026-10-19' },  // 限定寻访
+    { type: 'classic', startDate: '2026-10-02', endDate: '2026-10-16' },
+    { type: 'clafes', startDate: '2026-10-08', endDate: '2026-10-12' },
+  ];
+  check('标准最晚：标准 + 限定里取最晚 endDate（中坚的不算）',
+    latestEndDate(fx, CATS, ['标准寻访', '限定寻访']), '2026-10-19');
+  check('中坚最晚：只在中坚大类里取（classic / clafes 都算）',
+    latestEndDate(fx, CATS, ['中坚寻访']), '2026-10-16');
+  check('最晚日期：缺 endDate 的卡池跳过；一个都没有 → null（按钮据此置灰）',
+    latestEndDate([{ type: 'double' }, { type: 'double', endDate: '2026-01-01' }], CATS, ['标准寻访']) === '2026-01-01'
+    && latestEndDate([], CATS, ['中坚寻访']) === null, true);
+  check('最晚日期：大类查不到的卡池不算进去（别默认当「标准」）',
+    latestEndDate([{ type: 'unknown_type', endDate: '2099-01-01' }], CATS, ['标准寻访', '限定寻访']), null);
+  /* 真实数据（国服，主表 + 中坚）：两个值都得是「那一堆池子里真实存在的某个 endDate」 */
+  const real = banners.filter((b) => b.startDate && b.endDate);
+  const stdReal = latestEndDate(real, CATS, ['标准寻访', '限定寻访']);
+  const midReal = latestEndDate(real, CATS, ['中坚寻访']);
+  check('标准最晚（国服真实数据）：落在某个标准 / 限定池的结束日上',
+    !!stdReal && real.some((b) => b.endDate === stdReal && ['标准寻访', '限定寻访'].includes(CATS[b.type])), true);
+  check('中坚最晚（国服真实数据）：落在某个中坚池的结束日上',
+    !!midReal && real.some((b) => b.endDate === midReal && CATS[b.type] === '中坚寻访'), true);
+}
 
 /* ---------------- 中坚甄选（clafes）计入出率提升的开关（2026-10-08） ----------------
    默认**不计入**；右栏一个复选框可打开。
