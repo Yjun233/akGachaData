@@ -38,8 +38,14 @@ const CDN_HOST = 'https://cdn.jsdelivr.net';
  * 国内直连不通就会裂图）。
  *
  * 推送新头像后：取新的 commit sha 填到这里，再推一次站点即可。
+ *
+ * ⚠️⚠️ **这个 sha 必须「盖住」`avatars/` 目录的所有提交**，否则新干员的头像在 CDN 上就是 404
+ *    （页面退化成「首字占位」，看起来像加载失败）。
+ *    2026-10-29 实际踩到：sha 一直停在 2026-09-30 的初始提交（230 张），
+ *    而 2026-10-09 快照新增了 2 位干员 → 克莱门莎 / 德·托莱多的头像 404，其余 230 张正常。
+ *    `scripts/verify-data.mjs` 有一条断言盯着这个（比较本仓库与资源的 `avatars/` 最后一个提交）。
  */
-export const AVATARS_SHA = '0b22f39b40a829da7255280e18e87e4de9b04993';
+export const AVATARS_SHA = 'a5d34da7adffc8d8e102448e9ac3c36830f10d8d';
 
 /** jsDelivr 上的头像版本后缀 */
 const avatarRef = AVATARS_SHA || 'main';

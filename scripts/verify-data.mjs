@@ -7,6 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { computeStats, endInfo, latestEndDate, sortStatRows, daysSortValue } from '../src/lib/stats.js';
@@ -99,6 +100,37 @@ check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').ba
 /* ⚠️ 黄金值：**新干员首次进 UP 就会变**（2026-10-10 由 204 → 206，新增 克莱门莎 / 德·托莱多）。
    不派生是故意的 —— 它正是「参与统计的干员有没有变多」的哨兵。 */
 check('参与统计干员数', rows.length, 206);
+
+/* ---- 头像可达性（2026-10-29 加的哨兵）----
+   线上头像的 URL = `cdn.jsdelivr.net/gh/<资源仓库>@<AVATARS_SHA>/avatars/<charId>.png`，
+   sha 是**写死的**（换来一年 immutable 缓存）。所以只要那个 sha **早于**「新增头像」的提交，
+   新干员的头像在 CDN 上就是 404 → 页面退化成「首字占位」，看着像加载失败。
+   2026-10-29 实际踩到：sha 停在 2026-09-30 的初始提交（230 张），而 2026-10-09 新增了
+   克莱门莎 / 德·托莱多 → 这两位的头像 404，其余 230 张正常。
+   ⚠️ 这条不用联网：直接拿资源仓库的 git 对象问「那个 sha 里有哪些头像」。 */
+{
+  const RES_REPO = path.resolve(ROOT, '..', 'akGachaResource');
+  const src = fs.readFileSync(path.join(ROOT, 'src/lib/resource.js'), 'utf8');
+  const sha = (src.match(/export const AVATARS_SHA = '([0-9a-f]{40})'/) || [])[1] || '';
+  if (!sha) {
+    check('头像：AVATARS_SHA 为空时退回 `@main`（冷启动会 301，国内可能裂图）',
+      /AVATARS_SHA = ''/.test(src), true);
+  } else if (fs.existsSync(path.join(RES_REPO, '.git'))) {
+    const git = (args) => execSync(`git -C "${RES_REPO}" ${args}`, { encoding: 'utf8' });
+    let listed = new Set();
+    try {
+      listed = new Set(git(`ls-tree -r --name-only ${sha} avatars`)
+        .split('\n').map((l) => l.trim()).filter(Boolean)
+        .map((l) => l.replace(/^avatars\//, '').replace(/\.png$/, '')));
+    } catch {
+      listed = new Set(); // sha 不在本地（没 fetch 过）→ 当作查不到，下面会红
+    }
+    const missing = Object.values(operators).map((o) => o.charId).filter((c) => c && !listed.has(c));
+    check('头像：AVATARS_SHA 指向的提交里每位干员的头像都在（缺＝线上 CDN 404）',
+      missing.join(','), '');
+  }
+}
+
 
 /* `operators.json` 的 `alter`（**同一个异格组里其它成员**的 charId 数组）—— 来自官方解包
    `char_meta_table.json` 的 `spCharGroups`，由 `fetch-data.mjs` 写。
