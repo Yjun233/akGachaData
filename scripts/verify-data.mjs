@@ -14,6 +14,7 @@ import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/first
 import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
   buildUpTimeline, monthIndexOf, monthLabel, monthStartDate, minInnerWidth, chartHeight, TL,
+  barFillOf, cutMonthOf,
 } from '../src/lib/upTimeline.js';
 import { bannerRows, emptyFilters } from '../src/lib/banners.js';
 import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearch.js';
@@ -1075,7 +1076,17 @@ check('修正后必然满足 开始 < 结束',
   })(), true);
 
 /* ---------------- UP 历史一览 ---------------- */
+/* ⚠️ 2026-10-12 起国服那个字段从 `classicDate` 改名为 **`scClassicDate`**
+   （与 `constants.js` 的 `SERVER_CLASSIC_FIELD` 同步）。
+   ⚠️ 提到这里是为了让下面「横条两段色」与「隐藏已属中坚」两组断言共用一份。 */
+const CLASSIC_FIELD = { sc: 'scClassicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
+const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
+
 const upAll = computeUpHistory({ banners, categories, operatorByName: operators, relDateOf });
+/* 带「迁入中坚」日期的那一版（行数与顺序应与 upAll 一致，只是多了 classicDate） */
+const upWithMid = computeUpHistory({
+  banners, categories, operatorByName: operators, relDateOf, classicDateOf,
+});
 check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.length}`, '93/113');
 check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 26 位限定）', upAll.all.length, 206);
 check('UP 历史：不含任何限定干员',
@@ -1095,6 +1106,23 @@ check('UP 历史：默认按实装日升序',
   upAll.all.every((r, i) => i === 0
     || (upAll.all[i - 1].releaseDate || '9999') <= (r.releaseDate || '9999')), true);
 check('UP 历史：条形起点（实装日）都有值', upAll.all.every((r) => !!r.releaseDate), true);
+
+/* ---- 行里的「迁入中坚」日期（2026-10-29 横条两段色的依据）---- */
+check('UP 历史：不传 classicDateOf 时 classicDate 一律为 null（旧调用行为不变）',
+  upAll.all.every((r) => r.classicDate === null), true);
+check('UP 历史：classicDate = 当前服「迁入中坚」字段（没有则 null）',
+  upWithMid.all.every((r) => r.classicDate === (classicDateOf(operators[r.name]) || null)), true);
+check('UP 历史：传不传 classicDateOf 都不影响行数 / 顺序',
+  `${upWithMid.all.length}|${upWithMid.all.map((r) => r.name).join(',')}`,
+  `${upAll.all.length}|${upAll.all.map((r) => r.name).join(',')}`);
+/* 写死一个已知批次（历史事实，稳定）：艾雅法拉 2023-03-30 那一批迁入中坚 */
+check('UP 历史：艾雅法拉的迁入中坚日期（2023-03-30 批）',
+  upWithMid.all.find((r) => r.name === '艾雅法拉')?.classicDate, '2023-03-30');
+/* ⚠️ 这条是下面「SSR 里能看到两段色」的**前提**：没有这种行，双色断言就该直接红并指向数据。
+   区间取 [实装日, lastDate] —— 迁入日晚于最后一次 UP 的（国服现有 3 位）整条仍是单色。 */
+check('UP 历史：至少一位六星的迁入日落在横条区间内（两段色可见的前提）',
+  upWithMid.six.some((r) => r.classicDate && r.releaseDate
+    && r.classicDate > r.releaseDate && r.classicDate <= r.lastDate), true);
 
 /* UP 历史的日期框默认 = [最早卡池开始日, 今天]（bannerTodayRange），它同时决定横轴范围与
    「范围内有没有标记」这层干员过滤 → 默认值不能悄悄筛掉「已经发生过」的记录（按行数比）。
@@ -1174,10 +1202,7 @@ check('UP 历史：没有标记的干员不占行（只看进店时排除了未�
    判据 = 当前服务器「进入中坚寻访」的日期 ≤ 判据时点（右栏结束日期，未设则按今天）。
    ⚠️ 关键在**判据时点用什么**：设得越晚，被判成「已属中坚」的干员越多。
    这里用两个时点对比，既验功能也验「时点取自 range.to」这件事。 */
-/* ⚠️ 2026-10-12 起国服那个字段从 `classicDate` 改名为 **`scClassicDate`**
-   （与 `constants.js` 的 `SERVER_CLASSIC_FIELD` 同步）。 */
-const CLASSIC_FIELD = { sc: 'scClassicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
-const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
+/* ⚠️ `CLASSIC_FIELD` / `classicDateOf` 已在上面「UP 历史一览」开头定义（两段色那组也用），这里不再重复。 */
 const upAllNoCut = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, classicDateOf, hideMid: true,
 });
@@ -1404,6 +1429,59 @@ check('刻度条与表体的 grid 左右内缩一致',
 check('刻度条与表体的 x 轴范围一致',
   `${tlFull.axisOption.xAxis.min}-${tlFull.axisOption.xAxis.max}`
   === `${tlFull.bodyOption.xAxis.min}-${tlFull.bodyOption.xAxis.max}`, true);
+
+/* ---------------- 横条两段色：迁入中坚前 / 后（2026-10-29 用户加） ----------------
+   口径：以行的 `classicDate` 为界硬切 —— 左 `TL.barStd`、右 `TL.barMid`。
+   ⚠️ 渐变默认按**元素 bbox** 定位（zrender `global:false`），所以 offset 必须相对
+      **裁剪后的最终矩形**算 —— 下面「offset 相对最终矩形」那条就是守这个的。 */
+check('横条两段色常量（迁入前 / 之后）', `${TL.barStd}/${TL.barMid}`, '#e3edfa/#bfe3f7');
+check('barFillOf：无迁入日（cutPx = NaN）→ 整条迁入前色', barFillOf(100, 400, NaN), TL.barStd);
+check('barFillOf：分界在左边界左侧（t<0）→ 整条中坚色', barFillOf(100, 400, 60), TL.barMid);
+check('barFillOf：分界正好在左边界（t=0）→ 整条中坚色', barFillOf(100, 400, 100), TL.barMid);
+check('barFillOf：分界正好在右边界（t=1）→ 整条迁入前色', barFillOf(100, 400, 500), TL.barStd);
+check('barFillOf：宽度非正 → 退化成单色（防御）', barFillOf(100, 0, 150), TL.barStd);
+check('barFillOf：分界在条内 → 硬切渐变（4 段 stop，中间两个 offset 相等）', (() => {
+  const f = barFillOf(100, 400, 200);
+  return JSON.stringify(f);
+})(), JSON.stringify({
+  type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+  colorStops: [
+    { offset: 0, color: '#e3edfa' },
+    { offset: 0.25, color: '#e3edfa' },
+    { offset: 0.25, color: '#bfe3f7' },
+    { offset: 1, color: '#bfe3f7' },
+  ],
+}));
+check('barFillOf：offset 相对**最终矩形**（同一个 cutPx，x 一变结果就变）',
+  `${barFillOf(100, 400, 200).colorStops[1].offset}|${barFillOf(200, 200, 250).colorStops[1].offset}`,
+  '0.25|0.25');
+/* ⚠️ 最短的条（被裁到 2px）也要给出合法 offset，不能 NaN / 越界 */
+check('barFillOf：最小 2px 条宽下 offset 仍合法', barFillOf(100, 2, 101).colorStops[1].offset, 0.5);
+check('cutMonthOf：等于 monthIndexOf(classicDate)，空值为 NaN',
+  cutMonthOf({ classicDate: '2023-03-30' }) === monthIndexOf('2023-03-30')
+  && Number.isNaN(cutMonthOf({ classicDate: null }))
+  && Number.isNaN(cutMonthOf({})), true);
+
+/* 真跑一遍 renderItem（伪 api）：有迁入日的行出渐变、没迁入日的行出单色字符串。
+   伪坐标：x 从 12 起、1 个月 30px、行高 26（只要线性一致即可，不必等于真实宽度）。 */
+{
+  const tlMidView = buildUpTimeline({ rows: upWithMid.six, operatorByName: operators });
+  const xOf = (mi) => 12 + (mi - tlMidView.xMin) * 30;
+  const coordSys = { x: 12, width: (tlMidView.xMax - tlMidView.xMin) * 30 };
+  /* ⚠️ `api.value(1)` 在真实 echarts 里读的是「该 dataIndex 那条数据的第 1 维」（= 行号），
+     所以伪 api 要按行造，不能返回固定数组。 */
+  const renderBar = (i) => tlMidView.bodyOption.series[0].renderItem(
+    { coordSys, dataIndex: i },
+    { value: (k) => (k === 1 ? i : 0), coord: ([mi, row]) => [xOf(mi), 13 + row * 26] },
+  );
+  const idxCut = upWithMid.six.findIndex((r) => r.classicDate && r.releaseDate
+    && r.classicDate > r.releaseDate && r.classicDate <= r.lastDate);
+  const idxPlain = upWithMid.six.findIndex((r) => !r.classicDate);
+  check('时间轴：有迁入日的行 → 横条是 4 段 stop 的渐变',
+    renderBar(idxCut).style.fill.colorStops.length, 4);
+  check('时间轴：无迁入日的行 → 横条是单色字符串（与改造前一致）',
+    renderBar(idxPlain).style.fill, TL.barStd);
+}
 
 /* ---------------- 与原型逐格对比 ---------------- */
 const protoPath = path.join(ROOT, 'prototype/index.html');

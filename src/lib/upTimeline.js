@@ -45,6 +45,12 @@ import { diffDays } from './date.js';
 export const TL = {
   rowH: 26,        // 每位干员占的高度
   barH: 10,        // 横条厚度
+  /* 横条的两段色（2026-10-29 用户定）：以该干员「**迁入常驻中坚寻访**」的日期为界 ——
+     **左段（迁入前）= barStd、右段（迁入后）= barMid**，只靠颜色硬切。
+     ⚠️ 这两色是**本图局部色**，故意不放 `constants.js` 的全站调色板（只在这里的 renderItem 用，
+        性质同 `lineColor` / `triColor`）；改文档时别被「配色统一」那条原则搬走。 */
+  barStd: '#e3edfa', // 迁入前（浅蓝灰，也是改造前横条唯一的颜色）
+  barMid: '#bfe3f7', // 迁入后（中坚浅蓝）
   mark: 20,        // 标记圆的直径（简洁模式=色圈+首字；图片模式=圆形头像）
   markRight: 2,    // 标记离绘图区右边的留白
   nameW: 78,       // 左侧干员名列宽（DOM，sticky）
@@ -97,6 +103,51 @@ export function monthIndexOf(date) {
   if (!Number.isFinite(y) || !Number.isFinite(m)) return NaN;
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // 当月天数
   return (y - 1970) * 12 + (m - 1) + ((d || 1) - 1) / lastDay;
+}
+
+/* ---------------- 横条的两段色（2026-10-29） ---------------- */
+
+/**
+ * 该行「迁入中坚寻访」的月序号；没有 `classicDate`（或日期非法）→ `NaN`
+ * （`monthIndexOf` 自己就返回 NaN，这里只是把「行 → 月序号」的取法收在一处）。
+ */
+export const cutMonthOf = (row) => monthIndexOf(row && row.classicDate);
+
+/**
+ * 横条的两段色填充：**迁入中坚前 `TL.barStd`、之后 `TL.barMid`**，硬切（无过渡带）。
+ *
+ * ⚠️ `x` / `w` 必须是**最终矩形**（已做视口裁剪、已夹到最小 2px）的值 ——
+ *    渐变的默认坐标是「相对元素 bbox」（zrender `global:false`），offset 只能按最终矩形算。
+ *    视口裁剪会把 `x` 往右推、把 `w` 截短，用实装日那侧的原始值算会整体偏移。
+ * ⚠️ 第一道守卫必须是 `!Number.isFinite(cutPx)`：没有迁入日时 `t` 是 NaN，
+ *    而 `NaN > 0` 为 false → 若写成 `if (!(t > 0)) return barMid`，**未迁入的行会整条变蓝**。
+ * ⚠️ 渐变对象**不要写 `global: true`**：那会按整张画布算坐标，所有横条的分界点会挤到同一条竖线上。
+ *
+ * @param {number} x 最终矩形左边界（px）
+ * @param {number} w 最终矩形宽度（px）
+ * @param {number} cutPx 分界点（px；`api.coord([cutMonthOf(row), i])[0]`），NaN = 无分界
+ * @returns {string|object} 单色字符串，或 zrender 线性渐变对象
+ */
+export function barFillOf(x, w, cutPx) {
+  if (!Number.isFinite(cutPx) || !(w > 0)) return TL.barStd;
+  const t = (cutPx - x) / w;
+  if (!Number.isFinite(t)) return TL.barStd;
+  if (t <= 0) return TL.barMid;   // 分界在左边界或其左 → 整条都在迁入后
+  if (t >= 1) return TL.barStd;   // 分界在右边界或其右 → 整条都在迁入前
+  return {
+    type: 'linear',
+    x: 0,
+    y: 0,
+    x2: 1,
+    y2: 0,
+    /* 两个 stop 用**同一个 offset** 才是硬边（0≤t、t≤1 各两份） */
+    colorStops: [
+      { offset: 0, color: TL.barStd },
+      { offset: t, color: TL.barStd },
+      { offset: t, color: TL.barMid },
+      { offset: 1, color: TL.barMid },
+    ],
+  };
 }
 
 /** 月序号 → 'YYYY-MM' */
@@ -355,7 +406,8 @@ export function buildUpTimeline({
       axisLabel: { show: false }, // 名字由左侧 DOM 列（sticky）显示
     },
     series: [
-      /* 1) 横条：实装日 → 最后一次 UP（**两端都在绘图区边界截断**） */
+      /* 1) 横条：实装日 → 最后一次 UP（**两端都在绘图区边界截断**）。
+             两段色：迁入中坚前 `TL.barStd` / 之后 `TL.barMid`，硬切（见 `barFillOf`）。 */
       {
         type: 'custom',
         silent: true,
@@ -375,17 +427,21 @@ export function buildUpTimeline({
           if (p2[0] <= left || p1[0] >= right) return null;
 
           const x = Math.max(p1[0], left);
-          const w = Math.min(p2[0], right) - x;
+          /* ⚠️ 先夹到 ≥2，再用**同一个 w** 算两段色的 offset —— 否则「最小宽度补出来的 2px」会让分界点算偏 */
+          const w = Math.max(2, Math.min(p2[0], right) - x);
+          /* 迁入中坚的分界点（px）；没有 classicDate → NaN → 整条 barStd（与改造前一致） */
+          const cutMI = cutMonthOf(r);
+          const cutPx = Number.isFinite(cutMI) ? api.coord([cutMI, i])[0] : NaN;
           return {
             type: 'rect',
             shape: {
               x,
               y: p2[1] - TL.barH / 2,
-              width: Math.max(2, w),
+              width: w,
               height: TL.barH,
               r: TL.barH / 2,
             },
-            style: { fill: '#e3edfa' },
+            style: { fill: barFillOf(x, w, cutPx) },
           };
         },
       },

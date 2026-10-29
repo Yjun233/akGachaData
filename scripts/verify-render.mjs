@@ -1492,6 +1492,19 @@ try {
   check('时间轴 SVG SSR：三类大类颜色都出现',
     ['#FFD524', '#0098DC', '#8b5cf6'].every((c) => svgBody.includes(c)), true);
 
+  /* 横条两段色（2026-10-29）：迁入中坚前 `TL.barStd`、之后 `TL.barMid`，**硬切**。
+     ⚠️ 条数不写死：zrender 按 offset 去重合并 `<linearGradient>`，数据一变条数就变。 */
+  check('时间轴 SVG SSR：横条两段色都出现（迁入中坚前 / 之后）',
+    svgBody.includes(TL.barStd) && svgBody.includes(TL.barMid), true);
+  check('时间轴 SVG SSR：两段色是**同 offset 硬切**（不是渐变过渡）',
+    new RegExp(`offset="([\\d.]+)%" stop-color="${TL.barStd}">\\s*</stop>\\s*<stop offset="\\1%" stop-color="${TL.barMid}"`).test(svgBody), true);
+  /* 渐变必须相对**元素 bbox**（默认 global:false）—— 若有人补上 global:true，
+     坐标会按整张画布算，所有横条的分界点会挤到同一条竖线上。 */
+  check('时间轴 SVG SSR：两段色渐变相对元素 bbox（objectBoundingBox）',
+    /gradientUnits="objectBoundingBox"/.test(svgBody), true);
+  check('时间轴 SVG SSR：五星视图同样有中坚浅蓝（两段色不是只有六星才有）',
+    svgFive.includes(TL.barMid), true);
+
   /* 需求 4：刻度落在每个月的 1 号，格式 YYYY-MM，且每个标签位置都有竖线 */
   const axisLabels = texts(svgAxis).filter((t) => /^\d{4}-\d{2}$/.test(t));
   check('时间轴 SVG SSR：顶部刻度条每个标签都是 YYYY-MM',

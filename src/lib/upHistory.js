@@ -119,7 +119,8 @@ function sorter(sort) {
  *        时 `releaseDate` 一律为 null、且不做「实装那次不标三角」的压制
  * @param {string[]|null} [ctx.types]  只保留这些卡池类型
  * @param {boolean} [ctx.shopOnly]     只保留进店记录
- * @param {(op:object)=>string|null} [ctx.classicDateOf] 取当前服务器「进入中坚寻访」的日期
+ * @param {(op:object)=>string|null} [ctx.classicDateOf] 取当前服务器「进入中坚寻访」的日期；
+ *        它同时决定 `hideMid` 要不要隐藏该行，并**写进每行的 `classicDate`**（横条分两段色用）
  * @param {string}  [ctx.today]        真实当天（`range.to` 为空时当判据时点）
  * @param {boolean} [ctx.hideMid]      隐藏「判据时点已属中坚寻访」的干员
  * @param {{from?:string,to?:string}|null} [ctx.range] 横轴可视范围；给了就**同时**
@@ -185,11 +186,12 @@ export function computeUpHistory({
     /* 限定干员整行排除（见文件头的口径说明） */
     if (op?.isLimited) continue;
 
+    /* 本服「迁入常驻中坚寻访」的日期；没有则 null。
+       ⚠️ 只取一次、两处用：① hideMid 的判据 ② 写进行里给横条做两段色（`upTimeline` 的 `barFillOf`） */
+    const classicDate = classicDateOf ? (classicDateOf(op) || null) : null;
+
     /* 「判据时点已属中坚寻访」→ 整行隐藏（右栏勾选框） */
-    if (midCutoff && classicDateOf) {
-      const mid = classicDateOf(op);
-      if (mid && mid <= midCutoff) continue;
-    }
+    if (midCutoff && classicDate && classicDate <= midCutoff) continue;
 
     r.marks.sort((a, b) => (a.date === b.date
       ? a.bannerId.localeCompare(b.bannerId)
@@ -212,6 +214,8 @@ export function computeUpHistory({
       name: r.name,
       rarity: r.rarity,
       releaseDate: relDateOf ? relDateOf(op) : null,
+      /* 「迁入常驻中坚寻访」日 —— 横条在这天前后用两段色（见 lib/upTimeline.js 的 `barFillOf`） */
+      classicDate,
       marks,
       firstDate: marks[0].date,
       lastDate: marks[marks.length - 1].date,
