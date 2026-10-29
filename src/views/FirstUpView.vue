@@ -356,8 +356,12 @@ onBeforeUnmount(() => { offAvatar?.(); offAvatar = null; });
 
 watch(
   () => [data.value.six.length, data.value.five.length],
-  () => nextTick(scrollToEnd),
+  () => { preloadVisible(); nextTick(scrollToEnd); },
 );
+
+/* ⚠️ 切服务器会整体换一批干员（`site.firstUp` 重算），但组件**不会重新挂载** →
+   图片模式下新干员的头像同样不会加载（与 UP 历史页同一个毛病，2026-10-29 一并补上）。 */
+watch(() => site.server, () => { preloadVisible(); });
 
 /* 切到图片模式时预加载（初始是简洁模式的话，头像是这时才需要的） */
 watch(isImage, (on) => { if (on) preloadVisible(); });

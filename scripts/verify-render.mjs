@@ -832,6 +832,17 @@ try {
   check('首次UP间隔页：两张图（六星 / 五星）都带上浮窗带子',
     count(fupSrc, /:tip-band="tipBand"/g), 2);
 
+  /* 头像预加载的**触发点**（2026-10-29 修的 bug）：图片模式下改筛选 / 切服务器都会换一批干员，
+     必须重新预加载，否则新出现的干员头像永远停在首字占位（canvas 是同步渲染的，
+     不会自己补请求）。SSR 没有 Image，只能把「接线」钉在源码上。 */
+  check('UP历史页：行集合变化（改筛选）也会重新预加载头像',
+    /watch\(\(\) => rows\.value\.map\(\(r\) => r\.name\)\.join\('\|'\)[\s\S]{0,60}preloadVisible\(\)/.test(upViewSrc), true);
+  check('首次UP间隔页：切服务器也会重新预加载头像',
+    /watch\(\(\) => site\.server[\s\S]{0,60}preloadVisible\(\)/.test(fupSrc), true);
+  check('两个图表页：切到图片模式都会预加载（原来就有，别在重构时丢掉）',
+    count(upViewSrc, /watch\(isImage, \(on\) => \{ if \(on\) preloadVisible\(\); \}\)/) === 1
+    && count(fupSrc, /watch\(isImage, \(on\) => \{ if \(on\) preloadVisible\(\); \}\)/) === 1, true);
+
   /* 切换模式**不动**已设的时间范围（用户指定）；范围按新的「首次日期」重新筛 */
   const rotKeep = await renderRoute('/first-up', (s) => {
     s.setFirstUpRange('2024-01-01', '2026-01-01');

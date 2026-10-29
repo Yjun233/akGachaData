@@ -137,6 +137,12 @@ onBeforeUnmount(() => {
    于是停在半中间，看起来「没贴到最右」。 */
 watch(() => [site.server, site.upRarity], () => { preloadVisible(); scrollToRight(); });
 
+/* ⚠️ **筛选变化也会换一批干员**（如「只看中坚」→「只看标准」「只看进店」、改时间范围）——
+   原来只在「切图片模式 / 切星级 / 切服务器」时预加载，于是**图片模式下改筛选后，
+   新出现的干员头像是永远不加载的**（一直停在首字占位；2026-10-29 用户报）。
+   这里盯**行名集合**而不是 `rows` 数组本身：computed 每次都重建数组，直接 watch 会次次触发。 */
+watch(() => rows.value.map((r) => r.name).join('|'), () => { preloadVisible(); });
+
 /* 切到图片模式时也要预加载（初始是简洁模式的话，头像是这时才需要的） */
 watch(isImage, (on) => { if (on) preloadVisible(); });
 
