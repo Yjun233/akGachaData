@@ -1035,6 +1035,12 @@ try {
   /* 卡池列表（.av 方头像）同样要有占位层 —— 三处 DOM 共用同一个组件 */
   check('图片模式：卡池列表的头像也有首字占位层',
     count(imgBanners.html, /class="avt-fallback"/g) > 400, true);
+  /* ⚠️ 占位层是 `absolute + inset:0`，**外层必须有尺寸**才画得出来。
+     卡池列表那处外层 `.avt-img` 原本没有尺寸（靠里面的 `<img class="av">` 撑），
+     头像 404 时 AvatarImg 把 img 撤掉 → 容器宽度塌成 0 → 首字图看不见（2026-10-29 用户报）。
+     SSR 测不出布局，只能把这条 CSS 钉住。`.avt-rect` 那两处本来就有 68×34。 */
+  check('图片模式：卡池列表的头像外层有显式尺寸（否则 404 撤图后占位层塌成 0 宽）',
+    /\.avt \.avt-img\{width:26px;height:26px\}/.test(cssAll), true);
 
   const avLibSrc = fs.readFileSync(path.join(ROOT, 'src/lib/avatars.js'), 'utf8');
   check('头像模块：预加载 + 就绪判断 + 加载完成订阅都在（canvas 两处要用）',

@@ -667,6 +667,12 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 /* 头像外层：**尺寸 / 定位都由各处的 class 决定**（.av 26px / .avt-rect 68×34），
    这里只保证它是两层（真图 + 占位）的**重合容器**。 */
 .avt-img{display:block;position:relative}
+/* ⚠️ 卡池列表这块外层 `.avt` 是 26×26，但 `.avt-img` 自己**没有尺寸** —— 平时靠里面的
+   `<img class="av">` 撑着；一旦头像 404，AvatarImg 会把 img 撤掉（`v-if="!failed"`），
+   容器宽度就塌成 **0**，占位层（`absolute + inset:0`）跟着 0 宽 → 首字图根本看不见
+   （2026-10-29 用户报「卡池列表的头像没有替换为占位首字图」）。
+   所以这里显式给宽高，让占位层永远有地方画。`.avt-rect` 那两处本来就有 68×34，不受影响。 */
+.avt .avt-img{width:26px;height:26px}
 .avt-img .avt-fallback,
 .avt-img .avt-real{
   display:block;width:100%;height:100%;object-fit:cover;
