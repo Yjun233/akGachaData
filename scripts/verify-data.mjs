@@ -101,33 +101,80 @@ check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').ba
    不派生是故意的 —— 它正是「参与统计的干员有没有变多」的哨兵。 */
 check('参与统计干员数', rows.length, 206);
 
-/* ---- 头像可达性（2026-10-29 加的哨兵）----
-   线上头像的 URL = `cdn.jsdelivr.net/gh/<资源仓库>@<AVATARS_SHA>/avatars/<charId>.png`，
-   sha 是**写死的**（换来一年 immutable 缓存）。所以只要那个 sha **早于**「新增头像」的提交，
-   新干员的头像在 CDN 上就是 404 → 页面退化成「首字占位」，看着像加载失败。
-   2026-10-29 实际踩到：sha 停在 2026-09-30 的初始提交（230 张），而 2026-10-09 新增了
+/* ---- 头像可达性（2026-10-29 加的哨兵；当天下午改成「逐文件 sha」后同步升级）----
+   线上头像的 URL = `cdn.jsdelivr.net/gh/<资源仓库>@<sha>/avatars/<charId>.png`，
+   sha 是**写死的**（换来一年 immutable 缓存）。所以只要那个 sha 里**没有这个文件**，
+   头像在 CDN 上就是 404 → 页面退化成「首字占位」，看着像加载失败。
+   2026-10-29 实际踩到：全局 sha 停在 2026-09-30 的初始提交（230 张），而 2026-10-09 新增了
    克莱门莎 / 德·托莱多 → 这两位的头像 404，其余 230 张正常。
-   ⚠️ 这条不用联网：直接拿资源仓库的 git 对象问「那个 sha 里有哪些头像」。 */
+   现在改成**每个头像各用「它最后被改动那次提交」的 sha**（`data/avatar_shas.json`），
+   全局 `AVATARS_SHA` 只做兜底 —— 于是「新增头像忘了换 sha」这类事故从根上没了，
+   但**清单本身可能写错**，所以这条仍然要查：每个干员最终用的那个 sha 里，必须真的有他的图。
+   ⚠️ 不联网：直接拿资源仓库的 git 对象 `ls-tree` 问（按 sha 去重，通常只有 1~3 次调用）。 */
 {
   const RES_REPO = path.resolve(ROOT, '..', 'akGachaResource');
   const src = fs.readFileSync(path.join(ROOT, 'src/lib/resource.js'), 'utf8');
-  const sha = (src.match(/export const AVATARS_SHA = '([0-9a-f]{40})'/) || [])[1] || '';
-  if (!sha) {
-    check('头像：AVATARS_SHA 为空时退回 `@main`（冷启动会 301，国内可能裂图）',
-      /AVATARS_SHA = ''/.test(src), true);
-  } else if (fs.existsSync(path.join(RES_REPO, '.git'))) {
-    const git = (args) => execSync(`git -C "${RES_REPO}" ${args}`, { encoding: 'utf8' });
-    let listed = new Set();
-    try {
-      listed = new Set(git(`ls-tree -r --name-only ${sha} avatars`)
-        .split('\n').map((l) => l.trim()).filter(Boolean)
-        .map((l) => l.replace(/^avatars\//, '').replace(/\.png$/, '')));
-    } catch {
-      listed = new Set(); // sha 不在本地（没 fetch 过）→ 当作查不到，下面会红
+  const globalSha = (src.match(/export const AVATARS_SHA = '([0-9a-f]{40})'/) || [])[1] || '';
+  const manifestPath = path.join(RES_DIR, 'avatar_shas.json');
+  const manifest = fs.existsSync(manifestPath)
+    ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')).avatars || {}
+    : null;
+
+  check('头像：资源仓库已产出 avatar_shas.json（逐文件 sha 清单）', !!manifest, true);
+  if (manifest && fs.existsSync(path.join(RES_REPO, '.git'))) {
+    const chars = Object.values(operators).map((o) => o.charId).filter(Boolean);
+    const extra = Object.keys(manifest).filter((c) => !chars.includes(c));
+    check('头像：清单里没有已不存在的 charId（旧干员删了要跑一次 gen-avatar-shas）',
+      extra.join(','), '');
+
+    /* 按「实际会用到的 sha」分组 → 每个 sha 只 ls-tree 一次 */
+    const bySha = new Map();
+    for (const c of chars) {
+      const sha = manifest[c] || globalSha;
+      if (!sha) continue;
+      if (!bySha.has(sha)) bySha.set(sha, []);
+      bySha.get(sha).push(c);
     }
-    const missing = Object.values(operators).map((o) => o.charId).filter((c) => c && !listed.has(c));
-    check('头像：AVATARS_SHA 指向的提交里每位干员的头像都在（缺＝线上 CDN 404）',
+    const missing = [];
+    for (const [sha, list] of bySha) {
+      let listed = new Set();
+      try {
+        listed = new Set(execSync(`git -C "${RES_REPO}" ls-tree -r --name-only ${sha} avatars`, { encoding: 'utf8' })
+          .split('\n').map((l) => l.trim()).filter(Boolean)
+          .map((l) => l.replace(/^avatars\//, '').replace(/\.png$/, '')));
+      } catch {
+        listed = new Set(); // 本地没有这个 sha（没 fetch 过）→ 当作查不到，下面会红
+      }
+      for (const c of list) if (!listed.has(c)) missing.push(`${c}@${sha.slice(0, 7)}`);
+    }
+    check('头像：每个干员最终用的 sha 里都有他的头像（缺＝线上 CDN 404）',
       missing.join(','), '');
+
+    const fallback = chars.filter((c) => !manifest[c]);
+    check('头像：清单覆盖了每位干员（没覆盖的会用全局 sha 兜底）', fallback.join(','), '');
+  }
+
+  /* URL 拼装（纯函数级）：清单命中 → 用该文件自己的 sha；没命中 / 清单非法 → 退回全局 */
+  {
+    /* 注意：`verify-data` 跑在**纯 Node** 里，`import.meta.env` 是 undefined →
+       `resource.js` 的 `useLocal` 判为 false，于是走 CDN 分支（正是我们要验的那条）。 */
+    const { avatarFileUrl, setAvatarShas, AVATARS_SHA: GLOBAL } = await import('../src/lib/resource.js');
+    const OWN_SHA = 'a3e970b07e3cdb3d3b32b1fafea7ed42ad3cfaf2';
+    setAvatarShas(null);
+    const fbOwn = avatarFileUrl('char_017_huang');
+    const fbOther = avatarFileUrl('char_4231_clemnt');
+    setAvatarShas({ char_017_huang: OWN_SHA });
+    const ownUrl = avatarFileUrl('char_017_huang');
+    const otherUrl = avatarFileUrl('char_4231_clemnt');
+    setAvatarShas({ char_017_huang: 'not-a-sha' });
+    const badUrl = avatarFileUrl('char_017_huang');
+    setAvatarShas(null);
+    check('头像 URL：清单里有的用**它自己的 sha**（URL 只在该文件变时才变）',
+      ownUrl.includes(`@${OWN_SHA}/avatars/char_017_huang.png`), true);
+    check('头像 URL：清单里没有的退回全局 AVATARS_SHA',
+      otherUrl === fbOther && fbOther.includes(`@${GLOBAL}/avatars/char_4231_clemnt.png`), true);
+    check('头像 URL：清单里写了非法 sha 时忽略、退回全局（防手改漏字符）',
+      badUrl === fbOwn, true);
   }
 }
 

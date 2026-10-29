@@ -27,7 +27,7 @@
  * 缺文件时自动降级（标记不可用）而不是整站失败 —— **新增服务器时**产出
  * banners_<id>.json 并把 available 改成 true 即可，前端无需改动。
  */
-import { dataUrl, setDataVersion } from './resource.js';
+import { dataUrl, setAvatarShas, setDataVersion } from './resource.js';
 import { BANNER_CATEGORIES } from './constants.js';
 import { dedupe, loadEntries, saveEntries } from './customBanners.js';
 
@@ -93,6 +93,14 @@ export async function loadSiteData() {
      只多一次串行，且是个 1 KB 的小文件。 */
   const meta = await getJSON('metadata.json', { fresh: true });
   setDataVersion(versionOf(meta));
+
+  /* 头像 sha 清单（2026-10-29）：`{ charId: <该文件最后改动的那次提交 sha> }`，
+     用来给**每个头像各自**拼 URL（不再共用一个全局 sha → 换 sha 时只有真的变了的
+     那几张会重新下载）。⚠️ **可选文件**：老部署 / 资源仓库还没产出时不能整站失败，
+     缺了就全走 `resource.js` 的 `AVATARS_SHA` 兜底（行为与改造前一致）。 */
+  const avatarShas = await getJSONOptional('avatar_shas.json');
+  setAvatarShas(avatarShas?.avatars);
+
   const rawOperators = await getJSON('operators.json');
 
   /* operators.json 以 charId 为键（如 char_4179_monstr），

@@ -32,23 +32,44 @@ const REPO = 'Yjun233/akGachaResource';
 const CDN_HOST = 'https://cdn.jsdelivr.net';
 
 /**
- * 头像版本（commit sha）。固定到 sha 后 jsDelivr 会返回
+ * 头像版本（**兜底**用的 commit sha）。固定到 sha 后 jsDelivr 会返回
  * `Cache-Control: max-age=31536000, immutable`（**一年且不可变**），比 `@main` 好得多，
  * 而且**没有冷启动问题**（`@main` 首次请求会 301 跳回 raw.githubusercontent.com，
  * 国内直连不通就会裂图）。
  *
- * 推送新头像后：取新的 commit sha 填到这里，再推一次站点即可。
+ * ⚠️ 现在**每个头像各自用各自的 sha**（见下面的 `setAvatarShas`），这里只是「清单里查不到时」
+ *    的兜底（清单是可选文件，老部署 / 资源仓库还没产出时退回这里）。
+ *    **别把它当成唯一版本号**：一个全局 sha 意味着「多一张新图就把全部 232 个 URL 洗一遍」，
+ *    访客要重下 4.6 MB —— 这正是 2026-10-29 改成逐文件 sha 的原因。
  *
- * ⚠️⚠️ **这个 sha 必须「盖住」`avatars/` 目录的所有提交**，否则新干员的头像在 CDN 上就是 404
- *    （页面退化成「首字占位」，看起来像加载失败）。
- *    2026-10-29 实际踩到：sha 一直停在 2026-09-30 的初始提交（230 张），
- *    而 2026-10-09 快照新增了 2 位干员 → 克莱门莎 / 德·托莱多的头像 404，其余 230 张正常。
- *    `scripts/verify-data.mjs` 有一条断言盯着这个（比较本仓库与资源的 `avatars/` 最后一个提交）。
+ * 2026-10-29 的教训：这个 sha 曾经停在 2026-09-30 的初始提交（230 张），新增干员后没人重新固定
+ *   → 克莱门莎 / 德·托莱多的头像在 CDN 上恒 404（`scripts/verify-data.mjs` 现在有哨兵盯着）。
  */
 export const AVATARS_SHA = 'a5d34da7adffc8d8e102448e9ac3c36830f10d8d';
 
-/** jsDelivr 上的头像版本后缀 */
+/** jsDelivr 上的头像版本后缀（兜底） */
 const avatarRef = AVATARS_SHA || 'main';
+
+/**
+ * **每个头像各自的 sha**（`charId → 该文件「最后一次被改动」的那次提交`）。
+ * 由 `loadData.js` 从资源仓库的 `data/avatar_shas.json` 读进来（可选文件）。
+ *
+ * 为什么要逐文件：URL 里带 sha 换来了「一年不过期」的缓存，但**共用一个 sha** 时，
+ * 只要 `avatars/` 多一张图，全体 URL 就都变 → 每个访客重下 4.6 MB。
+ * 逐文件之后，只有**真的变了的**那几张 URL 会变（新干员 = 多下 ~40 KB）。
+ * ⚠️ 口径是「最后一次改动」而不是「首次添加」：换源重刷时内容变了，URL 必须变，
+ *    否则客户端会拿着一年前的旧图。
+ */
+let avatarShas = {};
+
+/** 由 `loadData.js` 写入清单；传空 / 非法 → 清空并退回全局 `AVATARS_SHA` */
+export function setAvatarShas(map) {
+  avatarShas = {};
+  if (!map || typeof map !== 'object') return;
+  for (const [charId, sha] of Object.entries(map)) {
+    if (typeof sha === 'string' && /^[0-9a-f]{7,40}$/.test(sha)) avatarShas[charId] = sha;
+  }
+}
 
 /**
  * 来源开关：
@@ -89,13 +110,19 @@ export function setDataVersion(v) {
   dataVersion = v ? String(v) : '';
 }
 
-/** 头像的基础地址（末尾带 /）—— 固定到 `AVATARS_SHA`，一年 immutable */
+/** 兜底的头像基础地址（末尾带 /）—— 清单里查不到这个 charId 时用它 */
 const avatarBase = useLocal
   ? localBase
   : `${CDN_HOST}/gh/${REPO}@${avatarRef}/`;
 
 export const dataUrl = (name) =>
   `${dataBase}data/${name}${dataVersion ? `?v=${dataVersion}` : ''}`;
-export const avatarFileUrl = (charId) => `${avatarBase}avatars/${charId}.png`;
+/**
+ * 单个头像的地址。**优先用清单里这个干员自己的 sha**（URL 才会稳定、不随别人变），
+ * 查不到（清单缺失 / 本地新增还没提交）再退回全局 `AVATARS_SHA`。
+ */
+export const avatarFileUrl = (charId) => (useLocal || !avatarShas[charId]
+  ? `${avatarBase}avatars/${charId}.png`
+  : `${CDN_HOST}/gh/${REPO}@${avatarShas[charId]}/avatars/${charId}.png`);
 export const isRemoteResource = !useLocal;
 export { dataBase, avatarBase, REPO };

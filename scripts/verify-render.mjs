@@ -1043,6 +1043,16 @@ try {
     /\.avt \.avt-img\{width:26px;height:26px\}/.test(cssAll), true);
 
   const avLibSrc = fs.readFileSync(path.join(ROOT, 'src/lib/avatars.js'), 'utf8');
+  /* 逐文件 sha（2026-10-29）：资源仓库产出 `data/avatar_shas.json`，loadData 读进来交给
+     resource.js，拼 URL 时优先用「这张图自己的 sha」→ 换 sha 不会把 232 个 URL 全洗一遍。 */
+  {
+    const resSrc = fs.readFileSync(path.join(ROOT, 'src/lib/resource.js'), 'utf8');
+    const ldSrc = fs.readFileSync(path.join(ROOT, 'src/lib/loadData.js'), 'utf8');
+    check('头像 URL：逐文件 sha（loadData 读 avatar_shas.json → resource 拼 URL 时优先用它）',
+      /getJSONOptional\('avatar_shas\.json'\)/.test(ldSrc)
+      && /setAvatarShas\(/.test(ldSrc)
+      && /avatarShas\[charId\]/.test(resSrc), true);
+  }
   check('头像模块：预加载 + 就绪判断 + 加载完成订阅都在（canvas 两处要用）',
     /export function preloadAvatar/.test(avLibSrc)
     && /export function avatarReady/.test(avLibSrc)
