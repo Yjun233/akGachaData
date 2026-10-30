@@ -1090,6 +1090,11 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
    `.cbd-lhd` 用 `gap` 排，得把 `.cbd-sub` 的 `margin-left` 归零，否则叠成 12px。 */
 .cbd-lhd{display:flex;align-items:center;gap:6px}
 .cbd-lhd .cbd-sub{margin-left:0}
+/* 「结束 <日期>」贴在「开始时间」右边（2026-10-30 用户要求）：原来它是日期输入框下面
+   **单独一行**，把那格撑到 81px（旁边「寻访名字 / 寻访类型」只有 57px，整行都跟着变高）。
+   现在挂在 label 那一行上，行高与其它字段齐平。
+   ⚠️ 窄列（单六寻访时 4 列、每列 169px）也要塞得下 → nowrap + 省略号兜底，别让它折行。 */
+.cbd-lhd .cbd-endnote{margin-left:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 搜索框 + 右侧「清空」按钮：与上面「批量粘贴」那行（输入 + `.btn`）**同构**，
    按钮**常驻**、没选人时置灰（与「填入」的 `:disabled` 规则一致）。 */
 .cbd-oprow{display:flex;align-items:flex-start;gap:6px}

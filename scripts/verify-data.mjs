@@ -26,7 +26,7 @@ import {
   buildName, computeCanRerun, dedupe, distributeOps, endDateOf, entryToBanner, formToEntry, hasShop,
   mergeOps,
   loadEntries, migrateV1Entry, migrateV2Entry, midTag, opNames, parseImport, serialize,
-  splitList, stripPrefix, toEntry, toOpList, validate,
+  splitList, stripPrefix, summarizeCustom, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -401,6 +401,22 @@ check('自定义卡池：migrateV2Entry 的**单六**默认填「首发」并据
     const e = migrateV2Entry({ uid: 4, server: 'sc', scName: '旧单六', type: 'single', startDate: '2026-10-08', star6: [{ scCharName: '甲', charId: 'char_a' }], star5: [], shop: [] }, fakeId);
     return `${e.scName}|${e.rerunKind}|${e.canRerun}`;
   })(), '自定义_旧单六|首发|true');
+
+/* ---- JSON 子窗那行「各服有哪些类型的自设、各几个」（2026-10-30）----
+   口径 = 传进去的那份 `customEntries`（与 `exportCustom()` 同源），按服分组、按类型计数。 */
+{
+  const entries = [
+    { server: 'sc', type: 'double' }, { server: 'sc', type: 'single' }, { server: 'sc', type: 'double' },
+    { server: 'tc', type: 'clafes' },
+  ];
+  const sum = summarizeCustom(entries);
+  check('自设摘要：三个服都列出（没自设的写「无」）', sum.map((s) => `${s.srv}:${s.count}`).join(','), 'sc:3,en:0,tc:1');
+  check('自设摘要：按类型计数并保留首次出现顺序',
+    sum[0].byType.map((t) => `${t.type}x${t.count}`).join(','), 'doublex2,singlex1');
+  check('自设摘要：类型名走 TYPE_LABEL（不是裸 type）',
+    sum[0].byType[1].label, TYPE_LABEL.single);
+  check('自设摘要：空列表 / 非数组都不炸', summarizeCustom(null).every((s) => s.count === 0), true);
+}
 
 /* ---- 校验：硬校验（拒存）---- */
 check('自定义卡池：正常的 double 通过', validate(formToEntry(cbForm, fakeId)).ok, true);

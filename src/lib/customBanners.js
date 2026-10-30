@@ -612,6 +612,38 @@ export function dedupe(entries, existing, charIdOf = () => null) {
 
 /* ---------------------------------------------------------------- 导出 / 导入 */
 
+/**
+ * **各服有哪些类型的自设、各几个**（2026-10-30 用户要求，显示在 JSON 编辑子窗顶部）。
+ *
+ * 口径 = 传进来的那份 `customEntries`（与 `exportCustom()` 同源）——
+ * 所以「框里写了几条」与这里显示的条数永远一致：**被去重吃掉但还没清理的也算**
+ * （它们确实还在 JSON 里）。
+ *
+ * @param {Array<object>} entries 自设条目（含 `server` / `type`）
+ * @param {Record<string,string>} [serverLabels] 服务器显示名（默认三服）
+ * @returns {Array<{srv:string,label:string,count:number,total:number,byType:Array<{type:string,label:string,count:number}>}>}
+ *          `total` = 该服条数；`byType` 按**首次出现顺序**，同一类型合并计数
+ */
+export function summarizeCustom(entries, serverLabels = { sc: '国服', en: '国际服', tc: '繁中服' }) {
+  const list = Array.isArray(entries) ? entries : [];
+  return Object.entries(serverLabels).map(([srv, label]) => {
+    const rows = list.filter((e) => e && e.server === srv);
+    const order = [];
+    const count = new Map();
+    for (const e of rows) {
+      if (!count.has(e.type)) { count.set(e.type, 0); order.push(e.type); }
+      count.set(e.type, count.get(e.type) + 1);
+    }
+    return {
+      srv,
+      label,
+      count: rows.length,
+      total: rows.length,
+      byType: order.map((t) => ({ type: t, label: TYPE_LABEL[t] || t, count: count.get(t) })),
+    };
+  });
+}
+
 /** 导出的 JSON 文本（**含 `version` 与 `exportedAt`**，导入时校验） */
 export function serialize(list) {
   const d = new Date();

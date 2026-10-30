@@ -2144,9 +2144,18 @@ try {
         && /\.cbd-form,\.cbd-form\.top4\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/.test(cssAll)
         && /:class="\{ top4: form\.type === 'single' \}"/.test(dlgSrc), true);
     }
-    check('自定义卡池弹窗：结束日期**没有输入框**，只在开始时间下写一行小字',
-      count(html, /readonly/g) === 0 && /结束时间将设为/.test(html),
+    check('自定义卡池弹窗：结束日期**没有输入框**，只把「结束 <日期>」写在开始时间那一行',
+      count(html, /readonly/g) === 0
+      && /title="结束时间 = 开始时间 \+ 14 天"/.test(html)
+      && /\.cbd-lhd \.cbd-endnote\{[^}]*white-space:nowrap/.test(cssAll),
       true);
+    /* 2026-10-30：名字框的 placeholder 直接写「自动生成的名字」本身，
+       不再在表单下面单起一行「将自动命名为「…」」。 */
+    check('自定义卡池弹窗：名字框 placeholder = 自动生成的名字本身（不再单起一行说明）',
+      /:placeholder="namePlaceholder"/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
+      )
+      && !/将自动命名为/.test(html), true);
     check('自定义卡池弹窗：不带服务器选择（跟随当前浏览的服）',
       html.includes('归属服务器跟随当前浏览的服'), true);
     check('自定义卡池弹窗：「已生效」只数去重后活下来的（2 个）',
@@ -2211,6 +2220,11 @@ try {
       html.includes('version') && html.includes('exportedAt') && html.includes('banners'), true);
     check('JSON 子窗：叠在主弹窗**之上**（`.cbd-mask-top`，z-index 90 > 主弹窗 80）',
       /class="cbd-mask cbd-mask-top"/.test(html), true);
+    /* 2026-10-30 用户要求：JSON 编辑这里要写「各服有哪些类型的自设、各几个」。
+       这个 store 里没有自设 → 三个服都显示「无」（类型计数与 `exportCustom()` 同源）。 */
+    check('JSON 子窗：写清**各服**有哪些类型的自设、各几个',
+      /框里现在有：[\s\S]{0,60}国服 无/.test(plain(html))
+      && /国服 无[\s\S]{0,20}国际服 无[\s\S]{0,20}繁中服 无/.test(plain(html)), true);
     /* ⚠️ 弹窗的遮罩必须压在**顶栏（70）与左右抽屉（75）之上** —— 否则宽屏下弹窗居中、
        左边会钻进左栏底下被切掉、顶部压着顶栏（2026-10-24 实测 1184px 宽时标题第一个字被盖住）。 */
     const zOf = (sel) => Number(

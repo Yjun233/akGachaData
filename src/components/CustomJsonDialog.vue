@@ -11,11 +11,23 @@
  *    否则框里是过期数据、再点「应用」反而把别处的改动盖回去。
  * ⚠️ 层级比主弹窗高一档（`z-index:70` vs 主弹窗的 60），所以是「叠在上面」而不是替换它。
  */
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
+import { summarizeCustom } from '../lib/customBanners.js';
 
 const emit = defineEmits(['close']);
 const site = useSiteStore();
+
+/**
+ * **各服有哪些类型的自设、各几个**（2026-10-30 用户要求，写在 JSON 编辑这里）。
+ * 统计口径在 `lib/customBanners.js` 的 `summarizeCustom()`（与 `exportCustom()` 同源：
+ * 框里写了几条，这里就报几条 —— 被去重吃掉但还没清理的也算）。
+ */
+const customSummary = computed(() => summarizeCustom(site.customEntries)
+  .map((s) => (s.count
+    ? `${s.label} ${s.count} 条（${s.byType.map((t) => `${t.label} ×${t.count}`).join('、')}）`
+    : `${s.label} 无`))
+  .join(' · '));
 
 const jsonText = ref('');
 const jsonMsg = ref('');
@@ -65,6 +77,8 @@ function apply() {
         <br />
         <b>旧格式（v1 / v2）的文件也能直接粘</b>，会自动迁移。
       </p>
+
+      <p class="cbd-hint">框里现在有：{{ customSummary }}</p>
 
       <textarea
         v-model="jsonText" class="cbd-json cbd-json-big" spellcheck="false" wrap="off"

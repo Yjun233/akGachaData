@@ -165,11 +165,10 @@ const canRerunPreview = computed(() => computeCanRerun(form.type, form.rerunKind
       `verify-render` 里「默认（double）时不该出现『卡池开启类型』」那条断言会当场红
       （2026-10-19 又踩了一次，同 `OpTag` / `StatTable` 那两回）。 */
 
-/** 名字预览（让用户看到「留空会自动叫什么叫」） */
-const namePreview = computed(() => {
-  if (form.scName.trim()) return '';
-  return `将自动命名为「${buildName({ ...form, six: form.star6 })}」`;
-});
+/** 名字输入框的 **placeholder** = 留空时会自动生成的那个名字（2026-10-30 用户要求：
+ *  原来是输入框下面单独一行「将自动命名为「…」」，既占一行、又有一半是废话 ——
+ *  现在只把**生成的名字本身**塞进 placeholder，边打字就边看到「不填会叫什么」。 */
+const namePlaceholder = computed(() => buildName({ ...form, six: form.star6 }));
 
 function reset() {
   Object.assign(form, blank());
@@ -229,7 +228,7 @@ const showJson = ref(false);
       </p>
 
       <div class="cbd-form" :class="{ top4: form.type === 'single' }">
-        <label>寻访名字<input v-model="form.scName" type="text" placeholder="留空则自动生成" /></label>
+        <label>寻访名字<input v-model="form.scName" type="text" :placeholder="namePlaceholder" /></label>
         <label>
           寻访类型
           <select v-model="form.type">
@@ -237,16 +236,18 @@ const showJson = ref(false);
           </select>
         </label>
         <label v-if="form.type === 'single'">
-          卡池开启类型
+          <span class="cbd-lhd">
+            卡池开启类型<span class="cbd-endnote" title="单六寻访 + 首发 时自动为 true">canRerun <b>{{ canRerunPreview }}</b></span>
+          </span>
           <select v-model="form.rerunKind">
             <option v-for="k in RERUN_KINDS" :key="k" :value="k">{{ k }}</option>
           </select>
-          <span class="cbd-endnote">canRerun 自动为 <b>{{ canRerunPreview }}</b></span>
         </label>
         <label>
-          开始时间
+          <span class="cbd-lhd">
+            开始时间<span class="cbd-endnote" title="结束时间 = 开始时间 + 14 天">结束 <b>{{ endPreview }}</b></span>
+          </span>
           <input v-model="form.startDate" type="date" />
-          <span class="cbd-endnote">结束时间将设为 <b>{{ endPreview }}</b></span>
         </label>
         <label class="cbd-wide">
           批量粘贴<span class="cbd-sub">用 <b>/</b> 、逗号或空格分隔；按星级<b>追加</b>到下面两栏</span>
@@ -295,8 +296,6 @@ const showJson = ref(false);
           />
         </label>
       </div>
-
-      <p v-if="namePreview" class="cbd-hint">{{ namePreview }}</p>
 
       <div v-if="preview.errors.length || preview.warnings.length" class="cbd-msgs">
         <ul v-if="preview.warnings.length" class="cbd-msg warn">
