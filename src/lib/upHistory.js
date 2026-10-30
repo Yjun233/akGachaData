@@ -219,6 +219,10 @@ export function computeUpHistory({
       marks,
       firstDate: marks[0].date,
       lastDate: marks[marks.length - 1].date,
+      /* **不筛选时**的最后一次 UP —— 横条可以延伸到这天（右栏「始终显示日期范围内完整横条」，
+         2026-10-30）。⚠️ 必须取**筛选前**的 `r.marks`：`marks` 已经过类型 / 只看进店过滤，
+         拿它算出来的就是「当前筛选下的最后一次 UP」，那正是要区分的那个东西。 */
+      lastDateAll: r.marks[r.marks.length - 1].date,
       count: marks.length,
       shopCount: marks.filter((m) => m.isShop).length,
     });

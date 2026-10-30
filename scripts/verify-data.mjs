@@ -1562,18 +1562,42 @@ check('cutMonthOf：等于 monthIndexOf(classicDate)，空值为 NaN',
     renderBar(idxPlain).style.fill, TL.barStd);
 }
 
-/* 「始终显示日期范围内完整横条」（2026-10-30 用户加）：横条左端从**首次 UP** 画起
-   （默认从**实装日**画起），仍只在日期范围边界处裁剪；**横轴范围不受影响**。 */
+/* 「始终显示日期范围内完整横条」（2026-10-30 用户加，口径当天修正过一次）：
+   **左端仍是实装日**（第一次做成「首次 UP 日」是误解 —— 会把开服干员的条切掉一截）；
+   勾上后**右端**延伸到「**不筛选时**的最后一次 UP」（`lastDateAll`），
+   即不管这次 UP 的卡池类型有没有被筛掉。仍只在日期范围边界处裁剪。 */
 {
   const tlFullBar = buildUpTimeline({ rows: upAll.six, operatorByName: operators, fullBar: true });
-  const first = upAll.six[0];
-  check('完整横条：左端 = 首次 UP 日（默认是实装日）',
-    `${tlFullBar.bodyOption.series[0].data[0][0]}|${tlFull.bodyOption.series[0].data[0][0]}`,
-    `${monthIndexOf(first.firstDate)}|${monthIndexOf(first.releaseDate)}`);
-  check('完整横条：首次 UP 日确实晚于实装日（否则这条断言没有区分力）',
-    monthIndexOf(first.firstDate) > monthIndexOf(first.releaseDate), true);
+  check('完整横条：左端仍是实装日（与默认完全一致）',
+    tlFullBar.bodyOption.series[0].data[0][0], tlFull.bodyOption.series[0].data[0][0]);
+  check('完整横条：不筛选时 lastDateAll = lastDate（两者本来就相同）',
+    upAll.six.every((r) => r.lastDateAll === r.lastDate), true);
+  /* 筛选后必须**真的会变**：只看「常驻标准寻访」时，很多干员的 lastDate 会停在最后一次常驻标准 UP，
+     而 lastDateAll 仍是全程最后一次（中坚 / 限定 / 单六…）。
+     ⚠️ 别用「只看中坚」当夹具：中坚干员迁走后就**不再进标准寻访**，两种口径恰好相同（实测 0 例），
+        那样断言会永远绿、没有区分力。 */
+  const upDoubleOnly = computeUpHistory({
+    banners, categories, operatorByName: operators, relDateOf, types: ['double'],
+  });
+  const differ = upDoubleOnly.six.filter((r) => r.lastDateAll > r.lastDate).length;
+  check('完整横条：筛选生效时 lastDateAll 会晚于 lastDate（否则这个选项没有意义）',
+    differ > 0 && differ < upDoubleOnly.six.length, true);
   check('完整横条：不影响横轴范围', `${tlFullBar.xMin}/${tlFullBar.xMax}`, `${tlFull.xMin}/${tlFull.xMax}`);
   check('完整横条：系列数不变（仍是 3 个）', tlFullBar.bodyOption.series.length, 3);
+  /* renderItem 真的把右端画到 lastDateAll：伪 api 记录两次 coord 的月序号 */
+  {
+    const seen = [];
+    const api = {
+      value: (k) => (k === 1 ? 0 : 0),
+      coord: ([mi]) => { seen.push(mi); return [12 + (mi - tlFullBar.xMin) * 30, 13]; },
+    };
+    tlFullBar.bodyOption.series[0].renderItem({
+      coordSys: { x: 12, width: (tlFullBar.xMax - tlFullBar.xMin) * 30 }, dataIndex: 0,
+    }, api);
+    check('完整横条：横条右端取自 lastDateAll（渲染时真的换了值）',
+      `${seen[0]}|${seen[1]}`,
+      `${monthIndexOf(upAll.six[0].releaseDate)}|${monthIndexOf(upAll.six[0].lastDateAll)}`);
+  }
 }
 
 /* ---------------- 与原型逐格对比 ---------------- */

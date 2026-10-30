@@ -1447,8 +1447,10 @@ try {
       /始终显示日期范围内完整横条/.test(upAllOps.html)
       && /setUpFullBar\(\$event\.target\.checked\)/.test(fdSrc2)
       && /fullBar: site\.upFullBar/.test(upViewSrc3), true);
-    check('完整横条：横条左端 = fullBar ? 首次UP : 实装日（不影响横轴范围）',
-      /const barStartOf = \(r\) => \(fullBar && Number\.isFinite\(monthIndexOf\(r\.firstDate\)\)/.test(tlSrc2), true);
+    check('完整横条：右端改用 lastDateAll（左端仍 startOf = 实装日，不受影响）',
+      /const barEndDate = \(r\) => \(fullBar && r\.lastDateAll \? r\.lastDateAll : r\.lastDate\)/.test(tlSrc2)
+      && /const p2 = api\.coord\(\[monthIndexOf\(barEndDate\(r\)\), i\]\)/.test(tlSrc2)
+      && /const p1 = api\.coord\(\[startOf\(r\), i\]\)/.test(tlSrc2), true);
   }
   check('星级切换压成一行（.sortrow + .seg.mini，不再带人数）',
     /<span class="sortlabel">切换星级<\/span>[\s\S]{0,400}class="seg mini"/.test(upAllOps.html)
