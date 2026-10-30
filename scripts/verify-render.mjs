@@ -2106,8 +2106,9 @@ try {
         /v-if="form\.type === 'single'"/.test(dlgSrc)
         && /v-model="form\.rerunKind"/.test(dlgSrc)
         && /v-for="k in RERUN_KINDS"/.test(dlgSrc), true);
-      check('自定义卡池弹窗：canRerun **不给输入框**（自动推导，只在旁边写一行结果）',
-        /canRerun 自动为/.test(dlgSrc) && !/v-model="form\.canRerun"/.test(dlgSrc), true);
+      check('自定义卡池弹窗：canRerun **既不显示、也不给输入框**（纯自动推导写进条目）',
+        !/v-model="form\.canRerun"/.test(dlgSrc)
+        && !/canRerun/.test(html), true);
     }
     check('自定义卡池弹窗：列表行用的是条目自带的 `endDate`（不再每次重算开始日+14）',
       html.includes('2099-01-07 ~ 2099-01-21'), true);

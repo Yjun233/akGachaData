@@ -14,7 +14,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { TYPE_LABEL } from '../lib/constants.js';
 import {
-  CUSTOM_TYPES, RERUN_KINDS, buildName, computeCanRerun, distributeOps, endDateOf,
+  CUSTOM_TYPES, RERUN_KINDS, buildName, distributeOps, endDateOf,
   entryToForm, formToEntry, hasShop, mergeOps, midTag,
 } from '../lib/customBanners.js';
 import { localToday } from '../lib/date.js';
@@ -152,14 +152,11 @@ function clearOps(field) {
     用户 2026-10-06 定：不设结束日期，恒为开始日 + 14 天（`endDateOf`） */
 const endPreview = computed(() => endDateOf(form.startDate) || '—');
 
-/** 「会不会复刻」的预览 —— 单六 + 首发 才 true；只展示，不给输入框（用户 2026-10-19 定） */
-const canRerunPreview = computed(() => computeCanRerun(form.type, form.rerunKind));
-
 /* ---------------- 模板里那个「卡池开启类型」下拉（2026-10-19） ----------------
    它就是 DB 的 `rerunKind`，**只有单六寻访才有这个概念** —— DB 里 85 个带它的池全是单六，
    所以模板上挂了 `v-if="form.type === 'single'"`，别的类型连键都不写进条目。
-   `canRerun` **不给输入框**：单六 + 首发 才为 true，自动推导（见 lib 的 `computeCanRerun`），
-   界面上只在旁边显示一行「canRerun 自动为 true/false」。
+   `canRerun` **既不给输入框、也不在界面上显示**（2026-10-30 用户：「不需要卡池开启类型后面的
+   canRerun true 那个文本」）—— 它由 `computeCanRerun()` 自动推导、写进条目即可，用户不用管。
 
    ⚠️ 这段说明**只能放这儿** —— 写进 `<template>` 当 HTML 注释的话，Vue SSR 会**原样输出**，
       `verify-render` 里「默认（double）时不该出现『卡池开启类型』」那条断言会当场红
@@ -236,9 +233,7 @@ const showJson = ref(false);
           </select>
         </label>
         <label v-if="form.type === 'single'">
-          <span class="cbd-lhd">
-            卡池开启类型<span class="cbd-endnote" title="单六寻访 + 首发 时自动为 true">canRerun <b>{{ canRerunPreview }}</b></span>
-          </span>
+          卡池开启类型
           <select v-model="form.rerunKind">
             <option v-for="k in RERUN_KINDS" :key="k" :value="k">{{ k }}</option>
           </select>
