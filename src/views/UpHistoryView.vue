@@ -55,6 +55,8 @@ const built = computed(() => buildUpTimeline({
   xRange: site.upRange,
   isImage: isImage.value,
   showGaps: site.upShowGaps,
+  /* 「始终显示日期范围内完整横条」：横条左端从**首次 UP** 画起（默认从实装日画起） */
+  fullBar: site.upFullBar,
   operatorByName: site.operators,
   /* ⚠️ 把头像加载计数带进来：某张头像加载完 → tick 变 → 这里重算 → EChart 重绘。
      不带它的话，canvas 上的「首字占位」永远不会换成真头像（renderItem 不会自己重跑）。 */

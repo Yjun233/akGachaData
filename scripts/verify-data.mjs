@@ -1562,6 +1562,20 @@ check('cutMonthOf：等于 monthIndexOf(classicDate)，空值为 NaN',
     renderBar(idxPlain).style.fill, TL.barStd);
 }
 
+/* 「始终显示日期范围内完整横条」（2026-10-30 用户加）：横条左端从**首次 UP** 画起
+   （默认从**实装日**画起），仍只在日期范围边界处裁剪；**横轴范围不受影响**。 */
+{
+  const tlFullBar = buildUpTimeline({ rows: upAll.six, operatorByName: operators, fullBar: true });
+  const first = upAll.six[0];
+  check('完整横条：左端 = 首次 UP 日（默认是实装日）',
+    `${tlFullBar.bodyOption.series[0].data[0][0]}|${tlFull.bodyOption.series[0].data[0][0]}`,
+    `${monthIndexOf(first.firstDate)}|${monthIndexOf(first.releaseDate)}`);
+  check('完整横条：首次 UP 日确实晚于实装日（否则这条断言没有区分力）',
+    monthIndexOf(first.firstDate) > monthIndexOf(first.releaseDate), true);
+  check('完整横条：不影响横轴范围', `${tlFullBar.xMin}/${tlFullBar.xMax}`, `${tlFull.xMin}/${tlFull.xMax}`);
+  check('完整横条：系列数不变（仍是 3 个）', tlFullBar.bodyOption.series.length, 3);
+}
+
 /* ---------------- 与原型逐格对比 ---------------- */
 const protoPath = path.join(ROOT, 'prototype/index.html');
 const hasProto = fs.existsSync(protoPath);

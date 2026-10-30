@@ -1267,8 +1267,10 @@ try {
   check('UP 历史页：左栏导航四个顶级项 + 首次UP间隔的二级菜单都在',
     NAV_TOP.every((t) => uh.includes(t)) && NAV_SUB.every((t) => uh.includes(t)), true);
   check('UP 历史页：右栏标题', /时间范围与筛选/.test(uh), true);
-  check('UP 历史页：星级切换按钮（六星 93 / 五星 113）',
-    /六星（93）/.test(uh) && /五星（113）/.test(uh), true);
+  check('UP 历史页：星级切换压成一行（与「纵轴排序」同构，且**不带人数**）',
+    /<span class="sortlabel">切换星级<\/span>/.test(uh)
+    && />六星<\/button>/.test(uh) && />五星<\/button>/.test(uh)
+    && !/六星（\d+）/.test(uh), true);
   check('UP 历史页：时间范围三件套（近 N 年 + 两个日期 + 三个确认）',
     uh.includes('id="up-years"') && uh.includes('id="up-from"') && uh.includes('id="up-to"')
     && count(uh, />确认<\/button>/g) === 3, true);
@@ -1334,12 +1336,14 @@ try {
   check('UP 历史：两个新开关的默认都是「不勾」（间隔文案默认不显示）',
     up.store.upHideMid === false && up.store.upShowGaps === false, true);
   /* 纵轴排序：两行「左标签 + 升/降序分段按钮」，共 2 个标签 + 4 个按钮。
-     ⚠️ 标签文案从 `UP_SORT_ROWS` 派生，别写死（「UP 日期」曾被改成「最近 UP」，断言就红了）。 */
+     ⚠️ 标签文案从 `UP_SORT_ROWS` 派生，别写死（「UP 日期」曾被改成「最近 UP」，断言就红了）。
+     ⚠️ 2026-10-30 起「切换星级」也压成了同构的 `.sortrow`（左侧标签 + `.seg.mini`），
+        所以这里是 **3 个 sortrow / 3 个 seg.mini**（星级 1 + 排序 2）。 */
   const sortLabels = UP_SORT_ROWS.map((r) => r.label);
-  check('UP 历史页：纵轴排序是两个维度 × 升/降序（共 4 个按钮）',
+  check('UP 历史页：纵轴排序是两个维度 × 升/降序（共 4 个按钮）+ 星级那一行同构',
     sortLabels.every((t) => uh.includes(t))
-    && count(uh, /class="sortrow"/g) === 2
-    && count(uh, /class="seg mini"/g) === 2
+    && count(uh, /class="sortrow"/g) === 3
+    && count(uh, /class="seg mini"/g) === 3
     && count(uh, />升序<\/button>/g) === 2
     && count(uh, />降序<\/button>/g) === 2, true);
   check('UP 历史页：排序标签不再塞进 .seg（会被 flex 拉成一半宽）',
@@ -1425,14 +1429,34 @@ try {
   const upFullRange = await renderRoute('/up-history', (s) => s.setUpRange('2000-01-01', '2099-12-31'));
   check('时间范围：覆盖全时段时行数与不限范围一致',
     upFullRange.store.upHistory.six.length === upNoRange.store.upHistory.six.length, true);
-  const upShowAll = await renderRoute('/up-history', (s) => {
+  const upAllOps = await renderRoute('/up-history', (s) => {
     s.setUpRange('2026-01-01', '');
-    s.setUpShowAll(true);
+    s.setUpAllOps(true);
   });
-  check('显示范围内未 UP 干员：勾上后行数恢复（等于不限范围）',
-    upShowAll.store.upHistory.six.length === upNoRange.store.upHistory.six.length, true);
-  check('显示范围内未 UP 干员：开关出现在右栏',
-    /显示范围内未 UP 干员/.test(upShowAll.html), true);
+  check('纵轴始终显示所有干员：勾上后行数恢复（等于不限范围）',
+    upAllOps.store.upHistory.six.length === upNoRange.store.upHistory.six.length, true);
+  check('纵轴始终显示所有干员：开关出现在右栏（旧文案「显示范围内未 UP 干员」已删）',
+    /纵轴始终显示所有干员/.test(upAllOps.html) && !/显示范围内未 UP 干员/.test(upAllOps.html), true);
+  /* 「始终显示日期范围内完整横条」（2026-10-30）：只改横条左端（首次 UP 而非实装日），
+     默认关 —— 关着的时候与改造前一模一样。下面是源码级收口（SSR 只看得到 html）。 */
+  {
+    const fdSrc2 = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+    const tlSrc2 = fs.readFileSync(path.join(ROOT, 'src/lib/upTimeline.js'), 'utf8');
+    const upViewSrc3 = fs.readFileSync(path.join(ROOT, 'src/views/UpHistoryView.vue'), 'utf8');
+    check('完整横条：右栏有该开关、接到 store、并传给 buildUpTimeline',
+      /始终显示日期范围内完整横条/.test(upAllOps.html)
+      && /setUpFullBar\(\$event\.target\.checked\)/.test(fdSrc2)
+      && /fullBar: site\.upFullBar/.test(upViewSrc3), true);
+    check('完整横条：横条左端 = fullBar ? 首次UP : 实装日（不影响横轴范围）',
+      /const barStartOf = \(r\) => \(fullBar && Number\.isFinite\(monthIndexOf\(r\.firstDate\)\)/.test(tlSrc2), true);
+  }
+  check('星级切换压成一行（.sortrow + .seg.mini，不再带人数）',
+    /<span class="sortlabel">切换星级<\/span>[\s\S]{0,400}class="seg mini"/.test(upAllOps.html)
+    && !/六星（\d+）/.test(upAllOps.html), true);
+  check('三个复选框的小字说明都已删掉（只看进店 / 隐藏已属中坚 / 间隔天数）',
+    !/上面的卡池类型不可能有进店记录的类型会置灰/.test(upAllOps.html)
+    && !/判断该干员是否已移入中坚寻访/.test(upAllOps.html)
+    && !/相隔 ≥ 41 天/.test(upAllOps.html), true);
   check('类型筛选生效：store 两种类型', upTypes.store.upTypes.join(), 'double,classic');
 
   /* 切到五星 */

@@ -83,7 +83,12 @@ export const useSiteStore = defineStore('site', {
     firstUpMetric: 'gap',              // 纵轴口径：gap 距上个首次日期 | sinceRelease 距实装日期
     upRange: { from: '', to: '' },     // UP 历史：控制图表横轴范围，**同时**决定哪些干员占行
                                        //（范围内没有任何标记的干员不显示，见 computeUpHistory）
-    upShowAll: false,                  // UP 历史：勾上则忽略上面那条，范围内没 UP 的干员也占行
+    /* 「**纵轴始终显示所有干员**」（2026-10-30 由「显示范围内未 UP 干员」改名，行为不变）：
+       勾上则忽略上面那条 —— 范围内没有 UP 的干员也占一行。 */
+    upAllOps: false,
+    /* 「**始终显示日期范围内完整横条**」（2026-10-30 用户加）：横条改从**首次 UP** 画到**最后一次 UP**
+       （默认从**实装日**画起），仍只在日期范围边界处裁剪。默认关 = 与改造前完全一致。 */
+    upFullBar: false,
     upSort: 'release-asc',             // UP 历史：纵轴排序
     upRarity: 6,                       // UP 历史：一次只显示一个星级（默认六星）
     upTypes: [],                       // UP 历史：选中的卡池类型（空 = 全部）
@@ -323,8 +328,8 @@ export const useSiteStore = defineStore('site', {
         types: s.upTypes,
         shopOnly: s.upShopOnly,
         /* 时间范围既决定横轴可视范围，也决定哪些干员占行（范围内没标记的不占行）；
-           勾了「显示范围内未 UP 干员」就传 null，等于不做这层过滤 */
-        range: s.upShowAll ? null : s.upRange,
+           勾了「纵轴始终显示所有干员」就传 null，等于不做这层过滤 */
+        range: s.upAllOps ? null : s.upRange,
         sort: s.upSort,
       });
     },
@@ -542,7 +547,8 @@ export const useSiteStore = defineStore('site', {
       this.upRarity = 6;
       this.upTypes = [];
       this.upShopOnly = false;
-      this.upShowAll = false;
+      this.upAllOps = false;
+      this.upFullBar = false;
       this.upHideMid = false;
       /* ⚠️ 与 state 的初值、FilterDrawer 的 resetUp 三处**必须一致**：
          2026-10-02 这三处曾走散（初值 false / 这里 true / 右栏重置 false），
@@ -686,9 +692,15 @@ export const useSiteStore = defineStore('site', {
       }
     },
 
-    /** 是否显示「时间范围内没有 UP 过」的干员（默认不显示） */
-    setUpShowAll(on) {
-      this.upShowAll = !!on;
+    /** 纵轴是否**始终显示所有干员**（默认关 = 只显示范围内有 UP 的；2026-10-30 改名，
+     *  原标签「显示范围内未 UP 干员」） */
+    setUpAllOps(on) {
+      this.upAllOps = !!on;
+    },
+
+    /** 横条是否**始终从首次 UP 画到最后一次 UP**（默认关 = 从实装日画起；2026-10-30 用户加） */
+    setUpFullBar(on) {
+      this.upFullBar = !!on;
     },
 
     /** 是否隐藏「在结束日期已属中坚寻访」的干员（默认不隐藏） */

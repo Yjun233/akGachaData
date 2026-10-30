@@ -201,13 +201,20 @@ export const minInnerWidth = (xMin, xMax) => {
  */
 export function buildUpTimeline({
   rows, xRange = {}, isImage = false, showGaps = true, operatorByName = {},
-  avatarTick = 0,
+  avatarTick = 0, fullBar = false,
 }) {
   /* ⚠️ `avatarTick` 纯粹是缓存失效用的，读一下把它纳入依赖即可（echarts 只看 option 内容） */
   void avatarTick;
   const startOf = (r) => (Number.isFinite(monthIndexOf(r.releaseDate))
     ? monthIndexOf(r.releaseDate)
     : monthIndexOf(r.firstDate));
+  /* 横条**左端**：默认 = 实装日（没有实装日就退化成首次 UP 日）；
+     勾了「始终显示日期范围内完整横条」→ **首次 UP 日**（2026-10-30 用户定义：
+     「从干员最初的 up 到最后的 up，只会被日期范围边界裁剪」）。
+     ⚠️ 只影响横条本身，横轴范围仍按实装日算 —— 否则勾一下选项横轴会自己缩一截。 */
+  const barStartOf = (r) => (fullBar && Number.isFinite(monthIndexOf(r.firstDate))
+    ? monthIndexOf(r.firstDate)
+    : startOf(r));
 
   /* 1) 横轴范围：优先用右栏设置，否则用数据自身范围。
         两端都取整到「月初 / 月末」，这样刻度（每月 1 号）才不会跑偏。 */
@@ -406,18 +413,19 @@ export function buildUpTimeline({
       axisLabel: { show: false }, // 名字由左侧 DOM 列（sticky）显示
     },
     series: [
-      /* 1) 横条：实装日 → 最后一次 UP（**两端都在绘图区边界截断**）。
+      /* 1) 横条：**实装日 → 最后一次 UP**（两端都在绘图区边界截断）。
+             勾了「始终显示日期范围内完整横条」时左端改从**首次 UP** 画起（见 `barStartOf`）。
              两段色：迁入中坚前 `TL.barStd` / 之后 `TL.barMid`，硬切（见 `barFillOf`）。 */
       {
         type: 'custom',
         silent: true,
-        data: rows.map((r, i) => [startOf(r), i]),
+        data: rows.map((r, i) => [barStartOf(r), i]),
         renderItem(params, api) {
           const i = api.value(1);
           const r = rows[i];
           if (!r) return null;
           const cs = params.coordSys;
-          const p1 = api.coord([startOf(r), i]);
+          const p1 = api.coord([barStartOf(r), i]);
           const p2 = api.coord([monthIndexOf(r.lastDate), i]);
           if (!p1 || !p2) return null;
 

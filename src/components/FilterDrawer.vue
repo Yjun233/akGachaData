@@ -214,7 +214,8 @@ function resetUp() {
   site.setUpSort('release-asc');
   site.setUpTypes([]);
   site.setUpShopOnly(false);
-  site.setUpShowAll(false);
+  site.setUpAllOps(false);
+  site.setUpFullBar(false);
   site.setUpHideMid(false);
   site.setUpShowGaps(false);
 }
@@ -465,16 +466,20 @@ function resetUp() {
     <!-- UP 历史一览 -->
     <div v-else class="drawer-bd pane pane-up">
       <div class="fgroup">
-        <label>切换星级</label>
-        <div class="seg">
-          <button
-            type="button" :class="{ on: site.upRarity === 6 }"
-            @click="site.setUpRarity(6)"
-          >六星（{{ site.upHistory.six.length }}）</button>
-          <button
-            type="button" :class="{ on: site.upRarity === 5 }"
-            @click="site.setUpRarity(5)"
-          >五星（{{ site.upHistory.five.length }}）</button>
+        <div class="sortrows">
+          <div class="sortrow">
+            <span class="sortlabel">切换星级</span>
+            <div class="seg mini">
+              <button
+                type="button" :class="{ on: site.upRarity === 6 }"
+                @click="site.setUpRarity(6)"
+              >六星</button>
+              <button
+                type="button" :class="{ on: site.upRarity === 5 }"
+                @click="site.setUpRarity(5)"
+              >五星</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -524,14 +529,6 @@ function resetUp() {
 
       <p v-if="upError" class="ferr">{{ upError }}</p>
 
-      <label class="chk">
-        <input
-          type="checkbox" :checked="site.upShowAll"
-          @change="site.setUpShowAll($event.target.checked)"
-        />
-        <span>显示范围内未 UP 干员</span>
-      </label>
-
       <div class="fgroup">
         <label>纵轴排序</label>
         <div class="sortrows">
@@ -563,12 +560,28 @@ function resetUp() {
         />
       </div>
 
+      <!-- 两个「始终」选项（2026-10-30 用户加）：拆成「纵轴」和「横条」两件事。 -->
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.upAllOps"
+          @change="site.setUpAllOps($event.target.checked)"
+        />
+        <span>纵轴始终显示所有干员</span>
+      </label>
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.upFullBar"
+          @change="site.setUpFullBar($event.target.checked)"
+        />
+        <span>始终显示日期范围内完整横条</span>
+      </label>
+
       <label class="chk">
         <input
           type="checkbox" :checked="site.upShopOnly"
           @change="site.setUpShopOnly($event.target.checked)"
         />
-        <span>只看进店<small>上面的卡池类型不可能有进店记录的类型会置灰</small></span>
+        <span>只看进店</span>
       </label>
 
       <label class="chk">
@@ -576,7 +589,7 @@ function resetUp() {
           type="checkbox" :checked="site.upHideMid"
           @change="site.setUpHideMid($event.target.checked)"
         />
-        <span>隐藏在结束日期已属中坚的干员<small>按<code>结束日期</code>（未设则按今天）判断该干员是否已移入中坚寻访</small></span>
+        <span>隐藏在结束日期已属中坚的干员</span>
       </label>
 
       <label class="chk">
@@ -584,7 +597,7 @@ function resetUp() {
           type="checkbox" :checked="site.upShowGaps"
           @change="site.setUpShowGaps($event.target.checked)"
         />
-        <span>显示两次 UP 的间隔天数<small>两个标记在屏幕上隔得开（≈ 相隔 ≥ 41 天）时，在中间写日期差</small></span>
+        <span>显示两次 UP 的间隔天数</span>
       </label>
 
       <div class="btn-row">
