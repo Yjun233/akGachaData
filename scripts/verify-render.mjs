@@ -843,6 +843,22 @@ try {
     count(upViewSrc, /watch\(isImage, \(on\) => \{ if \(on\) preloadVisible\(\); \}\)/) === 1
     && count(fupSrc, /watch\(isImage, \(on\) => \{ if \(on\) preloadVisible\(\); \}\)/) === 1, true);
 
+  /* 日期框的粘贴增强（2026-10-30）：在 document 上挂一次捕获阶段的 paste 监听，
+     所有 `<input type="date">` 都吃「2026-10-29」以及整段复制出来的卡池信息。
+     ⚠️ 用户说的是「电脑网页端的所有日期框」→ 装在 main.js 里，别再逐个框去挂。 */
+  {
+    const mainSrc = fs.readFileSync(path.join(ROOT, 'src/main.js'), 'utf8');
+    const dpSrc = fs.readFileSync(path.join(ROOT, 'src/lib/datePaste.js'), 'utf8');
+    check('日期框粘贴：main.js 统一装上 installDatePaste()（所有日期框一次生效）',
+      /from '\.\/lib\/datePaste\.js'/.test(mainSrc) && /installDatePaste\(\);/.test(mainSrc), true);
+    check('日期框粘贴：监听挂了捕获阶段、只认 input[type=date]、认不出就放行',
+      /addEventListener\('paste', onPaste, true\)/.test(dpSrc)
+      && /el\.type !== 'date'/.test(dpSrc)
+      && /if \(!date\) return;/.test(dpSrc), true);
+    check('日期框粘贴：「结束日期」那种框（id 以 -to 结尾）取文本里**最后一个**日期',
+      /return \/-to\$\/i\.test\(el\.id \|\| ''\) \? 'last' : 'first';/.test(dpSrc), true);
+  }
+
   /* 切换模式**不动**已设的时间范围（用户指定）；范围按新的「首次日期」重新筛 */
   const rotKeep = await renderRoute('/first-up', (s) => {
     s.setFirstUpRange('2024-01-01', '2026-01-01');

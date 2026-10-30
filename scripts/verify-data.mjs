@@ -20,6 +20,7 @@ import {
 import { bannerRows, emptyFilters } from '../src/lib/banners.js';
 import { ensurePinyin, matchOperator, searchOperators } from '../src/lib/opSearch.js';
 import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '../src/lib/date.js';
+import { extractDate, findDates, installDatePaste } from '../src/lib/datePaste.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 import {
   CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, RERUN_KINDS, STORE_VERSION,
@@ -401,6 +402,34 @@ check('自定义卡池：migrateV2Entry 的**单六**默认填「首发」并据
     const e = migrateV2Entry({ uid: 4, server: 'sc', scName: '旧单六', type: 'single', startDate: '2026-10-08', star6: [{ scCharName: '甲', charId: 'char_a' }], star5: [], shop: [] }, fakeId);
     return `${e.scName}|${e.rerunKind}|${e.canRerun}`;
   })(), '自定义_旧单六|首发|true');
+
+/* ---- 日期框的粘贴增强（2026-10-30 用户要求）----
+   原生 `<input type="date">` 按本地化分段理解剪贴板，粘「2026-10-29」经常整段被忽略。
+   `extractDate()` 负责从任意文本里抠日期，认这几种写法 + 前后有别的字。 */
+{
+  const one = (t) => extractDate(t);
+  check('粘贴日期：ISO 写法原样认（2026-10-29）', one('2026-10-29'), '2026-10-29');
+  check('粘贴日期：斜杠 / 点 / 中文年月日都认',
+    [one('2026/10/29'), one('2026.10.29'), one('2026年10月29日')].join(','),
+    '2026-10-29,2026-10-29,2026-10-29');
+  check('粘贴日期：八位纯数字也认（20261029）', one('20261029'), '2026-10-29');
+  check('粘贴日期：前后有别的字也行（"卡池开始日：2026-10-29 16:00"）',
+    one('卡池开始日：2026-10-29 16:00'), '2026-10-29');
+  check('粘贴日期：单个数字补零（2026-1-5 → 2026-01-05）', one('2026-1-5'), '2026-01-05');
+  /* 一段文本多个日期：默认取第一个；「结束日期」那种框取最后一个 */
+  const copied = '卡池名称：某池\n类型：常驻标准寻访\n开始日期：2026-10-29\n结束日期：2026-11-12';
+  check('粘贴日期：整段卡池信息 → 默认取第一个（开始日期）', one(copied), '2026-10-29');
+  check('粘贴日期：pick=last 取最后一个（结束日期框用）',
+    extractDate(copied, 'last'), '2026-11-12');
+  check('粘贴日期：findDates 按出现顺序返回全部', findDates(copied).join(','), '2026-10-29,2026-11-12');
+  /* 不合法的必须吐 null，否则会往 input 里写空值／错值 */
+  check('粘贴日期：不存在的日期判掉（2026-02-30 / 2026-13-01）',
+    `${one('2026-02-30')}|${one('2026-13-01')}`, 'null|null');
+  check('粘贴日期：没日期的文本 → null（交回浏览器默认行为）',
+    `${one('没有日期')}|${one('')}|${one(null)}`, 'null|null|null');
+  check('粘贴日期：装监听在没有 document 的环境下安全返回',
+    typeof installDatePaste({ }) === 'function', true);
+}
 
 /* ---- JSON 子窗那行「各服有哪些类型的自设、各几个」（2026-10-30）----
    口径 = 传进去的那份 `customEntries`（与 `exportCustom()` 同源），按服分组、按类型计数。 */
