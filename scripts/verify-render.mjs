@@ -671,10 +671,31 @@ try {
     check('卡池类型：中坚 + 首次轮换 = 首次出现在常驻中坚（人比进店多）',
       midRot.store.firstUp.rows.length > MS.rows.length, true);
 
+    /* 中坚模式下那两个「实装日」口径换成「迁入前最后一次在标准池露面」（2026-11-01 用户指定） */
+    check('卡池类型：中坚模式下横轴 / 纵轴按钮换成「最后标准进店」',
+      midFup.html.includes('按最后标准进店日期') && midFup.html.includes('距最后标准进店日期'), true);
+    check('卡池类型：标准模式仍是「按实装日期 / 距实装日期」',
+      ph.includes('按实装日期') && ph.includes('距实装日期'), true);
+    check('卡池类型：中坚 + 轮换时那个词是「UP」（用户写的是 进店/UP）',
+      midRot.html.includes('按最后标准UP日期') && midRot.html.includes('距最后标准UP日期'), true);
+    /* 数据侧：切到「按最后标准…」时，横轴标签与排序都用 lastStdDate */
+    const midAxisBase = await renderRoute('/first-up', (s) => {
+      s.setFirstUpPool('mid');
+      s.setFirstUpAxis('release');
+    });
+    check('卡池类型：中坚 + 按最后标准日期时，轴标签用的是 lastStdDate 而不是实装日',
+      midAxisBase.store.firstUp.six.every((r) => r.xLabel === r.lastStdDate
+        && r.xLabel !== r.releaseDate), true);
+
     const midTable = await renderRoute('/first-up/table', (s) => s.setFirstUpPool('mid'));
     check('卡池类型：表格版也跟着变（分节标题 + 表头列名）',
       midTable.html.includes('首次中坚进店间隔')
       && midTable.html.includes('首次中坚进店日'), true);
+    check('卡池类型：表格版的基准列换名（实装日 → 最后标准日，距实装 → 距最后标准进店）',
+      midTable.html.includes('最后标准日') && midTable.html.includes('距最后标准进店')
+      && !midTable.html.includes('>实装日</th>'), true);
+    check('卡池类型：标准表格版仍是「实装日 / 距实装」',
+      ph.includes('实装日') && (await renderRoute('/first-up/table')).html.includes('>实装日</th>'), true);
   }
 
   /* 筛选范围变化 → 纵轴范围与刻度跟着变（用户明确要求） */

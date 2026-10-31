@@ -69,10 +69,20 @@ export function statCopyRows(rows, { split = false, refDate, midOnly = false, no
  * @param {{word?:string}} opts `word` = 「进店」/「轮换」，跟统计模式走（表头用）
  * @returns {Array<Array<string|number>>} 第一行是表头
  */
-export function firstUpCopyRows(rows, { word = '进店' } = {}) {
-  const head = ['实装日', '干员', `首次${word}日`, '所在卡池', '距上行', '距实装', '累计数'];
+export function firstUpCopyRows(rows, { word = '进店', mid = false, lastStdWord = '进店' } = {}) {
+  /* ⚠️ 中坚模式（2026-11-01）下第一列与「距…」列的基准都换成「最后标准露面日」，
+     列头必须跟着变 —— 否则复制出去的表格会写着「实装日 / 距实装」而装的是另一套数。
+     值统一取 `r.baseDate`（standard = 实装日，中坚 = lastStdDate），与屏幕一致。 */
+  const head = [
+    mid ? '最后标准日' : '实装日',
+    '干员', `首次${word}日`, '所在卡池', '距上行',
+    mid ? `距最后标准${lastStdWord}` : '距实装',
+    '累计数',
+  ];
   const body = (rows || []).map((r) => [
-    r.releaseDate || DASH,
+    /* ⚠️ 别统一读 `baseDate` —— 手工构造的夹具行可能没有这个字段（老结构只有 releaseDate）。
+       按类型各取各的，语义也更清楚：中坚模式没有标准记录就该是 —，而不是退回实装日。 */
+    (mid ? r.lastStdDate : r.releaseDate) || DASH,
     r.name,
     r.firstDate,
     r.firstBanner || DASH,

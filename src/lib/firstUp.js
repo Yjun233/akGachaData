@@ -62,21 +62,36 @@ export const modeFirstLabel = (mode, poolType = 'std') => {
 export const modeWord = (mode, poolType = 'std') =>
   modeFirstLabel(mode, poolType).replace(/^首次/, '');
 
+/**
+ * 中坚模式下「最后标准……日期」里那个词：`进店` / `UP`（用户 2026-11-01 的写法）。
+ * ⚠️ 注意这里**不是** `modeWord`：统计模式的第二个是「轮换」，但用户要的措辞是「UP」
+ *    （轮换只是标准池的一个子集，而「最后标准 UP」涵盖任何标准池的 UP）。
+ */
+export const lastStdWord = (mode) => (mode === 'rotation' ? 'UP' : '进店');
+
 /** 纵轴取值的中文名（图表说明与 tooltip 用；随模式变） */
 export function metricLabel(mode, metric, poolType = 'std') {
-  return metric === 'gap'
-    ? `距同星级上一个${modeFirstLabel(mode, poolType)}（天）`
+  if (metric === 'gap') return `距同星级上一个${modeFirstLabel(mode, poolType)}（天）`;
+  return poolType === 'mid'
+    ? `距最后标准${lastStdWord(mode)}日期（天）`
     : '距该干员实装日（天）';
 }
 
-/** 横轴口径的短中文名（卡片头一行里用）：`按实装日期` / `按首次进店日期` */
-export const axisLabel = (mode, axis, poolType = 'std') =>
-  (axis === 'release' ? '按实装日期' : `按${modeFirstLabel(mode, poolType)}日期`);
+/** 横轴口径的短中文名（卡片头一行里用）：`按实装日期` / `按首次进店日期`；
+ *  中坚模式下「实装」换成「最后标准进店/UP 日期」（用户 2026-11-01 指定） */
+export const axisLabel = (mode, axis, poolType = 'std') => {
+  if (axis !== 'release') return `按${modeFirstLabel(mode, poolType)}日期`;
+  return poolType === 'mid' ? `按最后标准${lastStdWord(mode)}日期` : '按实装日期';
+};
 
 /** 纵轴口径的短中文名（卡片头一行里用）：`距实装日` / `距上个首次进店`
  *  （长名见上面的 `metricLabel` —— 那个带「（天）」后缀，给图表说明与 tooltip） */
-export const metricShort = (mode, metric, poolType = 'std') =>
-  (metric === 'sinceRelease' ? '距实装日' : `距上个${modeFirstLabel(mode, poolType)}`);
+export const metricShort = (mode, metric, poolType = 'std') => {
+  if (metric === 'sinceRelease') {
+    return poolType === 'mid' ? `距最后标准${lastStdWord(mode)}日期` : '距实装日';
+  }
+  return `距上个${modeFirstLabel(mode, poolType)}`;
+};
 
 /**
  * 卡片头「筛选范围」的文案。
@@ -121,22 +136,49 @@ export function computeFirstUp({
      中坚模式的类型范围已经由 `inFirstUpPool` 收成「只留常驻中坚」了 ——
      再套 `ROTATION_TYPES` 会一个都匹配不上（2026-10-31 第一次写就是这样，中坚轮换出 0 人）。 */
   const rotationTypes = isRotation && poolType !== 'mid' ? new Set(ROTATION_TYPES) : null;
+  /** 中坚模式的「基准日期」要另算（见下面的 `lastStd`） */
+  const isMid = poolType === 'mid';
 
   /** name → { name, rarity, firstDate, firstBanner, count } */
   const first = {};
 
+  /**
+   * name → { date, banner } —— **迁入中坚之前，最后一次出现在标准类卡池**的日期。
+   * 只在中坚模式下收集：它是中坚模式里「按最后标准进店/UP日期」「距最后标准进店/UP日期」
+   * 两个口径的基准（用户 2026-11-01 指定）。
+   *
+   * ⚠️ 口径跟着 `mode` 走，与 `first` 完全对称：
+   *    · `mode: 'shop'` → 只认**进店位**（`isShop`）→ 「最后标准进店日期」；
+   *    · `mode: 'rotation'` → 任何 UP 都算 → 「最后标准 UP 日期」。
+   * ⚠️ 类型范围用的是 `inFirstUpPool(b, 'std')`（**排除中坚两类**，含限定），
+   *    不再额外套 `ROTATION_TYPES` —— 用户说的是「最后一次在标准寻访里」，
+   *    单六 / 双五那些标准池当然也算。
+   * ⚠️ **不按 `classicDate` 过滤**：中坚干员迁出后本来就不会再进标准池，所以
+   *    「标准类池里的最后一次」天然就在迁入之前。`verify-data` 有一条断言守着这个前提
+   *    （`最后标准日期 < 迁入日`），数据形态一变就会红。
+   */
+  const lastStd = {};
+
   for (const b of banners) {
-    /* ① 先按「卡池类型」筛 —— 标准模式排除中坚两类、中坚模式只留常驻中坚。
-          ⚠️ 这一层同时决定「累计次数」的口径：标准模式不再把中坚池的次数算进去
-             （用户 2026-10-31 明确：累计次数跟着类型分开数）。 */
-    if (!inFirstUpPool(b, poolType)) continue;
-    /* ② 再按统计模式筛：轮换模式只看那 4 类卡池；进店模式看剩下的全部（进店标记本就只在
-          常驻标准 / 常驻中坚上） */
+    const inThisPool = inFirstUpPool(b, poolType);
+    /* 中坚模式额外看一遍「标准类」池 —— 用来算 lastStd（这一路**不进** first） */
+    const inStdPool = isMid && inFirstUpPool(b, 'std');
+    if (!inThisPool && !inStdPool) continue;
+    /* ① 统计模式：轮换看全部 UP；进店只看进店位 */
     if (rotationTypes && !rotationTypes.has(b.type)) continue;
     for (const op of b.upOperators) {
       if (!isRotation && !op.isShop) continue;
       if (op.isLimited) continue;
       if ((op.rarity || 0) < 5) continue;
+
+      if (inStdPool) {
+        const prev = lastStd[op.scCharName];
+        if (!prev || b.startDate > prev.date) {
+          lastStd[op.scCharName] = { date: b.startDate, banner: b.scName };
+        }
+        continue;
+      }
+
       const cur = first[op.scCharName];
       if (!cur) {
         first[op.scCharName] = {
@@ -164,19 +206,33 @@ export function computeFirstUp({
   const filtered = allRaw
     .filter((x) => (!from || x.firstDate >= from) && (!to || x.firstDate <= to));
 
-  /* 实装日与「距实装天数」要先算好 —— 按实装排序要用到 releaseDate */
+  /**
+   * 基准日期 + 「距基准天数」。
+   *
+   * 标准模式：实装日（`releaseDate`）→ 纵轴「距实装日期」。
+   * 中坚模式：**迁入前最后一次出现在标准类的日期**（`lastStdDate`）→ 纵轴「距最后标准进店/UP日期」
+   * （用户 2026-11-01 指定：「实装日期」对中坚干员已经没意义了，有意义的是
+   *   「他在标准池里最后一次露面之后，隔了多久才第一次进中坚」）。
+   *
+   * ⚠️ 字段名 `sinceRelease` 保留不变（表格版的列、复制、断言都在用），
+   *    只在中坚模式下换基准 —— 所以别按字面理解成「距实装」了。
+   */
   for (const r of filtered) {
     const op = operatorByName[r.name];
     r.releaseDate = relDateOf(op);
-    r.sinceRelease = r.releaseDate ? diffDays(r.firstDate, r.releaseDate) : null;
+    r.lastStdDate = isMid ? (lastStd[r.name]?.date || null) : null;
+    r.lastStdBanner = isMid ? (lastStd[r.name]?.banner || null) : null;
+    /** 当前口径的基准日期：标准 = 实装日；中坚 = 最后标准日期 */
+    r.baseDate = isMid ? r.lastStdDate : r.releaseDate;
+    r.sinceRelease = r.baseDate ? diffDays(r.firstDate, r.baseDate) : null;
   }
 
   /**
    * 组内排序 + 逐点算出当前口径的取值。
-   * 同一天 / 同实装日时按名字排序，保证顺序稳定。
+   * 同一天 / 同一基准日时按名字排序，保证顺序稳定。
    */
   function buildSeries(list) {
-    const sortKey = (r) => (axis === 'release' ? (r.releaseDate || '9999-12-31') : r.firstDate);
+    const sortKey = (r) => (axis === 'release' ? (r.baseDate || '9999-12-31') : r.firstDate);
     const sorted = list.slice().sort((a, b) => {
       const ka = sortKey(a);
       const kb = sortKey(b);
@@ -188,7 +244,7 @@ export function computeFirstUp({
     for (const r of sorted) {
       r.gap = prev ? diffDays(r.firstDate, prev.firstDate) : null;
       r.prevName = prev ? prev.name : null;
-      r.xLabel = axis === 'release' ? (r.releaseDate || '—') : r.firstDate;
+      r.xLabel = axis === 'release' ? (r.baseDate || '—') : r.firstDate;
       r.value = metric === 'gap' ? r.gap : r.sinceRelease;
       prev = r;
     }

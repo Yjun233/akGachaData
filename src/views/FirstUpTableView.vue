@@ -48,7 +48,9 @@ import { firstUpCopyRows } from '../lib/tableCopy.js';
    ⚠️ 别把这段说明写成 HTML 注释塞进 `<td>` 里：Vue SSR 会**原样输出**注释，于是
      「`<td class="opcell">` 紧跟 `<b>`」这类相邻匹配就断了（2026-10-16 真踩过）。 */
 import { opNameStyle } from '../lib/opNameFit.js';
-import { axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel } from '../lib/firstUp.js';
+import {
+  lastStdWord as lastStdWordOf, axisLabel, metricShort, modeFirstLabel, modeWord, firstUpRangeLabel,
+} from '../lib/firstUp.js';
 
 const site = useSiteStore();
 const data = computed(() => site.firstUp);
@@ -58,6 +60,10 @@ const isImage = computed(() => site.avatarMode === 'image');
 const firstLabel = computed(() => modeFirstLabel(data.value.mode, data.value.poolType));
 /** 「进店」/「轮换」—— 只用在「首次X日」这个列头（「距上行」「累计数」是固定短文案） */
 const word = computed(() => modeWord(data.value.mode, data.value.poolType));
+/** 中坚模式：第一列与「距…」列的基准都换成「最后标准露面日」 */
+const isMid = computed(() => data.value.poolType === 'mid');
+/** 中坚模式「最后标准……日期」里的词：`进店` / `UP` */
+const lastStdWord = computed(() => lastStdWordOf(data.value.mode));
 
 const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis, data.value.poolType));
 const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric, data.value.poolType));
@@ -86,7 +92,7 @@ const isMetric = (which) => site.firstUpMetric === which;
 const copyRows = computed(() => {
   const w = word.value;
   const out = {};
-  for (const sec of sections.value) out[sec.key] = firstUpCopyRows(sec.rows, { word: w });
+  for (const sec of sections.value) out[sec.key] = firstUpCopyRows(sec.rows, { word: w, mid: isMid.value, lastStdWord: lastStdWord.value });
   return out;
 });
 </script>
@@ -131,7 +137,15 @@ const copyRows = computed(() => {
               </colgroup>
               <thead>
                 <tr>
-                  <th class="num">实装日</th>
+                  <!-- ⚠️ 中坚模式下这一列装的是「迁入前最后一次在标准池露面的日期」
+                       （= 下面「距最后标准进店/UP」的基准），不是实装日 —— 列头必须跟着变，
+                       否则表格自相矛盾。表头用短名「最后标准日」，完整说法在 title 里。 -->
+                  <th
+                    class="num"
+                    :title="isMid
+                      ? `迁入中坚寻访前，最后一次在标准寻访里${lastStdWord}的日期`
+                      : '该干员的实装日期'"
+                  >{{ isMid ? '最后标准日' : '实装日' }}</th>
                   <th class="opcell">干员</th>
                   <th class="num">首次{{ word }}日</th>
                   <th>所在卡池</th>
@@ -141,16 +155,18 @@ const copyRows = computed(() => {
                   >距上行</th>
                   <th
                     class="num" :class="{ 'metric-on': isMetric('sinceRelease') }"
-                    :title="`该干员首次${word}日 − 自有实装日；缺少实装日时为 —`"
-                  >距实装</th>
+                    :title="isMid
+                      ? `该干员首次${word}日 − 最后一次标准${lastStdWord}日；没有标准记录时为 —`
+                      : `该干员首次${word}日 − 自有实装日；缺少实装日时为 —`"
+                  >{{ isMid ? `距最后标准${lastStdWord}` : '距实装' }}</th>
                   <th class="num">累计数</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(r, i) in sec.rows" :key="r.name">
                   <td class="num">
-                    <span v-if="!r.releaseDate" class="dash">—</span>
-                    <template v-else>{{ r.releaseDate }}</template>
+                    <span v-if="!r.baseDate" class="dash">—</span>
+                    <template v-else>{{ r.baseDate }}</template>
                   </td>
                   <td class="opcell">
                     <AvatarImg v-if="isImage" :op="opOf(r.name)" shape="square" img-class="avt-rect" />

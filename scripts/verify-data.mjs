@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo } from '../src/lib/stats.js';
 import {
   computeFirstUp, inFirstUpPool, metricLabel, modeFirstLabel, modeWord, firstUpRangeLabel,
+  axisLabel, metricShort,
 } from '../src/lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
@@ -1115,6 +1116,71 @@ check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '
     `${modeFirstLabel('shop', 'mid')}/${modeFirstLabel('rotation', 'mid')}`, '首次中坚进店/首次中坚轮换');
   check('文案：不带「首次」的词也带类型', `${modeWord('shop', 'mid')}/${modeWord('rotation', 'mid')}`,
     '中坚进店/中坚轮换');
+
+  /* ---------------- 中坚模式的「最后标准露面日」（2026-11-01 用户加） ----------------
+     中坚模式下右栏那两个「实装日」口径换成「迁入前最后一次在标准池进店(或 UP)的日期」：
+       · 横轴 `按实装日期` → `按最后标准进店日期`（rotation 模式是 `按最后标准UP日期`）
+       · 纵轴 `距实装日期` → `距最后标准进店日期`
+     用户原话：「这个日期为迁入中坚寻访前最后一次在标准寻访里进店或UP的日期」。 */
+  for (const [mode, w] of [['shop', '进店'], ['rotation', 'UP']]) {
+    const r = computeFirstUp({ banners, operatorByName: operators, relDateOf, poolType: 'mid', mode });
+
+    check(`最后标准日（${w}）：中坚的每位干员都能算出这个日期`,
+      r.rows.every((x) => !!x.lastStdDate), true);
+    /* ① 它必须**早于**迁入中坚那天 —— 迁出后就不会再进标准池了，这是 lastStd 不用按
+          classicDate 过滤的前提。数据形态一变（比如标准池里冒出迁入后的记录）这里会红。 */
+    const notBefore = r.rows.filter((x) => {
+      const cd = operators[x.name]?.scClassicDate;
+      return !cd || !(x.lastStdDate < cd);
+    });
+    check(`最后标准日（${w}）：都早于该干员的迁入中坚日`, notBefore.map((x) => x.name).join(','), '');
+    /* ② 与「独立重算」对撞：把所有标准类池扫一遍取最大日期 */
+    const STD_TYPES_SET = new Set(['double', 'joint', 'stdfes', 'mainfes', 'single', 'five',
+      'limcel', 'limspr', 'limsum']);
+    const exp = new Map();
+    for (const b of banners) {
+      if (!STD_TYPES_SET.has(b.type)) continue;
+      for (const op of b.upOperators) {
+        if (mode === 'shop' && !op.isShop) continue;
+        if (op.isLimited || (op.rarity || 0) < 5) continue;
+        if (!exp.has(op.scCharName) || b.startDate > exp.get(op.scCharName)) {
+          exp.set(op.scCharName, b.startDate);
+        }
+      }
+    }
+    const wrong = r.rows.filter((x) => exp.get(x.name) !== x.lastStdDate);
+    check(`最后标准日（${w}）：与独立重算逐个一致（取标准类池里的最大开始日）`,
+      wrong.slice(0, 5).map((x) => x.name).join(','), '');
+    /* ③ 纵轴口径 = 首次中坚日 − 最后标准日 */
+    check(`最后标准日（${w}）：「距最后标准…」= 首次中坚日 − 最后标准日`,
+      r.rows.every((x) => x.sinceRelease === diffDays(x.firstDate, x.lastStdDate)), true);
+    check(`最后标准日（${w}）：不存在负数（首次中坚必然晚于最后一次标准露面）`,
+      r.rows.every((x) => x.sinceRelease > 0), true);
+    /* ④ 横轴改成按这个日期排序 / 轴标签也用它 */
+    const byBase = computeFirstUp({
+      banners, operatorByName: operators, relDateOf, poolType: 'mid', mode, axis: 'release',
+    });
+    check(`最后标准日（${w}）：横轴「按最后标准…」时 xLabel = 该日期`,
+      byBase.six.concat(byBase.five).every((x) => x.xLabel === x.baseDate), true);
+    check(`最后标准日（${w}）：横轴排序确实按该日期升序`,
+      byBase.six.every((x, i, arr) => i === 0 || arr[i - 1].baseDate <= x.baseDate), true);
+  }
+  /* ⑤ 标准模式完全不受影响 */
+  check('最后标准日：标准模式下 lastStdDate 恒为 null、基准仍是实装日',
+    fupShop.rows.every((r) => r.lastStdDate === null && r.baseDate === r.releaseDate), true);
+
+  /* ⑥ 文案（用户给的原话） */
+  check('文案：中坚模式横轴 / 纵轴换成「最后标准进店」',
+    `${axisLabel('shop', 'release', 'mid')}|${metricShort('shop', 'sinceRelease', 'mid')}`,
+    '按最后标准进店日期|距最后标准进店日期');
+  check('文案：中坚 + 轮换模式下那个词是「UP」（用户写的是 进店/UP，不是「轮换」）',
+    `${axisLabel('rotation', 'release', 'mid')}|${metricShort('rotation', 'sinceRelease', 'mid')}`,
+    '按最后标准UP日期|距最后标准UP日期');
+  check('文案：标准模式不变（按实装日期 / 距实装日）',
+    `${axisLabel('shop', 'release', 'std')}|${metricShort('shop', 'sinceRelease', 'std')}`,
+    '按实装日期|距实装日');
+  check('文案：纵轴长名（图表说明）也跟着换',
+    metricLabel('shop', 'sinceRelease', 'mid'), '距最后标准进店日期（天）');
 }
 
 /* 同上：首次UP间隔的日期框默认拿 bounds 当值，必须与「不限」等价（两种统计模式各验一遍） */

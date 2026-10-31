@@ -20,7 +20,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { FIRST_UP_MODES, FIRST_UP_POOLS, UP_SORT_ROWS } from '../lib/constants.js';
-import { modeFirstLabel, modeWord } from '../lib/firstUp.js';
+import { lastStdWord as lastStdWordOf, modeFirstLabel, modeWord } from '../lib/firstUp.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
@@ -44,6 +44,8 @@ const isUp = computed(() => route.name === 'upHistory');
 const firstLabel = computed(() => modeFirstLabel(site.firstUpMode, site.firstUpPool));
 /** 不带「首次」的词：`进店` / `轮换`（中坚模式：`中坚进店` / `中坚轮换`） */
 const firstWord = computed(() => modeWord(site.firstUpMode, site.firstUpPool));
+/** 中坚模式「最后标准……日期」里的那个词：`进店` / `UP`（与 lastStdWord 同源） */
+const lastStdWord = computed(() => lastStdWordOf(site.firstUpMode));
 
 const filterTitle = computed(() => {
   if (isStats.value) return '参考日期';
@@ -396,10 +398,12 @@ function resetUp() {
             type="button" :class="{ on: site.firstUpAxis === 'first' }"
             @click="site.setFirstUpAxis('first')"
           >按{{ firstLabel }}日期</button>
+          <!-- ⚠️ 中坚模式下这个口径的基准不是实装日，而是「迁入前最后一次在标准池露面」
+               —— 文案跟着变（用户 2026-11-01 指定），别写死「按实装日期」 -->
           <button
             type="button" :class="{ on: site.firstUpAxis === 'release' }"
             @click="site.setFirstUpAxis('release')"
-          >按实装日期</button>
+          >{{ site.firstUpPool === 'mid' ? `按最后标准${lastStdWord}日期` : '按实装日期' }}</button>
         </div>
       </div>
       <div class="fgroup">
@@ -412,7 +416,7 @@ function resetUp() {
           <button
             type="button" :class="{ on: site.firstUpMetric === 'sinceRelease' }"
             @click="site.setFirstUpMetric('sinceRelease')"
-          >距实装日期</button>
+          >{{ site.firstUpPool === 'mid' ? `距最后标准${lastStdWord}日期` : '距实装日期' }}</button>
         </div>
       </div>
       <div class="fgroup">

@@ -39,7 +39,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { avatarUrl, avatarReady, preloadAvatar, onAvatarLoad } from '../lib/avatars.js';
-import { modeFirstLabel, modeWord, axisLabel, metricShort, firstUpRangeLabel } from '../lib/firstUp.js';
+import {
+  lastStdWord as lastStdWordOf, modeFirstLabel, modeWord, axisLabel, metricShort, firstUpRangeLabel,
+} from '../lib/firstUp.js';
 import { TIP_GAP } from '../lib/chartTooltip.js';
 import EChart from '../components/EChart.vue';
 import { useDragPan } from '../composables/useDragPan.js';
@@ -57,6 +59,10 @@ let offAvatar = null;
 const firstLabel = computed(() => modeFirstLabel(data.value.mode, data.value.poolType));
 /** 「进店」/「轮换」——「累计 N 次」「没有 N 记录」这类句子里的词 */
 const word = computed(() => modeWord(data.value.mode, data.value.poolType));
+/** 是否「中坚」类型 —— 决定「距实装」那套口径要不要换成「距最后标准露面」 */
+const isMid = computed(() => data.value.poolType === 'mid');
+/** 中坚模式「最后标准……日期」里的词：`进店` / `UP` */
+const lastStdWord = computed(() => lastStdWordOf(data.value.mode));
 
 /* ---- 布局常量：grid 与两侧刻度条必须严格对齐，因此全部用固定像素 ---- */
 const GRID = { top: 30, height: 300, left: 56, right: 56, bottom: 96 };
@@ -186,7 +192,11 @@ function buildOption(rows, rarity, ax) {
         const r = rows[params[0]?.dataIndex];
         if (!r) return '';
         const lines = [`<b>${r.name}</b>（${rarity}★）`,
-          `实装：${r.releaseDate || '—'}`,
+          /* ⚠️ 中坚模式下「距实装」的基准不是实装日，而是「迁入前最后一次在标准池露面」
+             —— 所以浮窗里的日期行也要换，否则和下面的天数对不上（用户 2026-11-01 指定） */
+          isMid.value
+            ? `最后标准${lastStdWord.value}：${r.lastStdDate || '—'}（${r.lastStdBanner || '无标准记录'}）`
+            : `实装：${r.releaseDate || '—'}`,
           `${firstLabel.value}：${r.firstDate}`,
           /* 那次「首次」发生在哪个卡池 —— 轮换口径下尤其有用（可能是标准 / 联合 / 定向 / 前路之一），
              与上一行的日期同源（都由 firstUp.js 里同一次卡池给出） */
@@ -200,9 +210,11 @@ function buildOption(rows, rarity, ax) {
                 + (r.gap < 0 ? `<span style="color:#7b8794">（负数：更晚实装却更早${word.value}）</span>` : ''),
           );
         } else {
+          const gapLabel = isMid.value ? `距最后标准${lastStdWord.value}` : '距实装';
+          const missing = isMid.value ? '没有标准寻访记录' : '缺少实装日';
           lines.push(r.sinceRelease === null
-            ? '<span style="color:#7b8794">缺少实装日</span>'
-            : `${firstLabel.value}距实装：<b>${r.sinceRelease}</b> 天`);
+            ? `<span style="color:#7b8794">${missing}</span>`
+            : `${firstLabel.value}${gapLabel}：<b>${r.sinceRelease}</b> 天`);
         }
         lines.push(`累计${word.value} ${r.count} 次`);
         return lines.join('<br/>');
