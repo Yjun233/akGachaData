@@ -639,6 +639,44 @@ try {
   check('已应用的日期范围会同步进输入框',
     rangedFup.html.includes('2024-01-01') && rangedFup.html.includes('2026-01-01'), true);
 
+  /* ---- 卡池类型切换（标准 / 中坚，2026-10-31 用户加）----
+     中坚 = 只看「常驻中坚寻访」（`classic`），刻意不含中坚甄选。 */
+  {
+    check('卡池类型：右栏有切换组与两个按钮（默认「标准寻访」）',
+      /卡池类型/.test(ph)
+      && count(ph, /class="on">标准寻访<\/button>/g) === 1
+      && count(ph, />中坚寻访<\/button>/g) === 1, true);
+
+    const midFup = await renderRoute('/first-up', (s) => s.setFirstUpPool('mid'));
+    const MS = midFup.store.firstUp;
+    check('卡池类型：切到中坚后分节标题变成「首次中坚进店间隔」',
+      midFup.html.includes('六星干员 · 首次中坚进店间隔')
+      && midFup.html.includes('五星干员 · 首次中坚进店间隔'), true);
+    check('卡池类型：中坚模式下卡片头口径也带「中坚」',
+      /横轴按首次中坚进店日期/.test(midFup.html)
+      && /纵轴距上个首次中坚进店/.test(midFup.html), true);
+    check('卡池类型：中坚的人数比标准少（只看常驻中坚）',
+      MS.six.length < FS.six.length && MS.five.length < FS.five.length, true);
+    check('卡池类型：中坚的两条序列都非空',
+      MS.six.length > 0 && MS.five.length > 0, true);
+    /* 用户明确：切换卡池类型时**日期范围保持不动**（代价是切到中坚左边会空一段） */
+    check('卡池类型：切换**不动**日期范围（与标准模式完全一致）',
+      `${midFup.store.firstUpRange.from}/${midFup.store.firstUpRange.to}`,
+      `${fup.store.firstUpRange.from}/${fup.store.firstUpRange.to}`);
+
+    const midRot = await renderRoute('/first-up', (s) => {
+      s.setFirstUpPool('mid');
+      s.setFirstUpMode('rotation');
+    });
+    check('卡池类型：中坚 + 首次轮换 = 首次出现在常驻中坚（人比进店多）',
+      midRot.store.firstUp.rows.length > MS.rows.length, true);
+
+    const midTable = await renderRoute('/first-up/table', (s) => s.setFirstUpPool('mid'));
+    check('卡池类型：表格版也跟着变（分节标题 + 表头列名）',
+      midTable.html.includes('首次中坚进店间隔')
+      && midTable.html.includes('首次中坚进店日'), true);
+  }
+
   /* 筛选范围变化 → 纵轴范围与刻度跟着变（用户明确要求） */
   const ticksOf = (html) => [...html.matchAll(/class="tk"[^>]*>(-?\d+)</g)].map((m) => Number(m[1]));
   const wideTicks = ticksOf(ph);

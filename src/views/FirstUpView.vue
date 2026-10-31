@@ -54,9 +54,9 @@ const avatarTick = ref(0);
 let offAvatar = null;
 
 /** 「首次进店」/「首次轮换」——分节标题、tooltip、空态文案都用它 */
-const firstLabel = computed(() => modeFirstLabel(data.value.mode));
+const firstLabel = computed(() => modeFirstLabel(data.value.mode, data.value.poolType));
 /** 「进店」/「轮换」——「累计 N 次」「没有 N 记录」这类句子里的词 */
-const word = computed(() => modeWord(data.value.mode));
+const word = computed(() => modeWord(data.value.mode, data.value.poolType));
 
 /* ---- 布局常量：grid 与两侧刻度条必须严格对齐，因此全部用固定像素 ---- */
 const GRID = { top: 30, height: 300, left: 56, right: 56, bottom: 96 };
@@ -372,8 +372,8 @@ const rangeText = computed(() => firstUpRangeLabel(site.firstUpRange, site.fullF
 /* 口径文案：横轴 / 纵轴的「首次XX」都跟着统计模式变（用户指定：分节标题也跟随）。
    ⚠️ 措辞统一放在 lib/firstUp.js —— **表格版（FirstUpTableView.vue）用的是同一对函数**，
    两页的卡片头文案因此不会各写一份、各走各的。 */
-const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis));
-const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric));
+const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis, data.value.poolType));
+const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric, data.value.poolType));
 </script>
 
 <template>

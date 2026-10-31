@@ -19,8 +19,8 @@
  */
 import { computed, nextTick, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { FIRST_UP_MODES, FIRST_UP_MODE_LABEL, UP_SORT_ROWS } from '../lib/constants.js';
-import { modeWord } from '../lib/firstUp.js';
+import { FIRST_UP_MODES, FIRST_UP_POOLS, UP_SORT_ROWS } from '../lib/constants.js';
+import { modeFirstLabel, modeWord } from '../lib/firstUp.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
@@ -39,10 +39,11 @@ const isStats = computed(() => route.name === 'stats');
 const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
 const isUp = computed(() => route.name === 'upHistory');
 
-/** 当前统计模式的词：`首次进店` / `首次轮换` */
-const firstLabel = computed(() => FIRST_UP_MODE_LABEL[site.firstUpMode]);
-/** 不带「首次」的词：`进店` / `轮换` */
-const firstWord = computed(() => modeWord(site.firstUpMode));
+/* 当前统计模式的词：`首次进店` / `首次轮换`；**中坚模式下前面加「中坚」**
+   （`首次中坚进店` / `首次中坚轮换`）—— 取词统一走 lib/firstUp.js，别在这儿另拼一份 */
+const firstLabel = computed(() => modeFirstLabel(site.firstUpMode, site.firstUpPool));
+/** 不带「首次」的词：`进店` / `轮换`（中坚模式：`中坚进店` / `中坚轮换`） */
+const firstWord = computed(() => modeWord(site.firstUpMode, site.firstUpPool));
 
 const filterTitle = computed(() => {
   if (isStats.value) return '参考日期';
@@ -108,9 +109,9 @@ const statResult = computed(() => {
 const hlPool = computed(() => site.statRows.map((r) => r.name));
 
 const firstUpResult = computed(() => {
-  const { six, five, rows, mode } = site.firstUp;
+  const { six, five, rows, mode, poolType } = site.firstUp;
   return `命中 六星 ${six.length} 位 / 五星 ${five.length} 位`
-    + `（共 ${rows.length} 位有${modeWord(mode)}记录）`;
+    + `（共 ${rows.length} 位有${modeWord(mode, poolType)}记录）`;
 });
 
 const upResult = computed(() => {
@@ -365,6 +366,19 @@ function resetUp() {
 
     <!-- 首次UP间隔：统计模式 + 横轴 / 纵轴口径 + 按首次日期筛选 -->
     <div v-else-if="isFirstUp" class="drawer-bd pane pane-firstup">
+      <!-- 卡池类型（2026-10-31 用户加）：标准 = 现行口径；中坚 = 只看「常驻中坚寻访」。
+           ⚠️ 切换时**不动**日期范围（用户明确要求），所以切到中坚后左边可能空一段。
+           ⚠️ 「中坚」不含中坚甄选 —— 甄选一次放 30+ 位，会把首次日期挤成一堆。 -->
+      <div class="fgroup">
+        <label>卡池类型</label>
+        <div class="seg">
+          <button
+            v-for="p in FIRST_UP_POOLS" :key="p.id"
+            type="button" :class="{ on: site.firstUpPool === p.id }"
+            @click="site.setFirstUpPool(p.id)"
+          >{{ p.label }}</button>
+        </div>
+      </div>
       <div class="fgroup">
         <label>统计模式</label>
         <div class="seg">

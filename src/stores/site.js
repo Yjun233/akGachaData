@@ -78,6 +78,7 @@ export const useSiteStore = defineStore('site', {
     today: localToday(),               // 页面打开时的真实当天
     filters: emptyFilters(),
     firstUpRange: { from: '', to: '' }, // 首次UP间隔页：按首次日期筛（空 = 不限）
+    firstUpPool: 'std',                // 卡池类型：std 标准寻访 | mid 中坚寻访（只看常驻中坚）
     firstUpMode: 'shop',               // 统计模式：shop 首次进店 | rotation 首次轮换
     firstUpAxis: 'first',              // 横轴口径：first 按首次日期 | release 按实装日期
     firstUpMetric: 'gap',              // 纵轴口径：gap 距上个首次日期 | sinceRelease 距实装日期
@@ -300,6 +301,7 @@ export const useSiteStore = defineStore('site', {
         banners: this.banners,
         operatorByName: s.operators,
         relDateOf: this.relDateOf,
+        poolType: s.firstUpPool,
         mode: s.firstUpMode,
         from: s.firstUpRange.from,
         to: s.firstUpRange.to,
@@ -587,6 +589,13 @@ export const useSiteStore = defineStore('site', {
 
     /* ⚠️ 下面三个「口径」**不随切服务器重置**（setServer 里没有它们）——
        它们是看数据的角度，不是筛选条件；与 firstUpRange 那种筛选项的待遇不同。 */
+
+    /* 卡池类型：与 firstUpMode / Axis / Metric 同待遇（切服不重置）——
+       ⚠️ 但**不动** firstUpRange（用户 2026-10-31 明确：切换类型时日期范围保持不动）。
+          代价是切到中坚时若起点是 2019 年，左边会空一段；这是用户要的行为，别擅自重置。 */
+    setFirstUpPool(pool) {
+      this.firstUpPool = pool === 'mid' ? 'mid' : 'std';
+    },
 
     setFirstUpMode(mode) {
       this.firstUpMode = mode === 'rotation' ? 'rotation' : 'shop';

@@ -7,6 +7,14 @@
  * - `mode: 'rotation'` **首次轮换** —— 出现在**常驻标准寻访 / 联合行动 / 定向甄选 / 前路回响**
  *   这四类卡池里最早的一次（名单见 constants.js 的 `ROTATION_TYPES`）。⚠️ 不看进店标记。
  *
+ * **卡池类型**（右栏最上方的切换，用户 2026-10-31 加，`poolType`）：
+ * - `'std'`（默认）**标准寻访** —— **排除**中坚两类（`classic` / `clafes`）；
+ * - `'mid'` **中坚寻访** —— **只取常驻中坚寻访**（`classic`）。
+ *   ⚠️ 刻意**不含中坚甄选**：甄选一次放 30+ 位自选干员，会把一大批人的「首次」挤到同一天，
+ *      整条间隔曲线就不成样子（实测含甄选 110 人 / 只看常驻 102 人，62 人日期会提前）。
+ * 它同时决定两件事，**别只改一处**：① 哪些卡池参与「首次」判定；② 「累计 N 次」数哪些池
+ * （用户明确：累计次数跟着类型分开数，所以标准模式不再把中坚池的次数算进去）。
+ *
  * 两种模式共用的规则：
  * - 排除限定干员与 4 星及以下 —— 与统计页保持一致。
  * - 每位干员取其**首次**（最早的那个卡池）。
@@ -34,29 +42,41 @@
  * 这种跨星级的假间隔 —— 已改为按星级分组，各自排序、各自算间隔。
  */
 import { diffDays } from './date.js';
-import { FIRST_UP_MODE_LABEL, ROTATION_TYPES } from './constants.js';
+import { FIRST_UP_MODE_LABEL, MID_BANNER_TYPES, MID_FIRSTUP_TYPES, ROTATION_TYPES } from './constants.js';
 
-/** 「首次XX」的口径词（`首次进店` / `首次轮换`），拼界面文案用 */
-export const modeFirstLabel = (mode) => FIRST_UP_MODE_LABEL[mode] ?? FIRST_UP_MODE_LABEL.shop;
+/** 该卡池是否属于当前「卡池类型」（右栏最上方那个切换，2026-10-31 加）
+ *  - `mid` 只收**常驻中坚寻访**（`classic`，不含中坚甄选 —— 理由见 `MID_FIRSTUP_TYPES`）；
+ *  - `std` 把中坚两类**都排除**（限定 / 单六 / 双五那些仍在内；进店标记本来也只在常驻标准上有）。
+ */
+export const inFirstUpPool = (b, poolType) => (poolType === 'mid'
+  ? MID_FIRSTUP_TYPES.includes(b.type)
+  : !MID_BANNER_TYPES.includes(b.type));
+
+/** 「首次XX」的口径词（`首次进店` / `首次轮换`；中坚模式下加「中坚」二字） */
+export const modeFirstLabel = (mode, poolType = 'std') => {
+  const base = FIRST_UP_MODE_LABEL[mode] ?? FIRST_UP_MODE_LABEL.shop;
+  return poolType === 'mid' ? base.replace(/^首次/, '首次中坚') : base;
+};
 
 /** 「进店」/「轮换」—— 不带「首次」，用在「累计 N 次」「没有 N 记录」这类句子里的词 */
-export const modeWord = (mode) => modeFirstLabel(mode).replace(/^首次/, '');
+export const modeWord = (mode, poolType = 'std') =>
+  modeFirstLabel(mode, poolType).replace(/^首次/, '');
 
 /** 纵轴取值的中文名（图表说明与 tooltip 用；随模式变） */
-export function metricLabel(mode, metric) {
+export function metricLabel(mode, metric, poolType = 'std') {
   return metric === 'gap'
-    ? `距同星级上一个${modeFirstLabel(mode)}（天）`
+    ? `距同星级上一个${modeFirstLabel(mode, poolType)}（天）`
     : '距该干员实装日（天）';
 }
 
 /** 横轴口径的短中文名（卡片头一行里用）：`按实装日期` / `按首次进店日期` */
-export const axisLabel = (mode, axis) =>
-  (axis === 'release' ? '按实装日期' : `按${modeFirstLabel(mode)}日期`);
+export const axisLabel = (mode, axis, poolType = 'std') =>
+  (axis === 'release' ? '按实装日期' : `按${modeFirstLabel(mode, poolType)}日期`);
 
 /** 纵轴口径的短中文名（卡片头一行里用）：`距实装日` / `距上个首次进店`
  *  （长名见上面的 `metricLabel` —— 那个带「（天）」后缀，给图表说明与 tooltip） */
-export const metricShort = (mode, metric) =>
-  (metric === 'sinceRelease' ? '距实装日' : `距上个${modeFirstLabel(mode)}`);
+export const metricShort = (mode, metric, poolType = 'std') =>
+  (metric === 'sinceRelease' ? '距实装日' : `距上个${modeFirstLabel(mode, poolType)}`);
 
 /**
  * 卡片头「筛选范围」的文案。
@@ -78,6 +98,7 @@ export const firstUpRangeLabel = (range, full) => {
  * @param {Array}  ctx.banners         当前服务器全部卡池（含 id）
  * @param {object} ctx.operatorByName  干员名 → 干员
  * @param {(op:object)=>string|null} ctx.relDateOf 取当前服务器实装日
+ * @param {'std'|'mid'} [ctx.poolType] 卡池类型（见 `inFirstUpPool`；默认标准）
  * @param {'shop'|'rotation'} [ctx.mode]  统计模式（见文件头）
  * @param {string} [ctx.from]          首次日期 ≥ from
  * @param {string} [ctx.to]            首次日期 ≤ to
@@ -88,6 +109,7 @@ export function computeFirstUp({
   banners,
   operatorByName,
   relDateOf,
+  poolType = 'std',
   mode = 'shop',
   from = '',
   to = '',
@@ -95,13 +117,21 @@ export function computeFirstUp({
   metric = 'gap',
 }) {
   const isRotation = mode === 'rotation';
-  const rotationTypes = isRotation ? new Set(ROTATION_TYPES) : null;
+  /* ⚠️ 「轮换」只在**标准**模式下才需要再收窄到 `ROTATION_TYPES` 那四类。
+     中坚模式的类型范围已经由 `inFirstUpPool` 收成「只留常驻中坚」了 ——
+     再套 `ROTATION_TYPES` 会一个都匹配不上（2026-10-31 第一次写就是这样，中坚轮换出 0 人）。 */
+  const rotationTypes = isRotation && poolType !== 'mid' ? new Set(ROTATION_TYPES) : null;
 
   /** name → { name, rarity, firstDate, firstBanner, count } */
   const first = {};
 
   for (const b of banners) {
-    /* 轮换模式只看那 4 类卡池；进店模式看全部卡池（进店标记只出现在常驻标准 / 常驻中坚上） */
+    /* ① 先按「卡池类型」筛 —— 标准模式排除中坚两类、中坚模式只留常驻中坚。
+          ⚠️ 这一层同时决定「累计次数」的口径：标准模式不再把中坚池的次数算进去
+             （用户 2026-10-31 明确：累计次数跟着类型分开数）。 */
+    if (!inFirstUpPool(b, poolType)) continue;
+    /* ② 再按统计模式筛：轮换模式只看那 4 类卡池；进店模式看剩下的全部（进店标记本就只在
+          常驻标准 / 常驻中坚上） */
     if (rotationTypes && !rotationTypes.has(b.type)) continue;
     for (const op of b.upOperators) {
       if (!isRotation && !op.isShop) continue;
@@ -167,6 +197,7 @@ export function computeFirstUp({
 
   return {
     mode,
+    poolType,
     axis,
     metric,
     six: buildSeries(filtered.filter((r) => r.rarity === 6)),

@@ -55,12 +55,12 @@ const data = computed(() => site.firstUp);
 const isImage = computed(() => site.avatarMode === 'image');
 
 /** 「首次进店」/「首次轮换」—— 分节标题与空态文案 */
-const firstLabel = computed(() => modeFirstLabel(data.value.mode));
+const firstLabel = computed(() => modeFirstLabel(data.value.mode, data.value.poolType));
 /** 「进店」/「轮换」—— 只用在「首次X日」这个列头（「距上行」「累计数」是固定短文案） */
-const word = computed(() => modeWord(data.value.mode));
+const word = computed(() => modeWord(data.value.mode, data.value.poolType));
 
-const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis));
-const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric));
+const axisText = computed(() => axisLabel(data.value.mode, site.firstUpAxis, data.value.poolType));
+const metricText = computed(() => metricShort(data.value.mode, site.firstUpMetric, data.value.poolType));
 
 /** 两个分节：与图表版一一对应（顺序也一样：先六星） */
 const sections = computed(() => [

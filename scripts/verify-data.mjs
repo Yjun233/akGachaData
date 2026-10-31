@@ -11,7 +11,9 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo } from '../src/lib/stats.js';
-import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/firstUp.js';
+import {
+  computeFirstUp, inFirstUpPool, metricLabel, modeFirstLabel, modeWord, firstUpRangeLabel,
+} from '../src/lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
   buildUpTimeline, monthIndexOf, monthLabel, monthStartDate, minInnerWidth, chartHeight, TL,
@@ -1053,6 +1055,67 @@ check('默认统计模式 = 首次进店', fupShop.mode, 'shop');
    2026-10-23 快照：常驻标准寻访196（10-22，进店 妮芙 / 波卜）→ 160/69/91 → 162/70/92。 */
 check('有首次进店记录的干员数', fupShop.rows.length, 162);
 check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '70/92');
+
+/* ---------------- 「卡池类型」切换（标准 / 中坚，2026-10-31 用户加） ----------------
+   中坚模式只看**常驻中坚寻访**（`classic`），刻意不含中坚甄选 —— 甄选一次放 30+ 位，
+   放进来会把一大批人的「首次」挤到同一天。累计次数也跟着类型分开数。 */
+{
+  const fupMidShop = computeFirstUp({
+    banners, operatorByName: operators, relDateOf, poolType: 'mid', mode: 'shop',
+  });
+  const fupMidRot = computeFirstUp({
+    banners, operatorByName: operators, relDateOf, poolType: 'mid', mode: 'rotation',
+  });
+
+  /* ① 类型过滤本身（纯函数，四类卡池 × 两种类型） */
+  check('卡池类型：标准模式收 double / 限定，排除中坚两类',
+    [['double', true], ['limcel', true], ['classic', false], ['clafes', false]]
+      .every(([t, want]) => inFirstUpPool({ type: t }, 'std') === want), true);
+  check('卡池类型：中坚模式只收 classic（**甄选不算**）',
+    [['classic', true], ['clafes', false], ['double', false], ['limcel', false]]
+      .every(([t, want]) => inFirstUpPool({ type: t }, 'mid') === want), true);
+
+  /* ② 中坚模式确实有数据，且每位干员的「首次」都落在常驻中坚池上 */
+  check('中坚模式：进店 / 轮换两条序列都非空（第一次实现时轮换出 0 人 —— 类型过滤写错了）',
+    fupMidShop.rows.length > 0 && fupMidRot.rows.length > 0, true);
+  check('中坚模式：每条记录的首次所在卡池都是常驻中坚（名字里没有「甄选」）',
+    fupMidRot.rows.every((r) => !/甄选/.test(r.firstBanner || '')), true);
+  /* ③ 进店 ⊆ 轮换（与标准模式同一条不变量） */
+  const midRotDates = new Map(fupMidRot.rows.map((r) => [r.name, r.firstDate]));
+  check('中坚模式：首次中坚进店日 ≥ 首次中坚轮换日（进店位是轮换池里的一个位子）',
+    fupMidShop.rows.every((r) => midRotDates.has(r.name) && r.firstDate >= midRotDates.get(r.name)), true);
+  /* ④ 中坚 ⊆ 标准（能在中坚里出现的干员，必然先在标准池出现过） */
+  const stdNames = new Set(fupShop.rows.map((r) => r.name));
+  check('中坚模式的人必然是标准模式的人（标准池在先，中坚池在后）',
+    fupMidShop.rows.every((r) => stdNames.has(r.name)), true);
+  /* ⑤ 中坚的首次日期**不早于**标准的首次日期（同一干员） */
+  const stdDates = new Map(fupShop.rows.map((r) => [r.name, r.firstDate]));
+  check('同一干员：首次中坚进店日不早于首次标准进店日',
+    fupMidShop.rows.every((r) => r.firstDate >= stdDates.get(r.name)), true);
+  /* ⑥ bounds 跟着类型变（中坚最早 2023-04；不写死具体日期，只比相对关系） */
+  check('卡池类型：中坚模式的最早首次日期晚于标准模式（中坚池 2023 才有）',
+    fupMidRot.bounds.min > fupRot.bounds.min, true);
+
+  /* ⑦ 累计次数**跟着类型分开数**（用户明确）：
+        对同一位干员，「标准口径的次数 + 中坚口径的次数」应等于他在**全部池**里的进店次数
+        —— 也就是两边都没有把对方的次数算进来。 */
+  const sample = fupShop.rows.find((r) => fupMidShop.rows.some((m) => m.name === r.name && m.count > 0));
+  const totalShop = banners.reduce((n, b) => n + b.upOperators.filter((o) => o.isShop
+    && o.scCharName === sample.name && !o.isLimited && (o.rarity || 0) >= 5).length, 0);
+  const midCount = fupMidShop.rows.find((r) => r.name === sample.name).count;
+  check('累计次数：标准 + 中坚 = 全部池的次数（各自只数自己那一类，不重不漏）',
+    sample.count + midCount, totalShop);
+  check('累计次数：两侧都小于全部池（说明确实分开了，不是各数一份全量）',
+    sample.count < totalShop && midCount < totalShop, true);
+
+  /* ⑧ 文案：中坚模式下口径词带「中坚」，标准模式保持原样 */
+  check('文案：标准模式仍是「首次进店 / 首次轮换」',
+    `${modeFirstLabel('shop', 'std')}/${modeFirstLabel('rotation', 'std')}`, '首次进店/首次轮换');
+  check('文案：中坚模式变成「首次中坚进店 / 首次中坚轮换」',
+    `${modeFirstLabel('shop', 'mid')}/${modeFirstLabel('rotation', 'mid')}`, '首次中坚进店/首次中坚轮换');
+  check('文案：不带「首次」的词也带类型', `${modeWord('shop', 'mid')}/${modeWord('rotation', 'mid')}`,
+    '中坚进店/中坚轮换');
+}
 
 /* 同上：首次UP间隔的日期框默认拿 bounds 当值，必须与「不限」等价（两种统计模式各验一遍） */
 for (const [label, base] of [['进店', fupShop], ['轮换', fupRot]]) {
