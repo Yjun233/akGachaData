@@ -275,6 +275,29 @@ check('阵营：两个值都是字符串或 null',
 check('阵营：值是原始内部 id（只含小写字母·数字·下划线），不是中文名',
   rawOps.every((o) => [o.group, o.subGroup].every(
     (v) => v === null || /^[a-z0-9_]+$/.test(v))), true);
+
+/* ---------------- 干员的「职业」：profession（2026-11-01 加） ----------------
+   来自官方解包 `character_table.json` 的 `profession`（大写英文代号），
+   由 `fetch-data.mjs` 经 `lib/gamedata.mjs` 的 `professionLabel()` **转成中文**再落盘
+   （存中文而不是代号：与 `obtainMethod` 那类「给人看的枚举」一致，站点不用再维护映射表）。
+   ⚠️ 与 `group` / `subGroup` **反过来**：那两个存内部 id，这个存中文 —— 别按「一律存原始值」的
+      印象去改，否则 8 种职业的映射就散到站点侧去了。 */
+const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种'];
+{
+  const owned = rawOps.filter((o) => o.profession);
+  /* ⚠️ 过渡期（数据还没用新脚本重跑）允许「一个都没有」——不能直接要求全都有，
+      否则这一版提交后会一直红。但只要**开始有了**，就必须是全覆盖。 */
+  check('职业：要么 0 位有（数据尚未重跑）、要么**全部**干员都有，不留半拉子',
+    owned.length === 0 || owned.length === rawOps.length, true);
+  if (owned.length) {
+    check('职业：取值都在 8 种中文之内（新增职业要同时更新映射表与这条）',
+      owned.filter((o) => !PROFESSIONS.includes(o.profession))
+        .map((o) => `${o.scName}=${o.profession}`).slice(0, 8).join(','), '');
+    check('职业：8 种都出现过（防上游把某一种的代号改掉 → 静默退化成 null）',
+      new Set(owned.map((o) => o.profession)).size, 8);
+    check('职业：覆盖面 = 干员总数', owned.length, rawOps.length);
+  }
+}
 /* 上游表若改结构（nationId 改名 / character_table 变空）会静默全 null → 用**下限**守住。
    实测 223 位有 group、74 位有 subGroup（空值是**正常**的，两字段互相独立）。 */
 const groupOwned = rawOps.filter((o) => o.group).length;
