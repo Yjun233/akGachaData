@@ -397,6 +397,30 @@ try {
   check('统计页总行数 = 参与统计干员数',
     sizes.reduce((a, b) => a + b, 0), 206);
 
+  /* 参考日期往回拨 → 中坚 / 标准的分组要跟着动（2026-10-31 用户报的 bug）：
+     那些「后来才迁入中坚」的干员，回看时应该还在标准表里。
+     以前分组只看 `everMid`（现在是否属于中坚体系），完全不看参考日期。 */
+  {
+    const past = await renderRoute('/operators', (s) => s.setRefDate('2025-06-01'));
+    const pastSizes = ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(past.html, a));
+    check('统计页：参考日期回到 2025-06 时，中坚两张表都变少（那批人当时还没迁入）',
+      `${pastSizes[1] < sizes[1]}/${pastSizes[3] < sizes[3]}`, 'true/true');
+    /* ⚠️ 别断言「标准表变多 / 总数不变」：`computeStats` 的行是**从可见卡池里攒出来的**，
+       参考日期越早、参与统计的干员越少（那时还没 UP 过的人根本不进表）——
+       总数只会变少，这是既有口径，不是这次改动带来的。 */
+    check('统计页：回看时总行数只会更少（还没 UP 过的人不参与统计），不会凭空多出来',
+      pastSizes.reduce((a, b) => a + b, 0) <= 206, true);
+    /* 2026-03-26 才迁入中坚那批（六星：号角/多萝西/澄闪/老鲤/艾丽妮/菲亚梅塔/黑键）
+       —— 2025-06 时还在标准寻访里 */
+    const SAMPLE = '澄闪';
+    check('统计页：2025-06 时，2026-03 才迁入的「澄闪」在中坚表里',
+      sectionHtml(past.html, 's-6-mid', 's-5-std').includes(SAMPLE), false);
+    check('统计页：同一时刻他在**标准**表里',
+      sectionHtml(past.html, 's-6-std', 's-6-mid').includes(SAMPLE), true);
+    check('统计页：按最新参考日期时，他确实在中坚表里（对照，证明上一条不是恰好没数据）',
+      mid6Section.includes(SAMPLE), true);
+  }
+
   /* 抽样：与原型逐格核对过的干员应出现在统计页 */
   check('统计页：包含「推进之王」', sh.includes('推进之王'), true);
   check('统计页：结果提示含参考日期，且等于当天', new RegExp(`参考日期 ${TODAY}`).test(sh), true);
@@ -2386,10 +2410,14 @@ try {
       j([259, false]));
     check('只看中坚：缺「迁入中坚寻访」日 → 给无数据（显示 —），不做无基准的猜测',
       viewEndInfo({ ...never, classicDate: null }, 'up', REF, true).days, null);
-    check('只看中坚：迁入日**晚于参考日期**（回看到迁入之前）→ 两者都显示 —',
+    /* ⚠️ 2026-10-31 改口径：参考日期在迁入**之前**时，他当时还在标准寻访 ——
+       「只看中坚」不该把标准记录也套成中坚口径（否则这一行显示「—」，
+       与他那时确实在标准池里有记录相矛盾）。所以退回标准口径，与开关关着时一致。 */
+    check('只看中坚：迁入日**晚于参考日期**（回看到迁入之前）→ 退回标准口径，不是「—」',
       j([viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, true).days,
-        viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, true).fromClassic]),
-      j([null, false]));
+        viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, true).fromClassic,
+        viewEndInfo({ ...never, classicDate: '2027-01-01' }, 'up', REF, false).days]),
+      j([259, false, 259]));
     /* 排序必须与显示同口径，否则「按距今天数排」会和屏幕上的数字对不上 */
     check('只看中坚：排序跟着切口径（upDays 259 → 203、upEnd 有值 → 空值排最后）',
       j([statMetric(never, 'upDays', REF, true), statMetric(never, 'upEnd', REF, true),
@@ -2416,7 +2444,7 @@ try {
       /statMidOnly: false/.test(storeSrc) && /setStatMidOnly\(on\)/.test(storeSrc)
       && /classicDateOf: this\.classicDateOf/.test(storeSrc), true);
     check('只看中坚：**排序**也吃到 `statMidOnly`（否则排序与显示会对不上）',
-      /s\.statSort\[`\$\{rarity\}-\$\{everMid \? 'mid' : 'std'\}`\],\n\s+refDate,\n\s+s\.statMidOnly,/.test(storeSrc), true);
+      /s\.statSort\[`\$\{rarity\}-\$\{isMid \? 'mid' : 'std'\}`\],\n\s+refDate,\n\s+s\.statMidOnly,/.test(storeSrc), true);
     check('只看中坚：右栏有那个复选框（挨着「中坚甄选计入出率提升」）',
       /中坚寻访只看中坚/.test(drawerSrc) && /site\.setStatMidOnly\(\$event\.target\.checked\)/.test(drawerSrc), true);
     check('只看中坚：**复制**出来的也用同一口径（tableCopy 走 viewEndInfo + 收 midOnly）',

@@ -34,6 +34,33 @@ import { diffDays } from './date.js';
 /** 干员是否属于中坚寻访体系（由 obtainMethod 文案判断） */
 export const isMidOp = (op) => /中坚寻访/.test(op?.obtainMethod || '');
 
+/**
+ * 该统计行在**参考日期那一刻**是否已经属于中坚寻访 —— 决定它进「中坚表」还是「标准表」。
+ *
+ * ⚠️ 别用 `row.everMid`（= **现在**是否属于中坚体系）直接分组（2026-10-31 修的就是这个 bug）：
+ *    参考日期往回拨时，那些「后来才迁入中坚」的干员当时还在标准寻访里，
+ *    却会因为 `everMid = true` 一直卡在中坚表里（用户报的：2026-03 那批，回看到 2025 年仍在）。
+ *    正确判据是 **`classicDate <= refDate`** —— 迁入日之前，他还没进中坚。
+ *
+ * @param {object} row      统计行（含 `everMid` / `classicDate`）
+ * @param {string} refDate  参考日期 `YYYY-MM-DD`
+ * @returns {boolean}
+ *
+ * 三种情形：
+ *   · 不属于中坚体系（`everMid = false`）→ 恒为 false（标准表）；
+ *   · 属于中坚体系、且 `classicDate <= refDate` → true（中坚表）；
+ *   · 属于中坚体系、但**查不到** `classicDate` → 仍算 true。
+ *     数据缺陷时宁可保持原样（留在中坚表），也不要把他甩回标准表 —— 那会凭空多出一条
+ *     「在标准寻访里 UP 过 N 次」的假记录，更误导。真值缺失的情况极少（obtainMethod 含中坚，
+ *     基本都有迁入批次）。
+ */
+export function isMidAt(row, refDate) {
+  if (!row || !row.everMid) return false;
+  const cd = row.classicDate || null;
+  if (!cd) return true;
+  return cd <= refDate;
+}
+
 /** 一组卡池中结束时间最晚的那个 */
 export function latest(arr) {
   let best = null;
@@ -107,19 +134,22 @@ export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
  *          `fromClassic` = 该行的天数是**从迁入中坚寻访那天**起算的（界面据此挂 tooltip）
  *
  * 三种情形：
- *   · 开关关着、或这位不是中坚干员 → 与以前完全一样（`upAll` / `shopAll`）；
- *   · 开关开着 + 中坚干员 + **有**中坚记录 → 按中坚记录算（与「中坚次数」列同口径）；
- *   · 开关开着 + 中坚干员 + **从未在中坚 UP 过** → 结束时间 `—`、天数自 `classicDate` 起算。
- *     ⚠️ `classicDate` 缺失、或**晚于参考日期**（回看到迁入之前）时给「无数据」（`days: null`），
- *        界面显示 `—` —— 那时他确实还没有中坚记录。
+ *   · 开关关着、或**参考日期那一刻还不属于中坚**（见 `isMidAt`）→ 与以前完全一样（`upAll` / `shopAll`）；
+ *   · 开关开着 + 已是中坚 + **有**中坚记录 → 按中坚记录算（与「中坚次数」列同口径）；
+ *   · 开关开着 + 已是中坚 + **从未在中坚 UP 过** → 结束时间 `—`、天数自 `classicDate` 起算。
+ *     ⚠️ `classicDate` 缺失时给「无数据」（`days: null`），界面显示 `—`。
+ *     （`classicDate > refDate` 这种「回看到迁入之前」已在 `isMidAt` 那一关滤掉，走不到这里。）
  */
 export function viewEndInfo(row, which, refDate, midOnly = false) {
   const all = which === 'shop' ? row.shopAll : row.upAll;
   const mid = which === 'shop' ? row.shopMid : row.upMid;
-  if (!midOnly || !row.everMid) return { ...endInfo(all, refDate), fromClassic: false };
+  /* ⚠️ 这里用 `isMidAt(row, refDate)` 而不是 `row.everMid`：参考日期在迁入之前时，
+     他当时还在标准寻访，「只看中坚」不该把标准记录也套成中坚口径（否则那一行会显示成「—」，
+     与「他那时确实在标准池里有记录」相矛盾）。分组与口径必须同一判据。 */
+  if (!midOnly || !isMidAt(row, refDate)) return { ...endInfo(all, refDate), fromClassic: false };
   if (mid.length) return { ...endInfo(mid, refDate), fromClassic: false };
   const cd = row.classicDate || null;
-  if (!cd || cd > refDate) return { end: null, live: false, days: null, fromClassic: false };
+  if (!cd) return { end: null, live: false, days: null, fromClassic: false };
   /* 「结束日当天算 1 天」的口径与 `endInfo` 保持一致（`diffDays + 1`） */
   return { end: null, live: false, days: diffDays(refDate, cd) + 1, fromClassic: true };
 }

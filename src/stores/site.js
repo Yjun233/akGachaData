@@ -24,7 +24,7 @@ import { BANNER_CATEGORIES } from '../lib/constants.js';
 import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
-import { computeStats, latestEndDate, sortStatRows } from '../lib/stats.js';
+import { computeStats, isMidAt, latestEndDate, sortStatRows } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
@@ -352,11 +352,14 @@ export const useSiteStore = defineStore('site', {
     statGroups(s) {
       const refDate = s.refDate || this.today;
       /* ⚠️ `s.statMidOnly` 必须一路传到排序里 —— 否则「只看中坚」下按距今天数排序
-         会和屏幕上的数字对不上（排序与显示必须同一口径，见 lib/stats.js 的 viewEndInfo）。 */
-      const pick = (rarity, everMid) =>
+         会和屏幕上的数字对不上（排序与显示必须同一口径，见 lib/stats.js 的 viewEndInfo）。
+         ⚠️ 分组判据是 **`isMidAt(r, refDate)`**（迁入中坚日 <= 参考日期），不是 `r.everMid`：
+            参考日期往回拨时，「后来才迁入中坚」的干员当时还在标准寻访，不该出现在中坚表里
+            （2026-10-31 用户报的就是这个）。`everMid` 是「现在属于中坚」，只当作前置条件。 */
+      const pick = (rarity, isMid) =>
         sortStatRows(
-          this.statRows.filter((r) => r.rarity === rarity && r.everMid === everMid),
-          s.statSort[`${rarity}-${everMid ? 'mid' : 'std'}`],
+          this.statRows.filter((r) => r.rarity === rarity && isMidAt(r, refDate) === isMid),
+          s.statSort[`${rarity}-${isMid ? 'mid' : 'std'}`],
           refDate,
           s.statMidOnly,
         );

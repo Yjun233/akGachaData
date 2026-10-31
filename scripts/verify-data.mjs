@@ -10,7 +10,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { computeStats, endInfo, latestEndDate, sortStatRows, daysSortValue } from '../src/lib/stats.js';
+import { computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo } from '../src/lib/stats.js';
 import { computeFirstUp, metricLabel, firstUpRangeLabel } from '../src/lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../src/lib/upHistory.js';
 import {
@@ -68,6 +68,13 @@ try {
 const operators = {};
 for (const op of Object.values(rawOperators)) operators[op.scName] = op;
 
+/* ⚠️ 2026-10-12 起「迁入中坚寻访日」字段从 `classicDate` 改名为 **`scClassicDate`**
+   （与 `constants.js` 的 `SERVER_CLASSIC_FIELD` 同步）。
+   ⚠️ 定义在**文件开头**是因为下面的「卡池统计」也要用它 —— 分组（`isMidAt`）和
+      「只看中坚」口径都依赖这一列，不传的话 `classicDate` 全是 null、分组会退化成 `everMid`。 */
+const CLASSIC_FIELD = { sc: 'scClassicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
+const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
+
 const banners = Object.keys(bannerMap).map((id) => ({ id, ...bannerMap[id] }));
 /* 本服卡池的**完整跨度** [最早开始日, 最晚结束日] —— 就是**卡池列表**右栏日期框的默认值
    （store 的 fullBannerRange）。下面几处「完整跨度与不限等价」的断言都用它。
@@ -87,6 +94,9 @@ const relDateOf = (op) => (op ? op.scReleaseDate || null : null);
 const refDate = meta.generatedAt;
 const { visible, map } = computeStats({
   banners, categories, operatorByName: operators, operatorIndex, refDate, relDateOf,
+  /* ⚠️ 必须传 —— 少了它 `classicDate` 全是 null，下面「按参考日期分中坚 / 标准」那组断言
+     会退化成「永远算中坚」，等于没测（2026-10-31 踩过）。 */
+  classicDateOf,
 });
 const rows = Object.values(map);
 
@@ -1200,11 +1210,8 @@ check('修正后必然满足 开始 < 结束',
   })(), true);
 
 /* ---------------- UP 历史一览 ---------------- */
-/* ⚠️ 2026-10-12 起国服那个字段从 `classicDate` 改名为 **`scClassicDate`**
-   （与 `constants.js` 的 `SERVER_CLASSIC_FIELD` 同步）。
-   ⚠️ 提到这里是为了让下面「横条两段色」与「隐藏已属中坚」两组断言共用一份。 */
-const CLASSIC_FIELD = { sc: 'scClassicDate', en: 'enClassicDate', tc: 'tcClassicDate' };
-const classicDateOf = (op) => (op ? op[CLASSIC_FIELD.sc] || null : null);
+/* ⚠️ `CLASSIC_FIELD` / `classicDateOf` **定义已上移到文件开头**（算了卡池统计那里要用）——
+   下面「横条两段色」与「隐藏已属中坚」两组断言共用同一份。 */
 
 const upAll = computeUpHistory({ banners, categories, operatorByName: operators, relDateOf });
 /* 带「迁入中坚」日期的那一版（行数与顺序应与 upAll 一致，只是多了 classicDate） */
@@ -1685,7 +1692,7 @@ if (hasProto) {
   for (const t of TABLES) {
     const parsed = parseStatTable(protoHtml, t.anchor);
     const list = sortStatRows(
-      rows.filter((r) => r.rarity === t.rarity && r.everMid === t.mid), null, refDate,
+      rows.filter((r) => r.rarity === t.rarity && isMidAt(r, refDate) === t.mid), null, refDate,
     );
     check(`表 ${t.anchor} 行数与原型一致`, list.length, parsed ? parsed.length : -1);
 
@@ -1716,6 +1723,58 @@ if (hasProto) {
   check('与原型逐格对比（差异数）', cellDiff, 0);
 } else {
   console.log('（未找到 prototype/index.html，跳过逐格对比；先运行 pnpm build:prototype）');
+}
+
+/* ---------------- 「按参考日期看历史」：中坚 / 标准的分组要跟着动 ----------------
+   2026-10-31 用户报的 bug：参考日期调到去年时，2026-03 才迁入中坚的那批**依然显示在中坚表**里。
+   原因是分组用了 `row.everMid`（= **现在**是否属于中坚体系），完全不看参考日期。
+   判据改成 `isMidAt(row, refDate)`（`classicDate <= refDate`）—— 迁入日之前他还在标准寻访。 */
+{
+  const midOps = rows.filter((r) => r.everMid);
+  check('分组：中坚体系里既有「早就迁入」也有「后来才迁入」的（否则这组断言没有区分力）',
+    new Set(midOps.map((r) => r.classicDate)).size >= 2, true);
+
+  /* 拿 2025-06-01 当「去年」的参考日期：那时 2026-03 那批还没迁入 */
+  const CUT = '2025-06-01';
+  const late = midOps.filter((r) => r.classicDate && r.classicDate > CUT);
+  const early = midOps.filter((r) => r.classicDate && r.classicDate <= CUT);
+  check('分组：确实有一批干员在 2025-06-01 时还没迁入中坚', late.length > 0, true);
+  check('分组：这批人 2025-06-01 时**不在**中坚侧',
+    late.every((r) => isMidAt(r, CUT) === false), true);
+  check('分组：同一批人按最新的参考日期算时**在**中坚侧',
+    late.every((r) => isMidAt(r, '2099-12-31') === true), true);
+  check('分组：更早迁入的那批 2025-06-01 时仍是中坚侧',
+    early.every((r) => isMidAt(r, CUT) === true), true);
+
+  /* 边界：迁入日**当天**就算已迁入（`<=`，不是 `<`），前一天不算 */
+  const one = late[0];
+  check('分组：迁入日当天就算已迁入（<= 不是 <）', isMidAt(one, one.classicDate), true);
+  check('分组：迁入日前一天还不算中坚',
+    isMidAt(one, shiftDays(one.classicDate, -1)), false);
+
+  /* 非中坚干员恒 false；`everMid` 为真但迁入日缺失时保持 true（数据缺陷时别甩回标准表） */
+  check('分组：不属于中坚体系的干员恒为标准侧', isMidAt({ everMid: false, classicDate: null }, CUT), false);
+  check('分组：属于中坚体系但迁入日缺失 → 仍算中坚侧（宁可不动，也不要凭空多出标准记录）',
+    isMidAt({ everMid: true, classicDate: null }, CUT), true);
+
+  /* 口径联动：「只看中坚」开关在**迁入之前**不该套到这些干员头上 ——
+     否则标准表里那一行会显示成「—」，与他当时确实在标准池里有记录相矛盾。
+     ⚠️ 必须**按 CUT 重新算一份统计**：上面那份 `rows` 是按 `generatedAt` 算的，
+        `upAll` 里混着 CUT 之后的卡池，硬套 CUT 会算出负数天数（第一次就踩到了）。 */
+  const { map: mapAtCut } = computeStats({
+    banners, categories, operatorByName: operators, operatorIndex, refDate: CUT, relDateOf, classicDateOf,
+  });
+  const rowAtCut = mapAtCut[one.name];
+  const beforeMid = viewEndInfo(rowAtCut, 'up', CUT, true);
+  const beforeStd = viewEndInfo(rowAtCut, 'up', CUT, false);
+  check('口径：迁入之前，「只看中坚」不改变结果（退回标准口径）',
+    JSON.stringify(beforeMid), JSON.stringify(beforeStd));
+  check('口径：迁入之前那一行的天数不是负数（说明 upAll 没混进 CUT 之后的卡池）',
+    beforeStd.days === null || beforeStd.days >= 0, true);
+  /* 迁入之后（用与 rows 匹配的 refDate）才由中坚口径接管 */
+  check('口径：迁入之后，「只看中坚」才接管（天数从迁入日起算或按中坚记录）',
+    viewEndInfo(one, 'up', refDate, true).fromClassic
+    || (viewEndInfo(one, 'up', refDate, true).days !== viewEndInfo(one, 'up', refDate, false).days), true);
 }
 
 /* ---------------- 时间重合 × 卡池：头像左下角的赭三角（UP 历史页） ----------------
