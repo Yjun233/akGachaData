@@ -384,8 +384,9 @@ try {
   check('统计页：只剩一个分隔块（星级已并入分节标题）',
     count(sh, /class="grp-sep"/g), 1);
 
-  /* 每张表的行数：与原型一致（2026-10-10 起 45 / 48 / 45 / 68 ——
-     当天快照新增 克莱门莎(6★) / 德·托莱多(5★)，两张标准表各 +1 行） */
+  /* 每张表的行数：与原型一致（2026-11-02 起 46 / 48 / 46 / 68 ——
+     当天快照的「感谢庆典」限定池新增 冻河(6★) / 奥尔佳(5★)，两张标准表各 +1 行；
+     2026-10-10 那次是 45 / 48 / 45 / 68，再往前 44 / 48 / 44 / 68） */
   const tableRows = (html, anchor) => {
     const start = html.indexOf(`id="${anchor}"`);
     const t = html.indexOf('<tbody>', start);
@@ -393,9 +394,9 @@ try {
     return count(html.slice(t, e), /<tr[\s>]/g);
   };
   const sizes = ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(sh, a));
-  check('统计页：四张表行数 45 / 48 / 45 / 68', sizes.join(','), '45,48,45,68');
+  check('统计页：四张表行数 46 / 48 / 46 / 68', sizes.join(','), '46,48,46,68');
   check('统计页总行数 = 参与统计干员数',
-    sizes.reduce((a, b) => a + b, 0), 206);
+    sizes.reduce((a, b) => a + b, 0), 208);
 
   /* 参考日期往回拨 → 中坚 / 标准的分组要跟着动（2026-10-31 用户报的 bug）：
      那些「后来才迁入中坚」的干员，回看时应该还在标准表里。
@@ -409,7 +410,7 @@ try {
        参考日期越早、参与统计的干员越少（那时还没 UP 过的人根本不进表）——
        总数只会变少，这是既有口径，不是这次改动带来的。 */
     check('统计页：回看时总行数只会更少（还没 UP 过的人不参与统计），不会凭空多出来',
-      pastSizes.reduce((a, b) => a + b, 0) <= 206, true);
+      pastSizes.reduce((a, b) => a + b, 0) <= 208, true);
     /* 2026-03-26 才迁入中坚那批（六星：号角/多萝西/澄闪/老鲤/艾丽妮/菲亚梅塔/黑键）
        —— 2025-06 时还在标准寻访里 */
     const SAMPLE = '澄闪';
@@ -428,8 +429,9 @@ try {
   check('统计页：可见卡池数 = 开始日不晚于当天的卡池数',
     new RegExp(`可见卡池 ${visibleOf(banners.store)} 个`).test(sh), true);
   /* 参与统计的干员数只在新干员入库时才会变（不像卡池数每周都动），保留字面量当黄金值。
+     2026-11-02：206 → 208（感谢庆典快照新增 冻河 6★ / 奥尔佳 5★；塔露拉是限定，不计入）。
      2026-10-10：204 → 206（快照新增 克莱门莎 / 德·托莱多）。 */
-  check('统计页：参与统计干员 206 位', /参与统计干员 206 位/.test(sh), true);
+  check('统计页：参与统计干员 208 位', /参与统计干员 208 位/.test(sh), true);
 
   /* ---------------- 出率提升记录：右栏「高亮干员」（2026-10-16 用户加） ----------------
      纯视觉标记：命中的行加**浅黄底**（`.hl`），**不筛行、不改次数、不进复制内容**。
@@ -461,9 +463,9 @@ try {
     hlPerTable.reduce((a, b) => a + b, 0), 2);
   check('高亮干员：命中的正是选中的那两位',
     hlPicked.every((n) => new RegExp(`<tr class="hl">[\\s\\S]{0,260}?>${n}</b>`).test(hlHtml)), true);
-  check('高亮干员：**不筛行** —— 四张表行数仍是 45 / 48 / 45 / 68',
+  check('高亮干员：**不筛行** —— 四张表行数仍是 46 / 48 / 46 / 68',
     ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(hlHtml, a)).join(','),
-    '45,48,45,68');
+    '46,48,46,68');
 
   /* ⚠️ 底色是加在 **`<tr>`** 上的：前两列是 sticky 冻结列、走 `background:inherit`，
      所以只要给行设底色，冻结列会自动跟上 —— 这两条 CSS 约定缺一不可。 */
@@ -534,9 +536,9 @@ try {
   check('不看标准次数：标准寻访表完全不受影响（仍是每组 3 列 + 列头「次数」）',
     count(std6, /class="group[^"]*"[^>]*colspan="3"/g) === 2
     && !/总次数/.test(std6) && count(std6, />次数<span class="arw">/g) === 2, true);
-  check('不看标准次数：**不筛行** —— 四张表行数仍是 45 / 48 / 45 / 68',
+  check('不看标准次数：**不筛行** —— 四张表行数仍是 46 / 48 / 46 / 68',
     ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(nh, a)).join(','),
-    '45,48,45,68');
+    '46,48,46,68');
   /* ⚠️ 防复发：Vue SSR 会把**模板里的 HTML 注释原样输出** —— 只要有人再把
      「总次数 / 标准次数」写进模板注释，分节切片里就会多出字面量、上面几条断言当场变红。
      这条把「注释泄漏」本身也钉住（2026-10-16 真栽过：注释把列数断言搅乱）。 */
@@ -1108,7 +1110,7 @@ try {
   const imgStats = await renderRoute('/operators', (s) => s.setAvatarMode('image'));
   /* 统计页用**长方形蒙版**（.avt-rect，宽是高 2 倍），与卡池列表的方形头像 .av 区分开。
      ⚠️ 类名 token 匹配（真图那层 class = `avt-rect avt-real`）。 */
-  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect[ "]/g), 206);
+  check('图片模式：统计表每人一个长方形蒙版头像', count(imgStats.html, /class="avt-rect[ "]/g), 208);
   check('图片模式：统计表不再渲染干员名', !/<b>推进之王<\/b>/.test(imgStats.html), true);
   check('图片模式：统计表仍保留次数数字', /class="num"/.test(imgStats.html), true);
   /* ⚠️ 行高一致性靠 `img-mode` 那句钩子 + `.avt-rect` 的绝对定位：
@@ -1128,7 +1130,7 @@ try {
     /<span class="avt-img">/.test(imgStats.html)
     && /class="avt-rect avt-real"/.test(imgStats.html), true);
   check('图片模式：每张头像都垫了一层首字占位（`.avt-fallback`，与真图同数）',
-    count(imgStats.html, /class="avt-fallback"/g), 206);
+    count(imgStats.html, /class="avt-fallback"/g), 208);
   check('图片模式：占位层是内联 SVG 首字占位图（data:image/svg+xml，不发网络请求）',
     /class="avt-fallback"[^>]*background-image:url\(&quot;data:image\/svg\+xml,/.test(imgStats.html), true);
   /* 卡池列表（.av 方头像）同样要有占位层 —— 三处 DOM 共用同一个组件 */
@@ -1348,7 +1350,7 @@ try {
   check('UP 历史页：横向滚动条会重新贴到最右（切服 / 切星级 + 宽度变化）',
     /watch\(\(\) => \[site\.server, site\.upRarity\][\s\S]{0,80}?scrollToRight\(\)/.test(upSrc)
     && /new ResizeObserver/.test(upSrc) && /pinned/.test(upSrc), true);
-  check('UP 历史页：名字列每人一行（93 行）', count(uh, /class="tl-name"/g), 93);
+  check('UP 历史页：名字列每人一行（94 行）', count(uh, /class="tl-name"/g), 94);
   /* 页内说明块已移除（2026-09-30 精简），版权与来源声明统一放在左栏底部 */
   check('左栏底部：数据来源 + 版权声明',
     /卡池信息来源/.test(uh) && /版权属于鹰角网络/.test(uh), true);
@@ -1563,8 +1565,8 @@ try {
   /* 切到五星 */
   const upFive = await renderRoute('/up-history', (s) => s.setUpRarity(5));
   check('切到五星：分节切到 uh5', upFive.html.includes('id="uh5"') && !upFive.html.includes('id="uh6"'), true);
-  check('切到五星：卡片头统计（五星 113 位 · …）', /五星 113 位 ·/.test(plain(upFive.html)), true);
-  check('切到五星：五星行数 113', upFive.store.upHistory.five.length, 113);
+  check('切到五星：卡片头统计（五星 114 位 · …）', /五星 114 位 ·/.test(plain(upFive.html)), true);
+  check('切到五星：五星行数 114', upFive.store.upHistory.five.length, 114);
   check('切到五星：仍有两个图表容器', count(upFive.html, /class="echart"/g), 2);
 
   /* ---------------- 时间轴「真的能画出来」吗 ----------------
@@ -2179,6 +2181,44 @@ try {
     check('自定义卡池弹窗：六个表单字段都在（**没有结束日期**，它是派生值）',
       ['寻访名字', '寻访类型', '开始时间', '六星', '五星', '进店'].every((k) => html.includes(k)),
       true);
+
+    /* 序号与自动开始日（2026-11-03 用户定）：
+       带序号的五类 → 名字 `自定义_<类型><序号>`、**只读**，序号 = 库里最新一期 + 1；
+       常驻标准 / 常驻中坚 / 中坚甄选 → 开始日默认接上一期结束日（中坚两类共用一条链），**可改**。
+       SSR 里点不了按钮，所以两头都验：① 渲染出来的默认表单就是算好的那两值；② 接线钉在源码上。 */
+    {
+      const lib = await vite.ssrLoadModule('/src/lib/customBanners.js');
+      /* 用**同一份 store 数据**算期望值（含 SSR 夹具里那条 2099 的自设 double）——
+         不写死「197 / 2026-11-05」那种会随数据变的数字。 */
+      const pool = [...store.publishedBanners, ...store.myActiveEntries];
+      const expName = lib.NAME_PREFIX + lib.serialName('double', lib.nextSerial('double', pool));
+      const expDate = lib.autoStartDate('double', pool);
+      check('自定义卡池弹窗：名字按「库里该类型最新一期 + 1」生成（形如 自定义_常驻标准寻访197）',
+        html.includes(expName), true);
+      check('自定义卡池弹窗：开始日默认填上一期的结束日',
+        html.includes(`value="${expDate}"`), true);
+      const dlgSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
+      check('自定义卡池弹窗：带序号的五类**不给名字输入框**（只读展示，走 .cbd-fixed）',
+        /v-if="!autoNamed"/.test(dlgSrc)
+        && /class="cbd-fixed"[^>]*>\{\{ fullName \}\}/.test(dlgSrc)
+        && /const fullName = computed\(\(\) => NAME_PREFIX \+ stripPrefix\(form\.scName\)\)/.test(dlgSrc)
+        && !/form\.scName\) \}\}<\/span>\s*<input/.test(dlgSrc), true);
+      check('自定义卡池弹窗：自动算名字 / 日期的数据源 = 已公布卡池 + **已生效**自设（连续加两个同类型要接着走）',
+        /const chain = computed\(\(\) => \[\.\.\.site\.publishedBanners, \.\.\.site\.myActiveEntries\]\)/.test(dlgSrc)
+        && /scName: hasSerial\(type\) \? serialName\(type, nextSerial\(type, chain\.value\)\) : ''/.test(dlgSrc)
+        && /startDate: \(hasAutoStart\(type\) \? autoStartDate\(type, chain\.value\) : null\) \|\| today/.test(dlgSrc),
+        true);
+      check('自定义卡池弹窗：切类型时重算名字与开始日，但**编辑回填**时不重算（filling 守卫）',
+        /watch\(\(\) => form\.type, \(t, prev\) => \{[\s\S]{0,120}if \(filling\) return;[\s\S]{0,400}nextSerial/
+          .test(dlgSrc)
+        && /if \(hasAutoStart\(t\)\) form\.startDate = autoStartDate\(t, chain\.value\) \|\| today;/.test(dlgSrc)
+        && /else if \(hasAutoStart\(prev\)\) form\.startDate = today;/.test(dlgSrc)
+        && /filling = true;[\s\S]{0,220}nextTick\(\(\) => \{ filling = false; \}\)/.test(dlgSrc), true);
+      check('自定义卡池弹窗：开始日虽然自动填，但**没有禁用**（用户明确「允许手动再调整」）',
+        !/:disabled="[^"]*(startDate|hasAutoStart)/.test(dlgSrc), true);
+      check('自定义卡池弹窗：只读那一格有样式（与输入框同高，不占额外一行）',
+        /\.cbd-form \.cbd-fixed\{[\s\S]{0,220}height:34px/.test(cssAll), true);
+    }
     /* 「卡池开启类型」= DB 的 `rerunKind`（2026-10-19 加）—— **只在单六寻访下渲染**，
        默认表单是 `double`，所以这里应该**看不到**它；渲染条件读源码钉住。 */
     check('自定义卡池弹窗：「卡池开启类型」默认不显示（只有单六寻访才有这个概念）',

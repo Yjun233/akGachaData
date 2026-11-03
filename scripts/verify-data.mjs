@@ -26,9 +26,9 @@ import { diffDays, shiftYears, shiftDays, enforceRangeOrder, localToday } from '
 import { extractDate, findDates, installDatePaste } from '../src/lib/datePaste.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../src/lib/constants.js';
 import {
-  CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, RERUN_KINDS, STORE_VERSION,
-  buildName, computeCanRerun, dedupe, distributeOps, endDateOf, entryToBanner, formToEntry, hasShop,
-  mergeOps,
+  CUSTOM_TYPES, DURATION_DAYS, NEAR_DAYS, NAME_PREFIX, RERUN_KINDS, SERIAL_TYPES, STORE_VERSION,
+  autoStartDate, buildName, computeCanRerun, dedupe, distributeOps, endDateOf, entryToBanner,
+  formToEntry, hasAutoStart, hasSerial, hasShop, mergeOps, nextSerial, serialName, serialOf,
   loadEntries, migrateV1Entry, migrateV2Entry, midTag, opNames, parseImport, serialize,
   splitList, stripPrefix, summarizeCustom, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
@@ -111,9 +111,9 @@ const check = (label, actual, expected) => {
 // ---- 站点级 ----
 check('干员总数', Object.keys(operators).length, meta.operatorCount);
 check('卡池总数', banners.length, meta.servers.find((s) => s.id === 'sc').bannerCount + claCountOf('sc'));
-/* ⚠️ 黄金值：**新干员首次进 UP 就会变**（2026-10-10 由 204 → 206，新增 克莱门莎 / 德·托莱多）。
-   不派生是故意的 —— 它正是「参与统计的干员有没有变多」的哨兵。 */
-check('参与统计干员数', rows.length, 206);
+/* ⚠️ 黄金值：**新干员首次进 UP 就会变**（2026-11-02 由 206 → 208，感谢庆典新增 冻河 / 奥尔佳；
+   塔露拉是限定，不计入）。不派生是故意的 —— 它正是「参与统计的干员有没有变多」的哨兵。 */
+check('参与统计干员数', rows.length, 208);
 
 /* ---- 头像可达性（2026-10-29 加的哨兵；当天下午改成「逐文件 sha」后同步升级）----
    线上头像的 URL = `cdn.jsdelivr.net/gh/<资源仓库>@<sha>/avatars/<charId>.png`，
@@ -410,6 +410,81 @@ check('自定义卡池：banner 的 endDate 用的是条目里那个（不是每
 check('自定义卡池：单六条目的 rerunKind / canRerun 也透传到 banner',
   (() => { const b = entryToBanner({ ...cbSingleEntry, uid: 1 }); return `${b.rerunKind}/${b.canRerun}`; })(),
   '首发/true');
+
+/* ---------------- 序号与自动开始日（2026-11-03 用户定） ----------------
+   五类带序号的卡池：名字 = `自定义_<类型><序号>`（不可改），序号 = 库里最新一期 + 1；
+   其中常驻标准 / 常驻中坚 / 中坚甄选 的开始日默认接上一期结束日（中坚两类共用一条链），
+   联合行动 / 定向甄选 仍手填。口径见 lib/customBanners.js 的 SERIAL_TYPES / AUTO_START_TYPES。 */
+{
+  check('序号：带序号的正好是这五类（单六寻访仍自己起名）',
+    SERIAL_TYPES.join(','), 'double,joint,stdfes,classic,clafes');
+  check('序号：hasSerial 与列表一致', ['double', 'joint', 'stdfes', 'classic', 'clafes', 'single']
+    .map((t) => hasSerial(t)).join(','), 'true,true,true,true,true,false');
+  check('自动开始日：只有常驻标准 + 中坚两类自动（联合行动 / 定向甄选 不自动）',
+    ['double', 'classic', 'clafes', 'joint', 'stdfes', 'single'].map((t) => hasAutoStart(t)).join(','),
+    'true,true,true,false,false,false');
+
+  /* serialOf：id 里的 4 位补零序号最权威；自设没 id，只能看名字尾部 */
+  check('序号：已公布卡池取 id 尾部的 4 位序号（20261022_double_0196 → 196）',
+    serialOf({ id: '20261022_double_0196', scName: '常驻标准寻访196' }), 196);
+  check('序号：自设从名字尾部取（自定义_常驻标准寻访197 → 197）',
+    serialOf({ scName: '自定义_常驻标准寻访197' }), 197);
+  check('序号：联合行动23 → 23', serialOf({ id: '20260818_joint_0023', scName: '联合行动23' }), 23);
+  /* ⚠️ 旧版自动名是「类型 + MMdd」（4 位数字）—— 当成序号会把下一期算成 108，必须判掉 */
+  check('序号：旧版自动名里的 MMdd（4 位数字）不算序号',
+    serialOf({ scName: '自定义_常驻标准寻访0107' }), null);
+  check('序号：名字里没数字 / 空 → null',
+    `${serialOf({ scName: '自定义_我猜的池' })}|${serialOf({})}|${serialOf(null)}`, 'null|null|null');
+
+  /* nextSerial：最新一期 + 1；把自设也算进来（连续加两个同类型要接着走） */
+  const threeDouble = [
+    { id: '20261008_double_0195', type: 'double', endDate: '2026-10-22' },
+    { id: '20261022_double_0196', type: 'double', endDate: '2026-11-05' },
+  ];
+  check('序号：常驻标准寻访 196 → 下一期 197', nextSerial('double', threeDouble), 197);
+  check('序号：已自定义过 197 → 下一期 198（接着往后加）',
+    nextSerial('double', [...threeDouble, { scName: '自定义_常驻标准寻访197', type: 'double', endDate: '2026-11-19' }]),
+    198);
+  check('序号：别的类型不干扰（只有一条联合行动的库里，double 仍从 1 起）',
+    nextSerial('double', [{ id: '20260818_joint_0023', type: 'joint', endDate: '2026-09-01' }]), 1);
+  check('序号：展示名 = 类型展示名 + 序号（不带前缀，前缀由 buildName 补）',
+    `${serialName('double', 197)}|${serialName('clafes', 15)}`, '常驻标准寻访197|中坚甄选15');
+
+  /* autoStartDate：同一条链上最晚的结束日 */
+  const chainFix = [
+    { type: 'double', endDate: '2026-11-05' },
+    { type: 'classic', endDate: '2026-11-12' },
+    { type: 'clafes', endDate: '2026-09-03' },
+    { type: 'joint', endDate: '2026-09-01' },
+    { type: 'stdfes', endDate: '2026-10-13' },
+  ];
+  check('自动开始日：常驻标准 = 自己那条链的上一期结束日',
+    autoStartDate('double', chainFix), '2026-11-05');
+  check('自动开始日：常驻中坚 / 中坚甄选 共用一条链（都取中坚两类里最晚的结束日）',
+    `${autoStartDate('classic', chainFix)}|${autoStartDate('clafes', chainFix)}`, '2026-11-12|2026-11-12');
+  check('自动开始日：连续自定义 → 接自设的结束日',
+    autoStartDate('double', [...chainFix, { type: 'double', startDate: '2026-11-05', endDate: '2026-11-19' }]),
+    '2026-11-19');
+  check('自动开始日：库里一条都没有 → null（调用方退回今天）',
+    autoStartDate('double', []), null);
+
+  /* 真实数据：与 id 里的序号、与最晚结束日对撞一遍（不写死会随数据变的数字） */
+  const maxIdSerial = (type) => Math.max(0, ...banners.filter((b) => b.type === type)
+    .map((b) => Number((/_(\d{4})$/.exec(b.id) || [])[1]))
+    .filter((n) => Number.isFinite(n)));
+  const maxEndOf = (types) => banners.filter((b) => types.includes(b.type))
+    .reduce((m, b) => (!m || b.endDate > m ? b.endDate : m), null);
+  check('序号（真实数据）：每种类型的下一期都等于 id 里最大序号 + 1',
+    SERIAL_TYPES.map((t) => nextSerial(t, banners) === maxIdSerial(t) + 1).join(','),
+    'true,true,true,true,true');
+  check('自动开始日（真实数据）：常驻标准 = 该类型最晚结束日',
+    autoStartDate('double', banners), maxEndOf(['double']));
+  check('自动开始日（真实数据）：中坚两类都 = 中坚大类最晚结束日',
+    `${autoStartDate('classic', banners)}|${autoStartDate('clafes', banners)}`,
+    `${maxEndOf(['classic', 'clafes'])}|${maxEndOf(['classic', 'clafes'])}`);
+  check('自动开始日（真实数据）：联合行动 / 定向甄选 不参与自动（配了也不会用，见 hasAutoStart）',
+    `${hasAutoStart('joint')}/${hasAutoStart('stdfes')}`, 'false/false');
+}
 
 /* ---- 归一化 `toEntry()`：幂等 + 吃老形态 + 手工 endDate ---- */
 check('自定义卡池：toEntry 幂等（v3 进 v3 出，一字不差）',
@@ -938,7 +1013,7 @@ check('metadata：三个服务器都有数据更新日',
 // ---- 卡池类型：限定寻访已拆成 庆典 / 春节 / 夏季 ----
 const typeCount = {};
 for (const b of banners) typeCount[b.type] = (typeCount[b.type] || 0) + 1;
-check('限定寻访·庆典（limcel）卡池数', typeCount.limcel, 13);
+check('限定寻访·庆典（limcel）卡池数', typeCount.limcel, 14);
 check('限定寻访·春节（limspr）卡池数', typeCount.limspr, 8);
 check('限定寻访·夏季（limsum）卡池数', typeCount.limsum, 6);
 check('不再有笼统的 limited 类型', typeCount.limited || 0, 0);
@@ -1370,8 +1445,8 @@ const upAll = computeUpHistory({ banners, categories, operatorByName: operators,
 const upWithMid = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, classicDateOf,
 });
-check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.length}`, '93/113');
-check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 26 位限定）', upAll.all.length, 206);
+check('UP 历史：六星 / 五星干员数', `${upAll.six.length}/${upAll.five.length}`, '94/114');
+check('UP 历史：已排除限定干员（合计 = 全部 5/6 星 − 27 位限定）', upAll.all.length, 208);
 check('UP 历史：不含任何限定干员',
   upAll.all.every((r) => !operators[r.name]?.isLimited), true);
 /* 标记总数改成**独立算一遍**：把每个卡池里 5/6★ 且非限定的 UP 干员数加起来。
