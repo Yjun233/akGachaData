@@ -18,7 +18,8 @@
  *   所以「EN 减 SC」必须写 `diffDays(enStart, scStart)`。**参数顺序就是符号，别调换。**
  *   真实数据里外服恒晚于国服（en−sc 最小 +56 天），写反了页面照样「好看」——
  *   唯一能抓住它的是 `verify-data` 里那条「外服更早 → 负数」的 fixture 用例。
- * - **`≠` 标记只比 6★ 名单**（`up6Same`）：那是「是不是同一场」的判断依据。
+ * - **「不一致」的信号只比 6★ 名单**（`up6Same`）：那是「是不是同一场」的判断依据。
+ *   界面上它表现为「出率提升」那个按钮换色（2026-11-04 由不等号改过来）。
  *   全 UP 集合不一致的行比 6★ 更多（`single` 有 29 条只是 5★ 换了人），
  *   那些不标（否则 30 个信号被稀释成 59 个）；5★ 只作弹窗里的旁注（`up5Same`）。
  * - 三服里缺那一期的行**照列**，缺的格显示 `—`，相关差值也是 `—`。
@@ -126,7 +127,7 @@ export function buildCrossEntries(bannersByServer = {}) {
       gapEnSc: scStart && enStart ? diffDays(enStart, scStart) : null,
       gapTcSc: scStart && tcStart ? diffDays(tcStart, scStart) : null,
       gapTcEn: enStart && tcStart ? diffDays(tcStart, enStart) : null,
-      /** 三服 6★ 名单是否一致（false → 表格里挂 `≠`）；单服行 = null */
+      /** 三服 6★ 名单是否一致（false → 表格里「查看」按钮换色）；单服行 = null */
       up6Same: sameRoster(banners, servers, 6),
       /** 5★ 名单是否一致 —— **不进表格**，只作弹窗里的旁注 */
       up5Same: sameRoster(banners, servers, 5),

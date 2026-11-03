@@ -2329,11 +2329,11 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
   check('跨服：缺那一服 → 日期与相关差值都是 null',
     `${fixOf('P3').enStart}|${fixOf('P3').gapEnSc}|${fixOf('P3').gapTcEn}`, 'null|null|null');
 
-  check('跨服：6★ 集合相同（只是顺序不同）→ 不标 ≠', fixOf('P1').up6Same, true);
-  check('跨服：6★ 集合不同 → 标 ≠', fixOf('P2').up6Same, false);
-  check('跨服：只差 5★ → 6★ 仍算一致（≠ 只看 6★），但 up5Same 记下来',
+  check('跨服：6★ 集合相同（只是顺序不同）→ 判为一致（按钮不换色）', fixOf('P1').up6Same, true);
+  check('跨服：6★ 集合不同 → 判为不一致（按钮换色）', fixOf('P2').up6Same, false);
+  check('跨服：只差 5★ → 6★ 仍算一致（换色只看 6★），但 up5Same 记下来',
     `${fixOf('复刻池 复刻').up6Same}|${fixOf('复刻池 复刻').up5Same}`, 'true|false');
-  check('跨服：只有 1 服 → up6Same 无从比较（null，表格里不标）', fixOf('P3').up6Same, null);
+  check('跨服：只有 1 服 → up6Same 无从比较（null，按钮不换色）', fixOf('P3').up6Same, null);
 
   const fixBounds = crossBounds(FIX_ROWS);
   check('跨服：日期下界 = 有国服日期的最早那期', fixBounds.min, '2026-01-10');

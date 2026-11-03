@@ -1191,23 +1191,23 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
    这里只补三样东西：
    - `.xs-gap` / `.xs-gap.neg`：差值列 —— 负数用 --warn（琥珀），与「首次UP间隔·表格版」
      的负间隔同一套视觉语言；
-   - `.xup` / `.xup-ne`：「出率提升」列的按钮与「三服 6★ 名单不一致」的标记
-     （用户 2026-11-04 明确：标记挂这一列，不挂名称列）；
+   - `.xup` / `.xup.diff`：「出率提升」列的按钮，以及「三服 6★ 名单不一致」时它换的颜色
+     （用户 2026-11-04 明确：信号挂这一列，不挂名称列；最初是不等号，后改成按钮换色）；
    - `.xup-box` 起：弹窗的三栏布局（复用 .cbd-mask / .cbd-box 的壳与层级 80）。 */
 .xs-gap{font-variant-numeric:tabular-nums}
 .xs-gap.neg{color:var(--warn);font-weight:700}
-/* 出率提升格：按钮常常态，`≠` 紧跟其右（一行内不换行，列宽 140 够放） */
+/* 出率提升格：常态是普通（蓝）按钮；三服 6★ 名单不一致时换琥珀 —— 与负差值同一套色系，
+   一眼就能挑出「这几行不是同一份名单」。 */
 .xup-cell{white-space:nowrap}
 .xup{
   border:1px solid var(--blue-200);background:#fff;color:var(--blue-700);
   border-radius:6px;padding:2px 9px;font-size:12px;font-family:inherit;cursor:pointer;
 }
 .xup:hover{background:var(--blue-50);border-color:var(--blue-500)}
-.xup-ne{
-  display:inline-block;margin-left:5px;padding:0 5px;border-radius:5px;
-  background:#fff7e6;border:1px solid #f0d9a8;color:#7a5300;
-  font-style:normal;font-size:11px;font-weight:700;line-height:17px;cursor:help;
-}
+/* ⚠️ `.diff` 必须写在 `:hover` **之后**：两条选择器特异度相同（.xup:hover = 0,2,0；
+   .xup.diff = 0,2,0），靠顺序决定胜负 —— 放前面的话 hover 一悬停就跳回蓝色。 */
+.xup.diff{border-color:#e2c48a;background:#fff7e6;color:var(--warn);font-weight:600}
+.xup.diff:hover{background:#fdf0d8;border-color:var(--warn)}
 /* 弹窗：比自定义卡池那个宽一点（三栏），窄屏竖排 */
 .xup-box{width:min(880px,100%)}
 .xup-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

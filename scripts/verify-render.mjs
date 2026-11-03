@@ -2122,7 +2122,7 @@ try {
 
   /* ---------------- 跨服卡池对比（/cross-server，2026-11-04） ----------------
      这一页**不受服务器选择控制**（三服一起列），所以断言分三块：
-     ① 结构（九列 / 行数 / `≠` 数 / 缺服占位）—— 期望值全部从 store 派生，不写死；
+     ① 结构（九列 / 行数 / 按钮换色数 / 缺服占位）—— 期望值全部从 store 派生，不写死；
      ② 右栏（类型白名单 / 国服日期范围 / UP 干员）；
      ③ 「切服务器后本页不变」—— 直接对两次 renderRoute 的结果对撞。
 
@@ -2157,12 +2157,25 @@ try {
     check('跨服页：排除了单六寻访的「返场」（复刻保留）',
       !rows.some((r) => Object.values(r.banners).some((b) => b?.rerunKind === '返场')), true);
 
-    /* 「出率提升」列：常态只有按钮，`≠` 只挂在「三服 6★ 名单不一致」的行 */
-    check('跨服页：每行一个「查看」按钮（常态不显示干员）', count(ch, /class="xup"/g), rows.length);
-    check('跨服页：`≠` 数与 6★ 名单不一致的行数一致',
-      count(ch, /class="xup-ne"/g), rows.filter((r) => r.up6Same === false).length);
-    check('跨服页：`≠` 一个都没漏（那几类确实不一致）',
-      rows.filter((r) => r.up6Same === false).length > 0, true);
+    /* 「出率提升」列：常态只有按钮；三服 6★ 名单不一致时**按钮换色**（`.diff`）。
+       ⚠️ 2026-11-04 由「旁边挂 `≠`」改成换色 —— 断言从数 `.xup-ne` 改成数 `.xup.diff`，
+          同时钉住「`≠` 已经彻底不出现」（否则哪天残留半截又会冒出来）。
+       注意 SSR 会把 `:class` 排在静态 class 前面 → 实际是 `class="diff xup"`，只能按 token 判。 */
+    /* ⚠️ 按 **class token** 精确匹配，别用正则 `\bxup\b` —— 单元格是 `class="xup-cell"`，
+       `xup` 与 `-` 之间正好是词边界，一条正则会把每行的 td 也算进去（实测 154 行数成 308）。 */
+    {
+      const xupBtns = [...ch.matchAll(/class="([^"]*)"/g)]
+        .map((m) => m[1].split(/\s+/).filter(Boolean))
+        .filter((toks) => toks.includes('xup'));
+      check('跨服页：每行一个「查看」按钮（常态不显示干员）', xupBtns.length, rows.length);
+      check('跨服页：`≠` 已彻底删掉（改成按钮换色）',
+        ch.includes('xup-ne') || ch.includes('>≠<'), false);
+      check('跨服页：换色的按钮数 = 6★ 名单不一致的行数',
+        xupBtns.filter((t) => t.includes('diff')).length,
+        rows.filter((r) => r.up6Same === false).length);
+      check('跨服页：换色没漏（那几类确实不一致）',
+        xupBtns.some((t) => t.includes('diff')), true);
+    }
     check('跨服页：缺服的行有 `—` 占位',
       count(body, /class="dash"/g) >= rows.filter((r) => r.servers.length < 3).length, true);
 
