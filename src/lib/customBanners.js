@@ -282,6 +282,101 @@ export const stripPrefix = (name) => String(name ?? '').replace(/^(?:自定义_)
 
 const pad4 = (n) => String(n).padStart(4, '0');
 
+/* ---------------------------------------------------------------- 序号与自动开始日（2026-11-03） */
+
+/**
+ * **带序号**的五类卡池 —— 用户 2026-11-03 定：名字一律由系统生成
+ * （`自定义_<类型><序号>`），弹窗里**不给输入框**；序号 = 库里该类型最新一期的序号 + 1。
+ *
+ * ⚠️ 其余类型（只剩 `single`）仍可自己起名 —— 单六寻访没有「第 N 期」的概念。
+ * @type {string[]}
+ */
+export const SERIAL_TYPES = ['double', 'joint', 'stdfes', 'classic', 'clafes'];
+
+/** 该类卡池的名字是否由系统按序号生成（= 弹窗里名字只读） */
+export const hasSerial = (type) => SERIAL_TYPES.includes(type);
+
+/**
+ * **开始日自动接上一期结束日**的三类（用户 2026-11-03 定）：
+ * - `double` 常驻标准寻访 —— 自己一条链
+ * - `classic` / `clafes` —— **合成一条链**：两者无缝衔接，上一期可能是任一类
+ *
+ * ⚠️ 联合行动 / 定向甄选**不自动**（档期不连续，隔几周几个月才来一次）→ 仍由用户填。
+ * ⚠️ 自动只是**默认值**：日期输入框还在，随时能改（用户明确「允许手动再调整」）。
+ */
+export const AUTO_START_TYPES = ['double', 'classic', 'clafes'];
+
+/** 该类卡池的开始日是否自动接上一期 */
+export const hasAutoStart = (type) => AUTO_START_TYPES.includes(type);
+
+/** 「中坚」那两类共用一条时间链 —— 无缝衔接，上一期的结束日就是下一期的开始日 */
+const MID_CHAIN_TYPES = ['classic', 'clafes'];
+
+/** `type` 属于哪条时间链（中坚两类合并成一条，其余各成一条） */
+export const chainOf = (type) => (MID_CHAIN_TYPES.includes(type) ? MID_CHAIN_TYPES : [type]);
+
+/**
+ * 从卡池里取**序号**（`常驻标准寻访196` → 196）。
+ * ① 已公布卡池的 `id` 带 4 位补零序号（`20261022_double_0196`）—— 最权威，优先用；
+ * ② 自设条目没有 id，只能从名字尾部取 → **只认 1~3 位**：4 位是旧版自动名里的 `MMdd`
+ *    （`自定义_常驻标准寻访0107`），把它当序号会把下一期算成 108。
+ *
+ * @param {{id?:string, scName?:string, name?:string}} banner
+ * @returns {number|null} 取不到给 null（名字里压根没有数字，或数字是 4 位的 MMdd）
+ */
+export function serialOf(banner) {
+  const idm = /_(\d{4})$/.exec(String(banner?.id || ''));
+  if (idm) return Number(idm[1]);
+  const name = stripPrefix(banner?.scName ?? banner?.name ?? '');
+  const m = /(\d+)$/.exec(name);
+  return m && m[1].length <= 3 ? Number(m[1]) : null;
+}
+
+/**
+ * 该类型**下一期**的序号 = 库里该类型最大序号 + 1。
+ *
+ * ⚠️ 入参要**同时**含已公布卡池与「已生效」的自设 —— 用户 2026-11-03 要求
+ *    「连续自定义两个相同类型时，序号在已自定义的基础上再往后加」。
+ * ⚠️ 别把**被去重吃掉**的自设算进来（它们不生效，序号会白白跳过一期）。
+ *
+ * @param {string} type
+ * @param {Array} banners 已公布卡池 + 自设条目（都带 `type`，最好带 `scName` / `id`）
+ * @returns {number}
+ */
+export function nextSerial(type, banners = []) {
+  let max = 0;
+  for (const b of banners) {
+    if (b?.type !== type) continue;
+    const n = serialOf(b);
+    if (n !== null && n > max) max = n;
+  }
+  return max + 1;
+}
+
+/** 序号 → 展示名（**不含** `自定义_` 前缀）：`常驻标准寻访197` */
+export const serialName = (type, serial) => `${TYPE_LABEL[type] || type}${serial}`;
+
+/**
+ * 该类型的**默认开始日** = 同一条时间链上最晚的结束日（即「上一期结束那天」）。
+ *
+ * 为什么用**结束日**而不是「结束日 + 1」：本站「进行中」是 `[开始日, 结束日)` ——
+ * 结束日当天算已关闭（旧池当天 04:00 关、新池 16:00 开），所以下一期就是那一天开始。
+ *
+ * @param {string} type
+ * @param {Array} banners 已公布卡池 + 自设条目（中坚两类会自动并成一条链）
+ * @returns {string|null} `YYYY-MM-DD`；库里一条都没有时给 null（调用方退回今天）
+ */
+export function autoStartDate(type, banners = []) {
+  const types = chainOf(type);
+  let last = null;
+  for (const b of banners) {
+    if (!types.includes(b?.type)) continue;
+    const end = b?.endDate;
+    if (isDate(end) && (!last || end > last)) last = end;
+  }
+  return last;
+}
+
 /** 本地存储可用吗（SSR / 隐私模式下不可用） */
 function storageAvailable() {
   try {

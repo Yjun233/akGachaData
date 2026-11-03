@@ -1080,6 +1080,17 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   font-size:13px;background:#fff;color:var(--ink);font-family:inherit;
 }
 .cbd-form input:focus,.cbd-form select:focus{outline:2px solid var(--blue-200);border-color:var(--blue-500)}
+/* 带序号的五类卡池，名字由系统生成（2026-11-03 用户定）→ **只读**：
+   做成与输入框同高同宽的静态块（虚线边框 + 浅底），一眼看出「这里不能改」，
+   又不占额外一行（与旁边「寻访类型 / 开始时间」齐平）。 */
+.cbd-form .cbd-fixed{
+  display:flex;align-items:center;height:34px;padding:0 9px;
+  border:1px dashed var(--blue-200);border-radius:8px;
+  background:var(--blue-50);color:var(--blue-700);
+  font-size:13px;font-weight:700;
+  /* 名字可能比格子长（「自定义_常驻标准寻访197」）→ 省略号兜底，别把列撑破 */
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
 /* 「结束日期」**不给输入框**（恒为开始日 + 14 天），只在开始时间下面写一行小字 */
 .cbd-form .cbd-endnote{font-size:11.5px;font-weight:400;color:var(--muted);line-height:1.6}
 .cbd-form .cbd-endnote b{color:var(--blue-700);font-weight:700}

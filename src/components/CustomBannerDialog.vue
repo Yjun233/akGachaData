@@ -10,12 +10,13 @@
  *   本组件只负责把结果显示出来 —— 保证弹窗与导入走的是**同一套**规则。
  * - 导出是**唯一**的备份手段（数据只在这台浏览器的本地存储里）。
  */
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
 import { TYPE_LABEL } from '../lib/constants.js';
 import {
-  CUSTOM_TYPES, RERUN_KINDS, buildName, distributeOps, endDateOf,
-  entryToForm, formToEntry, hasShop, mergeOps, midTag,
+  CUSTOM_TYPES, NAME_PREFIX, RERUN_KINDS, autoStartDate, buildName, distributeOps, endDateOf,
+  entryToForm, formToEntry, hasAutoStart, hasSerial, hasShop, mergeOps, midTag, nextSerial,
+  serialName, stripPrefix,
 } from '../lib/customBanners.js';
 import { localToday } from '../lib/date.js';
 import OpPicker from './OpPicker.vue';
@@ -27,13 +28,25 @@ const site = useSiteStore();
 /* **打开弹窗那一刻的现实今天** —— 既是「开始时间」的默认值，也是下面 `tagOf` 的判据时点
    （用户 2026-10-06 定：标 / 中按**现实时间**算，不跟右栏那个可改的参考日期走）。 */
 const today = localToday();
-const blank = () => ({
-  scName: '',
-  /* 默认「常驻标准寻访 + 今天」——最常见的自设场景，用户按需改。
-     ⚠️ **没有 `endDate`**：结束日由开始日派生（用户 2026-10-06 定，见 lib 的 `endDateOf`）；
-        存进存储时才会写成具体日期（v3 与 DB 同构）。 */
-  type: 'double',
-  startDate: today,
+
+/* ---------------- 自动序号 / 自动开始日（2026-11-03 用户定） ----------------
+   五类「带序号」的卡池（常驻标准 / 联合行动 / 定向甄选 / 常驻中坚 / 中坚甄选）：
+   名字一律 `自定义_<类型><序号>`，**不给输入框**；序号 = 库里该类型最新一期 + 1。
+   其中常驻标准、常驻中坚、中坚甄选 的**开始日**默认接上一期结束日（中坚两类合成一条链）。
+
+   数据源 = **已公布卡池 + 已生效自设**：
+   · 必须含自设 —— 用户要求「连续加两个相同类型时，在已自定义的基础上再往后加」；
+   · 只用 `myActiveEntries`（去重后活下来的）—— 被吃掉的不生效，算进去会让序号白跳一期。 */
+const chain = computed(() => [...site.publishedBanners, ...site.myActiveEntries]);
+
+const blank = (type = 'double') => ({
+  /* 带序号的五类：名字由系统生成；其余（只剩单六寻访）留空 → 用户自己起名 */
+  scName: hasSerial(type) ? serialName(type, nextSerial(type, chain.value)) : '',
+  type,
+  /* 开始日：常驻标准 / 中坚两类自动接上一期结束日；
+     联合行动 / 定向甄选 的档期不连续 → 仍默认今天、由用户自己填（用户 2026-11-03 定）。
+     ⚠️ 自动的只是**默认值**，日期框还在，随时能改。 */
+  startDate: (hasAutoStart(type) ? autoStartDate(type, chain.value) : null) || today,
   /* 「卡池开启类型」（= DB 的 `rerunKind`，用户 2026-10-19 加）——**只有单六寻访才用得到**，
      默认「首发」；`canRerun` 由它自动推导（单六 + 首发），不单独给输入框。 */
   rerunKind: RERUN_KINDS[0],
@@ -44,6 +57,13 @@ const blank = () => ({
 
 const form = reactive(blank());
 const editingUid = ref(null);
+/** 编辑回填期间为 true —— 见下面 `watch(form.type)` 与 `edit()` 的说明 */
+let filling = false;
+
+/** 这类卡池的名字是否由系统生成（= 弹窗里那一格只读） */
+const autoNamed = computed(() => hasSerial(form.type));
+/** 只读那一格要显示的全名（带 `自定义_` 前缀；`form.scName` 里存的是**不带**前缀的那段） */
+const fullName = computed(() => NAME_PREFIX + stripPrefix(form.scName));
 
 const serverLabel = computed(() => site.serverMeta.label || site.server);
 /* ⚠️ 「已生效」用 `myActiveEntries`（**去重后活下来的**），不是 `myCustomEntries`（全部原始输入）——
@@ -94,6 +114,19 @@ watch(shopPool, (pool) => {
    残留的 chip 就成了「看得见、删不掉」，而 `formToEntry()` 又会把它丢掉 —— 留着只会让人困惑。 */
 watch(() => form.type, (t) => {
   if (!hasShop(t) && form.shop.length) form.shop = [];
+});
+
+/* 切类型时**重算名字与开始日**（用户 2026-11-03 定）：
+   · 名字：带序号的五类由系统生成，换类型就等于换一个系列 → 序号要按新系列重取；
+   · 开始日：切到「自动接上期」的三类就填上一期结束日；切到联合行动 / 定向甄选 则退回今天
+     （别让上一种类型的自动日期跟着跑过来，那是另一条链的日子）。
+   ⚠️ `filling` 挡住「编辑回填」那条路径 —— 编辑时要保留条目自己存的名字与（可能手改过的）日期，
+      见 `edit()`。 */
+watch(() => form.type, (t, prev) => {
+  if (filling) return;
+  form.scName = hasSerial(t) ? serialName(t, nextSerial(t, chain.value)) : '';
+  if (hasAutoStart(t)) form.startDate = autoStartDate(t, chain.value) || today;
+  else if (hasAutoStart(prev)) form.startDate = today;
 });
 
 /* ---------------- 批量粘贴（2026-10-24） ----------------
@@ -186,12 +219,17 @@ function save() {
   reset();
 }
 
-/** 条目 → 表单（`scName` 会剥掉 `自定义_` 前缀、`upOperators` 拆回三个名字数组） */
+/** 条目 → 表单（`scName` 会剥掉 `自定义_` 前缀、`upOperators` 拆回三个名字数组）
+ *  ⚠️ 回填期间把 `filling` 立起来：`Object.assign` 会改 `form.type`，那个 watcher 会顺手
+ *     重算名字与开始日 —— **编辑时必须保留条目自己存的**（名字是当初生成的那期、
+ *     日期可能被手动调过）。置回 false 放在 `nextTick`：watcher 是 pre 队列，先于它跑。 */
 function edit(entry) {
+  filling = true;
   editingUid.value = entry.uid;
   Object.assign(form, blank(), entryToForm(entry));
   pasteText.value = '';      // 编辑另一条时，上一轮的粘贴提示不该继续挂着
   pasteMsg.value = null;
+  nextTick(() => { filling = false; });
 }
 
 function remove(uid) {
@@ -222,10 +260,17 @@ const showJson = ref(false);
         <br />
         名字前的标记（按<b>此刻</b>算）：<em class="optag std">标</em> = 属<b>标准</b>寻访、
         <em class="optag mid">中</em> = 已属<b>中坚</b>寻访 —— <b>只是提醒</b>，不限制你选谁。
+        <br />
+        带序号的五类（常驻标准寻访 / 联合行动 / 定向甄选 / 常驻中坚寻访 / 中坚甄选）<b>名字自动按序号生成、不能改</b>；
+        其中<b>常驻标准寻访</b>与<b>中坚那两类</b>的<b>开始时间</b>默认接上一期的结束日（中坚两类无缝衔接，共用一条时间链），
+        自动填入后<b>仍可手动改</b>；<b>联合行动 / 定向甄选</b>的档期不连续，开始时间自己填。
       </p>
 
       <div class="cbd-form" :class="{ top4: form.type === 'single' }">
-        <label>寻访名字<input v-model="form.scName" type="text" :placeholder="namePlaceholder" /></label>
+        <label v-if="!autoNamed">寻访名字<input v-model="form.scName" type="text" :placeholder="namePlaceholder" /></label>
+        <label v-else>
+          寻访名字<span class="cbd-fixed" title="这类卡池的名字按序号自动生成，不能改">{{ fullName }}</span>
+        </label>
         <label>
           寻访类型
           <select v-model="form.type">
@@ -242,7 +287,10 @@ const showJson = ref(false);
           <span class="cbd-lhd">
             开始时间<span class="cbd-endnote" title="结束时间 = 开始时间 + 14 天">结束 <b>{{ endPreview }}</b></span>
           </span>
-          <input v-model="form.startDate" type="date" />
+          <input
+            v-model="form.startDate" type="date"
+            :title="hasAutoStart(form.type) ? '默认已填上一期的结束日，可以直接改' : '联合行动 / 定向甄选 的档期不连续，日期自己填'"
+          />
         </label>
         <label class="cbd-wide">
           批量粘贴<span class="cbd-sub">用 <b>/</b> 、逗号或空格分隔；按星级<b>追加</b>到下面两栏</span>
