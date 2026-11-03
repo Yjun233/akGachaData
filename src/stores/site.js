@@ -29,6 +29,9 @@ import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
 import {
+  CROSS_SERVERS, buildCrossEntries, crossBounds, crossRows, emptyCrossFilters, nextCrossSort,
+} from '../lib/crossServer.js';
+import {
   dedupe, loadEntries, nextUid, parseImport, saveEntries, serialize, validate,
 } from '../lib/customBanners.js';
 
@@ -98,6 +101,9 @@ export const useSiteStore = defineStore('site', {
     upShowGaps: false,                 // UP 历史：两次 UP 之间写日期差（**默认关**）
     avatarMode: 'text',                // 干员展示：text 简洁（名字）| image 图片（头像）
     bannerSort: { key: 'startDate', dir: 'desc' },
+    /* 跨服卡池对比（/cross-server）：筛选与排序。⚠️ 与 server 无关，`setServer` **不重置**它们 */
+    crossFilters: emptyCrossFilters(),
+    crossSort: { key: 'scStart', dir: 'desc' },   // 默认按国服开始日期倒序
     statSort: {},                      // { '6-std': {key,dir}, ... } 每张统计表各自记排序
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
@@ -260,6 +266,50 @@ export const useSiteStore = defineStore('site', {
       return bannerRows(this.allBanners, s.filters, s.categories, s.bannerSort);
     },
 
+    /* ---------------- 跨服卡池对比（/cross-server，2026-11-04） ----------------
+       ⚠️ 取数**只用 `bannersByServer`**（三服原始映射：已 merge 中坚文件、已 unwrap `.banners`、
+          不含自定义）。别用 `banners` / `allBanners` —— 那两个是「当前服 + 自定义」，
+          跨服配对会串出「自定义_常驻标准寻访197」这种三服对不上的行。
+       口径见 lib/crossServer.js 的文件头。 */
+
+    /** 三服按名称配对后的全部行（不筛不排） */
+    crossEntries(s) {
+      return buildCrossEntries(s.bannersByServer);
+    },
+
+    /** 日期上下界：min = 有国服日期的最早；max = **至少两服有数据**的行里最晚的国服日期 */
+    crossBounds() {
+      return crossBounds(this.crossEntries);
+    },
+
+    /** 日期框默认值 = 上下界（空框只显示「年/月/日」，看不出可用范围，理由同 fullBannerRange） */
+    crossFullRange() {
+      const { min, max } = this.crossBounds;
+      return { from: min || '', to: max || '' };
+    },
+
+    /** UP 干员候选池 = 入页卡池里出现过的干员名（三服并集）。
+     *  ⚠️ 刻意**不跟着日期/类型筛选收窄** —— 否则已选的干员会变成「幽灵项」（选项没了、筛还在） */
+    crossOpPool() {
+      const out = new Set();
+      for (const r of this.crossEntries) {
+        for (const s of CROSS_SERVERS) {
+          for (const o of r.banners[s]?.upOperators || []) out.add(o.scCharName);
+        }
+      }
+      return [...out];
+    },
+
+    /** 表格行（筛选 + 排序后，与右栏结果条同一个数） */
+    crossRows(s) {
+      return crossRows(this.crossEntries, s.crossFilters, s.crossSort);
+    },
+
+    /** 当前行里「三服 6★ 名单不一致」的条数（页面卡片头与结果条用） */
+    crossDiffCount() {
+      return this.crossRows.filter((r) => r.up6Same === false).length;
+    },
+
     /** 统计页：参考日期下的可见卡池与统计表 */
     statData(s) {
       return computeStats({
@@ -402,6 +452,9 @@ export const useSiteStore = defineStore('site', {
         this.filters = { ...emptyFilters(), ...this.fullBannerRange };
         this.firstUpRange = { ...this.fullFirstUpRange };
         this.upRange = { ...this.fullUpRange };
+        /* 跨服对比页的日期范围也初始成上下界 —— 漏了这条会变成「两个空日期框 + 全部 163 行」，
+           看着能用，实际把 9 条国服独有尾部也列进来了（与设计好的默认范围不一致） */
+        this.crossFilters = { ...emptyCrossFilters(), ...this.crossFullRange };
         this.ready = true;
       } catch (err) {
         this.error = err?.message || String(err);
@@ -561,6 +614,8 @@ export const useSiteStore = defineStore('site', {
       this.upShowGaps = false;
       this.statSort = {};
       this.bannerSort = { key: 'startDate', dir: 'desc' };
+      /* ⚠️ `crossFilters` / `crossSort` **刻意不在这里重置** ——
+         跨服卡池对比页三服并列、与 `server` 无关（2026-11-04 用户定），切服不该动它的筛选。 */
     },
 
     setFirstUpRange(from, to) {
@@ -829,6 +884,53 @@ export const useSiteStore = defineStore('site', {
 
     toggleBannerSort(key) {
       this.bannerSort = nextBannerSort(this.bannerSort, key);
+    },
+
+    /* ---------------- 跨服卡池对比：筛选与排序 ----------------
+       与卡池列表那套一一对应，只是状态**分开存**（`crossFilters` / `crossSort`）——
+       两页的筛选互不影响，且切服务器时不该被重置（见 setServer 的注释）。 */
+
+    setCrossTypes(list) {
+      this.crossFilters = { ...this.crossFilters, types: Array.isArray(list) ? [...list] : [] };
+    },
+
+    /** 单个寻访类型勾选 / 取消（空数组 = 全部类型） */
+    toggleCrossType(type) {
+      const set = new Set(this.crossFilters.types);
+      if (set.has(type)) set.delete(type);
+      else set.add(type);
+      this.setCrossTypes([...set]);
+    },
+
+    /** 整组（某个大类下的全部可见类型）勾选 / 取消 —— 入参是按钮组传下来的可见子集 */
+    toggleCrossCategory(types) {
+      const set = new Set(this.crossFilters.types);
+      const allOn = types.every((t) => set.has(t));
+      for (const t of types) {
+        if (allOn) set.delete(t);
+        else set.add(t);
+      }
+      this.setCrossTypes([...set]);
+    },
+
+    setCrossOps(list) {
+      this.crossFilters = { ...this.crossFilters, ops: Array.isArray(list) ? [...list] : [] };
+    },
+
+    toggleCrossOp(name) {
+      const set = new Set(this.crossFilters.ops);
+      if (set.has(name)) set.delete(name);
+      else set.add(name);
+      this.setCrossOps([...set]);
+    },
+
+    toggleCrossSort(key) {
+      this.crossSort = nextCrossSort(this.crossSort, key);
+    },
+
+    /** 重置：日期范围回到上下界（不是空框，理由同 resetFilters） */
+    resetCrossFilters() {
+      this.crossFilters = { ...emptyCrossFilters(), ...this.crossFullRange };
     },
 
     toggleStatSort(tableId, key) {

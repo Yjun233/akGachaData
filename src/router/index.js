@@ -8,6 +8,7 @@ import BannerListView from '../views/BannerListView.vue';
  *   /first-up        首次UP间隔（折线图；两种统计模式：首次进店 / 首次轮换）
  *   /first-up/table  首次UP间隔 · 表格版（同一份数据的表格呈现，左栏二级菜单）
  *   /up-history      UP 历史一览（横向时间轴）
+ *   /cross-server    跨服卡池对比（**三服并列，不受服务器选择控制**）
  * 不设干员列表页与详情页。
  *
  * ⚠️ `/first-up` 与 `/first-up/table` 是**两条并列路由**，不是父子嵌套：
@@ -22,6 +23,7 @@ export default createRouter({
     { path: '/first-up', name: 'firstUp', component: () => import('../views/FirstUpView.vue') },
     { path: '/first-up/table', name: 'firstUpTable', component: () => import('../views/FirstUpTableView.vue') },
     { path: '/up-history', name: 'upHistory', component: () => import('../views/UpHistoryView.vue') },
+    { path: '/cross-server', name: 'crossServer', component: () => import('../views/CrossServerView.vue') },
     /*
      * 老路径（页面还叫「首次进店间隔」时的 `/shop-interval`）留一条**前端跳转**，
      * 免得被分享 / 收藏过的旧链接直接落到首页（catch-all 的 redirect 会让人以为"打开就回首页"）。

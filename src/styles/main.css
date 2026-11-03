@@ -1185,3 +1185,44 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .cbd-iorow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cbd-iorow .btn{flex:0 0 auto}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------------- 跨服卡池对比（/cross-server，2026-11-04） ----------------
+   页面本体只有一张九列表（列宽在 constants.js 的 CROSS_COLS，走 table.grid 那套），
+   这里只补三样东西：
+   - `.xs-gap` / `.xs-gap.neg`：差值列 —— 负数用 --warn（琥珀），与「首次UP间隔·表格版」
+     的负间隔同一套视觉语言；
+   - `.xup` / `.xup-ne`：「出率提升」列的按钮与「三服 6★ 名单不一致」的标记
+     （用户 2026-11-04 明确：标记挂这一列，不挂名称列）；
+   - `.xup-box` 起：弹窗的三栏布局（复用 .cbd-mask / .cbd-box 的壳与层级 80）。 */
+.xs-gap{font-variant-numeric:tabular-nums}
+.xs-gap.neg{color:var(--warn);font-weight:700}
+/* 出率提升格：按钮常常态，`≠` 紧跟其右（一行内不换行，列宽 140 够放） */
+.xup-cell{white-space:nowrap}
+.xup{
+  border:1px solid var(--blue-200);background:#fff;color:var(--blue-700);
+  border-radius:6px;padding:2px 9px;font-size:12px;font-family:inherit;cursor:pointer;
+}
+.xup:hover{background:var(--blue-50);border-color:var(--blue-500)}
+.xup-ne{
+  display:inline-block;margin-left:5px;padding:0 5px;border-radius:5px;
+  background:#fff7e6;border:1px solid #f0d9a8;color:#7a5300;
+  font-style:normal;font-size:11px;font-weight:700;line-height:17px;cursor:help;
+}
+/* 弹窗：比自定义卡池那个宽一点（三栏），窄屏竖排 */
+.xup-box{width:min(880px,100%)}
+.xup-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.xup-col{
+  border:1px solid var(--border);border-radius:10px;padding:8px 10px 10px;
+  background:#fcfdff;min-width:0;
+}
+.xup-col h4{
+  margin:0 0 6px;padding-bottom:5px;border-bottom:1px solid var(--border);
+  font-size:12.5px;color:var(--blue-700);display:flex;align-items:baseline;gap:6px;
+}
+.xup-date{margin-left:auto;font-size:11.5px;font-weight:400;color:var(--muted)}
+.xup-sub{margin:6px 0 2px;font-size:11.5px;font-weight:700;color:var(--muted)}
+.xup-ops{display:flex;flex-wrap:wrap;gap:2px 0}
+.xup-none{margin:8px 0 2px;font-size:12px;color:var(--muted)}
+@media (max-width:640px){
+  .xup-cols{grid-template-columns:1fr}
+}

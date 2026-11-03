@@ -9,10 +9,15 @@
  * - **`disabledTypes`**：这些类型置灰不可点（UP 历史勾了「只看进店」时，把
  *   `noShopTypes` 传进来）。⚠️ 大类按钮只作用于本大类里**没被置灰**的类型
  *   （判定全选 / 半选也只看这些），整个大类都被置灰时该按钮自己也是禁用的。
+ * - **`onlyTypes`**：**白名单**（跨服卡池对比页用，2026-11-04）。空 = 全部类型（现状）；
+ *   非空时只渲染这些类型，**整个大类被裁空就连那一组一起不渲染**（不留只有标题的空壳）。
+ *   ⚠️ 与 `disabledTypes` 的区别：那个是「还在，但灰着不能点」，这个是「压根没这一类」。
+ *      跨服页排除的两类（常驻标准 / 常驻中坚）属于后者 —— 灰着显示会让人以为「有这类池但坏了」。
  *
  * 父组件负责状态，本组件只发事件。判定「全选 / 半选」用的是 `selected` 数组，
  * 不依赖任何 store —— 两处的状态形状不同（`upTypes` / `filters.types`），都能复用。
  */
+import { computed } from 'vue';
 import {
   TYPES_BY_CATEGORY, TYPE_LABEL, CAT_COLOR, CAT_INK,
 } from '../lib/constants.js';
@@ -21,11 +26,24 @@ const props = defineProps({
   selected: { type: Array, default: () => [] },
   /** 置灰（不可点）的类型；空数组 = 全部可选 */
   disabledTypes: { type: Array, default: () => [] },
+  /** 白名单：非空时只渲染这些类型；空数组 = 全部（默认） */
+  onlyTypes: { type: Array, default: () => [] },
   labelText: { type: String, default: '' },
 });
 const emit = defineEmits(['toggle', 'toggleCategory', 'clear']);
 
-const typesOf = (cat) => TYPES_BY_CATEGORY.find((g) => g.cat === cat)?.types ?? [];
+/** 白名单集合；null = 不限制 */
+const allow = computed(() => (props.onlyTypes.length ? new Set(props.onlyTypes) : null));
+/** 某大类在本组件里**可见**的类型（白名单裁一遍） */
+const typesOf = (cat) => (TYPES_BY_CATEGORY.find((g) => g.cat === cat)?.types ?? [])
+  .filter((t) => !allow.value || allow.value.has(t));
+/** 要渲染的大类 —— 整组被白名单裁空时连标题都不出（不留空壳） */
+const groups = computed(() => TYPES_BY_CATEGORY.filter((g) => typesOf(g.cat).length > 0));
+/** 「清空」按钮的置灰判据：**可见类型里**有没有选中（白名单外的残留不算） */
+const hasPick = computed(() => {
+  const visible = new Set(groups.value.flatMap((g) => typesOf(g.cat)));
+  return props.selected.some((t) => visible.has(t));
+});
 const isOff = (t) => props.disabledTypes.includes(t);
 /** 某大类里**可选**的类型 —— 大类按钮只带走这些，判定也只看这些 */
 const enabledOf = (cat) => typesOf(cat).filter((t) => !isOff(t));
@@ -41,7 +59,7 @@ const isOn = (t) => props.selected.includes(t);
   <label>寻访筛选<span class="fcount">{{ labelText }}</span></label>
   <div class="typebtns">
     <!-- 大类按钮：点击 = 该大类**里可选的**类型全选 / 取消全选（被置灰的带不动）。 -->
-    <div v-for="g in TYPES_BY_CATEGORY" :key="g.cat" class="tgroup">
+    <div v-for="g in groups" :key="g.cat" class="tgroup">
       <button
         class="tcat" type="button" :disabled="!enabledOf(g.cat).length"
         :class="{ on: allOn(g.cat), half: someOn(g.cat) && !allOn(g.cat) }"
@@ -56,7 +74,7 @@ const isOn = (t) => props.selected.includes(t);
 
       <div class="trow">
         <button
-          v-for="t in g.types" :key="t" class="ttype" type="button"
+          v-for="t in typesOf(g.cat)" :key="t" class="ttype" type="button"
           :disabled="isOff(t)" :class="{ on: isOn(t) }"
           @click="emit('toggle', t)"
         >{{ TYPE_LABEL[t] }}</button>
@@ -64,7 +82,7 @@ const isOn = (t) => props.selected.includes(t);
     </div>
 
     <div class="tfoot">
-      <button class="btn" type="button" :disabled="!selected.length" @click="emit('clear')">
+      <button class="btn" type="button" :disabled="!hasPick" @click="emit('clear')">
         清空
       </button>
     </div>

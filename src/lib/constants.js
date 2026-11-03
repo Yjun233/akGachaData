@@ -191,6 +191,20 @@ export const DANGER_DAYS = 365; // ≥ 365 天标红
  */
 export const BANNER_COLS = [190, 130, 100, 100, 280, 320];
 
+/**
+ * **跨服卡池对比**页的列宽（px），合计 **1158** —— 与 `BANNER_COLS` 同一套用法
+ * （`width: w/total%` + `minWidth: w`，表格 `min-width` = 合计）。
+ *
+ * 列序：卡池名称 / 类型 / 国服开始日期 / 国际服开始日期 / 繁中服开始日期 /
+ *       SC-EN时间差 / SC-TC时间差 / EN-TC时间差 / 出率提升
+ *
+ * ⚠️ **日期列不能低于 124、差值列不能低于 110**：`table.grid th` 是 `white-space:nowrap;
+ *    overflow:hidden`，表头还带一个 `▲` 排序三角。真机量过（1600px 视口）：
+ *    「国际服开始日期▲」需要 119px、「SC-EN时间差▲」需要 106px —— 给少了会**静默裁字**，
+ *    静态断言抓不到（第一版给 116 / 100，实测两个日期列 + 三个差值列都被裁了 3~6px）。
+ */
+export const CROSS_COLS = [240, 130, 124, 124, 124, 110, 110, 110, 140];
+
 /** 统计页四个分节的锚点（顶栏定位按钮用）——要与 StatsView 里的分区标题文案一致 */
 export const STAT_SECTIONS = [
   { id: 's-6-std', label: '六星干员·标准寻访' },

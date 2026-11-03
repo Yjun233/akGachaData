@@ -32,6 +32,10 @@ import {
   loadEntries, migrateV1Entry, migrateV2Entry, midTag, opNames, parseImport, serialize,
   splitList, stripPrefix, summarizeCustom, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
+import {
+  CROSS_ALLOWED_TYPES, CROSS_SERVER_LABELS, CROSS_SERVERS, buildCrossEntries, crossBounds,
+  crossRows, emptyCrossFilters, isCrossEligible, nextCrossSort,
+} from '../src/lib/crossServer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /* 数据与头像的真身在**独立资源仓库** ../akGachaResource；
@@ -2264,6 +2268,155 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
     singles.every((b) => ['首发', '复刻', '返场'].includes(b.rerunKind)), true);
   check(`单六寻访：${label}canRerun=true 的池都是「首发」`,
     singles.filter((b) => b.canRerun).every((b) => b.rerunKind === '首发'), true);
+}
+
+/* ---------------- 跨服卡池对比（/cross-server，2026-11-04） ----------------
+   口径见 src/lib/crossServer.js 的文件头。分两层：
+   ① **fixture**（手造三服数据）钉死「符号 / 配对 / 名单比对 / 上下界」这些真实数据测不出来的东西；
+   ② **真实数据**只验不变量与抽样（行数会随数据更新变，一律用 `>=` 或与独立算法对撞）。 */
+{
+  /** 造一个卡池对象（`six` / `five` 传名字，charId 由名字派生，方便按集合比） */
+  const mk = (name, type, startDate, six = [], five = [], extra = {}) => ({
+    scName: name,
+    type,
+    startDate,
+    endDate: startDate,
+    upOperators: [
+      ...six.map((n) => ({ scCharName: n, charId: `c_${n}`, rarity: 6, isLimited: false, isShop: false })),
+      ...five.map((n) => ({ scCharName: n, charId: `c_${n}`, rarity: 5, isLimited: false, isShop: false })),
+    ],
+    ...extra,
+  });
+
+  /* 三服的 id 故意**完全不同**（真实数据里也是零交集）→ 证明配对只看名字 */
+  const FIX = {
+    sc: {
+      x1: mk('P1', 'joint', '2026-01-10', ['甲', '乙'], ['丙']),
+      x2: mk('P2', 'joint', '2026-03-01', ['丁'], []),
+      x3: mk('复刻池 复刻', 'single', '2026-02-10', ['庚'], ['辛'], { rerunKind: '复刻' }),
+      x4: mk('P3', 'joint', '2027-01-01', ['癸'], []),           // 只有国服、且晚于所有两服行
+      x5: mk('常驻标准寻访99', 'double', '2026-01-01', ['戊'], []),
+      x6: mk('返场池 返场', 'single', '2026-02-01', ['己'], [], { rerunKind: '返场' }),
+    },
+    en: {
+      y1: mk('P1', 'joint', '2026-01-13', ['乙', '甲'], ['丙']),  // 6★ **顺序不同、集合相同**
+      y2: mk('P2', 'joint', '2026-02-26', ['丁', '戊'], []),      // 早 3 天 + 6★ 名单不同
+      y3: mk('复刻池 复刻', 'single', '2026-03-10', ['庚'], ['壬']), // 6★ 同、5★ 不同
+    },
+    tc: {
+      z1: mk('P1', 'joint', '2026-01-20', ['甲', '乙'], ['丙']),
+    },
+  };
+  const FIX_ROWS = buildCrossEntries(FIX);
+  const fixOf = (n) => FIX_ROWS.find((r) => r.name === n);
+
+  check('跨服：排除常驻标准 / 常驻中坚（都是「编号各服独立」的周更池）',
+    `${isCrossEligible({ type: 'double' })}|${isCrossEligible({ type: 'classic' })}`, 'false|false');
+  check('跨服：单六寻访只排「返场」，**复刻照收**',
+    `${isCrossEligible({ type: 'single', rerunKind: '返场' })}|${isCrossEligible({ type: 'single', rerunKind: '复刻' })}`,
+    'false|true');
+  check('跨服：按名字配对（三服 id 完全不同也能配上）', FIX_ROWS.map((r) => r.name).sort().join(','),
+    'P1,P2,P3,复刻池 复刻');
+  check('跨服：被排除的两类不进表（返场 / 常驻标准）',
+    FIX_ROWS.some((r) => r.name.includes('返场') || r.name.includes('常驻标准')), false);
+
+  check('跨服：时间差 = 后者减前者（EN 晚 3 天 → +3）', fixOf('P1').gapEnSc, 3);
+  check('跨服：TC 减 SC（晚 10 天 → +10）', fixOf('P1').gapTcSc, 10);
+  check('跨服：TC 减 EN（晚 7 天 → +7）', fixOf('P1').gapTcEn, 7);
+  /* ⚠️ 真实数据里外服**恒晚于**国服，所以「负数」只有这条 fixture 测得到 —— 它就是
+     `diffDays(en, sc)` 写没写反的唯一防线（写反了整列符号全错、页面照样好看）。 */
+  check('跨服：EN 更早 3 天 → **保留负号** -3', fixOf('P2').gapEnSc, -3);
+  check('跨服：缺那一服 → 日期与相关差值都是 null',
+    `${fixOf('P3').enStart}|${fixOf('P3').gapEnSc}|${fixOf('P3').gapTcEn}`, 'null|null|null');
+
+  check('跨服：6★ 集合相同（只是顺序不同）→ 不标 ≠', fixOf('P1').up6Same, true);
+  check('跨服：6★ 集合不同 → 标 ≠', fixOf('P2').up6Same, false);
+  check('跨服：只差 5★ → 6★ 仍算一致（≠ 只看 6★），但 up5Same 记下来',
+    `${fixOf('复刻池 复刻').up6Same}|${fixOf('复刻池 复刻').up5Same}`, 'true|false');
+  check('跨服：只有 1 服 → up6Same 无从比较（null，表格里不标）', fixOf('P3').up6Same, null);
+
+  const fixBounds = crossBounds(FIX_ROWS);
+  check('跨服：日期下界 = 有国服日期的最早那期', fixBounds.min, '2026-01-10');
+  check('跨服：日期上界只认「至少两服有数据」的行（单服行 P3 在 2027 也不抬高上界）',
+    fixBounds.max, '2026-03-01');
+
+  const fixRows = (f = {}, sort = {}) => crossRows(FIX_ROWS, { ...emptyCrossFilters(), ...f }, sort);
+  /* P1 / P2 / P3 都是 joint（P3 只有国服，但它也是 joint） */
+  check('跨服筛选：按类型（白名单外的类型筛出来是空）',
+    `${fixRows({ types: ['joint'] }).length}|${fixRows({ types: ['double'] }).length}`, '3|0');
+  check('跨服筛选：按国服开始日期（闭区间）',
+    fixRows({ from: '2026-03-01', to: '2026-03-01' }).map((r) => r.name).join(','), 'P2');
+  check('跨服筛选：按 UP 干员（任意一服命中即保留）',
+    fixRows({ ops: ['丙'] }).map((r) => r.name).join(','), 'P1');
+  /* -3（P2，EN 更早）排在 3（P1）与 28（复刻池）前面；P3 没有 EN → null 恒末尾 */
+  check('跨服排序：差值按**数值**比（-3 在 +3 前面），空值恒末尾',
+    fixRows({}, { key: 'gapEnSc', dir: 'asc' }).map((r) => r.gapEnSc).join(','), '-3,3,28,');
+  check('跨服排序：默认按国服开始日期倒序',
+    fixRows({}, { key: 'scStart', dir: 'desc' }).map((r) => r.scStart).join(','),
+    '2027-01-01,2026-03-01,2026-02-10,2026-01-10');
+  check('跨服排序：点日期 / 差值列首点降序，文本列首点升序',
+    `${nextCrossSort({ key: 'scStart', dir: 'desc' }, 'gapEnSc').dir}|${nextCrossSort(null, 'name').dir}`,
+    'desc|asc');
+  check('跨服：筛选/排序返回新数组，**不动入参**（否则会改写 Pinia 缓存的 crossEntries）',
+    (() => { const before = FIX_ROWS.map((r) => r.name).join(','); fixRows({}, { key: 'name' }); return before === FIX_ROWS.map((r) => r.name).join(','); })(),
+    true);
+
+  /* ---- 真实数据：不变量 + 抽样（不写死会随数据变的数字） ---- */
+  const crossByServer = {};
+  for (const srv of CROSS_SERVERS) {
+    const main = read(`banners_${srv}.json`);
+    const claFile = `banners_cla_${srv}.json`;
+    const cla = fs.existsSync(path.join(RES_DIR, claFile)) ? (read(claFile).banners || {}) : {};
+    crossByServer[srv] = { ...main, ...cla };
+  }
+  const realEntries = buildCrossEntries(crossByServer);
+  const realBounds = crossBounds(realEntries);
+  const realIds = (srv) => new Set(Object.keys(crossByServer[srv]));
+
+  const pairShare = (a, b) => [...realIds(a)].filter((x) => realIds(b).has(x)).length;
+  check('跨服（真实数据）：三服卡池 id **零交集**（所以绝不能用 id 配对）',
+    `${pairShare('sc', 'en') + pairShare('sc', 'tc') + pairShare('en', 'tc')}`, '0');
+  check('跨服（真实数据）：配对行数 > 150', realEntries.length > 150, true);
+  check('跨服（真实数据）：名字唯一（单服内零重名 → 名字可当配对键）',
+    new Set(realEntries.map((r) => r.name)).size, realEntries.length);
+  check('跨服（真实数据）：每行 1~3 个服',
+    realEntries.every((r) => r.servers.length >= 1 && r.servers.length <= 3), true);
+  check('跨服（真实数据）：类型都在白名单内',
+    realEntries.every((r) => CROSS_ALLOWED_TYPES.includes(r.type)), true);
+  check('跨服（真实数据）：没有常驻两类 / 单六返场',
+    realEntries.every((r) => r.type !== 'double' && r.type !== 'classic'
+      && !Object.values(r.banners).some((b) => b?.rerunKind === '返场')), true);
+  check('跨服（真实数据）：列头服名与 metadata 的 label 一致',
+    CROSS_SERVERS.map((s) => `${CROSS_SERVER_LABELS[s]}=${(meta.servers || []).find((x) => x.id === s)?.label}`).join(','),
+    CROSS_SERVERS.map((s) => `${CROSS_SERVER_LABELS[s]}=${CROSS_SERVER_LABELS[s]}`).join(','));
+  check('跨服（真实数据）：上界那一期确实「至少有两服」',
+    realEntries.some((r) => r.servers.length >= 2 && r.scStart === realBounds.max), true);
+  check('跨服（真实数据）：没有两服行比上界更晚（单服行不受此限）',
+    realEntries.every((r) => r.servers.length < 2 || !r.scStart || r.scStart <= realBounds.max), true);
+
+  const realOf = (n) => realEntries.find((r) => r.name === n);
+  const first = realOf('银灰色的荣耀');
+  check('跨服（真实数据抽样）：银灰色的荣耀 三服日期与 EN-SC 差值',
+    first && `${first.scStart}|${first.enStart}|${first.gapEnSc}`,
+    first && `${first.scStart}|${first.enStart}|${diffDays(first.enStart, first.scStart)}`);
+  check('跨服（真实数据抽样）：定向甄选1 三服 6★ 名单不一致（编号池各服自己排）',
+    realOf('定向甄选1')?.up6Same, false);
+  check('跨服（真实数据抽样）：定向甄选7 繁中服还没有（两服行）',
+    `${realOf('定向甄选7')?.servers.length}|${realOf('定向甄选7')?.tcStart}|${realOf('定向甄选7')?.gapTcSc}`,
+    '2|null|null');
+
+  const realDefault = crossRows(
+    realEntries,
+    { ...emptyCrossFilters(), from: realBounds.min, to: realBounds.max },
+    { key: 'scStart', dir: 'desc' },
+  );
+  check('跨服：默认日期范围内仍有 150 期以上', realDefault.length >= 150, true);
+  /* 会随数据变的数字只打印、不判红（expected = null 时脚本只打一行「· 标签: 值」） */
+  check('跨服（仅打印）：配对 / 默认范围 / 三服齐全 / 6★ 不一致',
+    `${realEntries.length} / ${realDefault.length} / ${realDefault.filter((r) => r.servers.length === 3).length}`
+    + ` / ${realDefault.filter((r) => r.up6Same === false).length} · 上界 ${realBounds.max}`
+    + ` · 负差 ${realEntries.filter((r) => [r.gapEnSc, r.gapTcSc, r.gapTcEn].some((g) => g !== null && g < 0)).length} 行`,
+    null);
 }
 
 // ---- 输出 ----

@@ -1,6 +1,6 @@
 /**
- * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**五个页面**（卡池列表 / 出率提升记录 /
- * 首次UP间隔·图表版 / 首次UP间隔·表格版 / UP 历史一览）真正渲染出来，
+ * Vue 渲染核对：用 Vite 的 SSR 加载 + Vue 服务端渲染把**六个页面**（卡池列表 / 跨服卡池对比 /
+ * 出率提升记录 / 首次UP间隔·图表版 / 首次UP间隔·表格版 / UP 历史一览）真正渲染出来，
  * 再检查结构 / 数据是否与原型一致。
  *
  * 为什么不用无头浏览器：本机 Chrome / Edge 的无头模式起不来（见 akGachaDocs/site/开发文档.md 的
@@ -126,6 +126,7 @@ try {
         { path: '/first-up', name: 'firstUp', component: (await vite.ssrLoadModule('/src/views/FirstUpView.vue')).default },
         { path: '/first-up/table', name: 'firstUpTable', component: (await vite.ssrLoadModule('/src/views/FirstUpTableView.vue')).default },
         { path: '/up-history', name: 'upHistory', component: (await vite.ssrLoadModule('/src/views/UpHistoryView.vue')).default },
+        { path: '/cross-server', name: 'crossServer', component: (await vite.ssrLoadModule('/src/views/CrossServerView.vue')).default },
         /* 与 src/router/index.js 保持一致：老路径的前端跳转（核对脚本也要能走这条） */
         { path: '/shop-interval', redirect: '/first-up' },
       ],
@@ -771,9 +772,9 @@ try {
 
   /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四个**顶级**项，卡池列表页不显示进店那块）。
      「首次UP间隔」下面还挂了一个**二级菜单**（图表版 / 表格版）—— 同一份数据的两种呈现。 */
-  const NAV_TOP = ['卡池列表', '出率提升记录', '首次UP间隔', 'UP 历史一览'];
+  const NAV_TOP = ['卡池列表', '跨服卡池对比', '出率提升记录', '首次UP间隔', 'UP 历史一览'];
   const NAV_SUB = ['图表版', '表格版'];
-  check('左栏导航：四个顶级项',
+  check('左栏导航：五个顶级项',
     NAV_TOP.every((t) => ph.includes(t)), true);
   check('左栏导航：「首次UP间隔」下有二级菜单（图表版 / 表格版）',
     NAV_SUB.every((t) => ph.includes(t))
@@ -1386,7 +1387,7 @@ try {
   check('左栏底部：两个图标都是**内联 SVG**（不引图标库 / 图标字体）',
     count(uh, /class="dlk"[^>]*>\s*<svg viewBox="0 0 24 24"/g), 2);
 
-  check('UP 历史页：左栏导航四个顶级项 + 首次UP间隔的二级菜单都在',
+  check('UP 历史页：左栏导航五个顶级项 + 首次UP间隔的二级菜单都在',
     NAV_TOP.every((t) => uh.includes(t)) && NAV_SUB.every((t) => uh.includes(t)), true);
   check('UP 历史页：右栏标题', /时间范围与筛选/.test(uh), true);
   check('UP 历史页：星级切换压成一行（与「纵轴排序」同构，且**不带人数**）',
@@ -2117,6 +2118,125 @@ try {
     const tcFup = await renderRoute('/first-up', (s) => s.setServer('tc'));
     check('繁中服：首次UP间隔页两个刻度条 + 两个滚动区',
       count(tcFup.html, /ybar-l/g) + count(tcFup.html, /chart-scroll/g), 4);
+  }
+
+  /* ---------------- 跨服卡池对比（/cross-server，2026-11-04） ----------------
+     这一页**不受服务器选择控制**（三服一起列），所以断言分三块：
+     ① 结构（九列 / 行数 / `≠` 数 / 缺服占位）—— 期望值全部从 store 派生，不写死；
+     ② 右栏（类型白名单 / 国服日期范围 / UP 干员）；
+     ③ 「切服务器后本页不变」—— 直接对两次 renderRoute 的结果对撞。
+
+     ⚠️ 断言的 store 侧口径全在 `lib/crossServer.js`：`crossRows` 已筛已排，`crossEntries` 是全量。
+        别在这里自己再算一遍（那就是两套口径，迟早走散）。 */
+  {
+    const cross = await renderRoute('/cross-server');
+    const ch = cross.html;
+    const CS = cross.store;
+    const rows = CS.crossRows;
+    const body = ch.slice(ch.indexOf('<tbody>'), ch.indexOf('</tbody>'));
+    const head = ch.slice(ch.indexOf('<thead>'), ch.indexOf('</thead>'));
+    /* ⚠️ `</aside>` 有两处（左栏导航也是 `<aside>`）—— 必须从 pane-cross **之后**找，
+       否则切出来是空串（第一版就这么翻车的：左栏的 `</aside>` 在前面）。 */
+    const paneStart = ch.indexOf('pane-cross');
+    const pane = ch.slice(paneStart, ch.indexOf('</aside>', paneStart));
+    const topbar = ch.slice(ch.indexOf('class="topbar"'), ch.indexOf('</header>'));
+    const maxStart = rows.reduce((m, r) => (!m || r.scStart > m ? r.scStart : m), '');
+
+    check('跨服页：三服按名称配对，行数 > 100（不是空页）', rows.length > 100, true);
+    check('跨服页：表头九列', count(head, /<th[\s>]/g), 9);
+    check('跨服页：九列列名逐个对得上',
+      ['卡池名称', '类型', '国服开始日期', '国际服开始日期', '繁中服开始日期',
+        'SC-EN时间差', 'SC-TC时间差', 'EN-TC时间差', '出率提升'].every((t) => head.includes(t)), true);
+    check('跨服页：行数 = store.crossRows.length（派生）',
+      count(body, /<tr[\s>]/g), rows.length);
+    check('跨服页：默认按国服开始日期倒序（首行 = 最晚那期）', rows[0]?.scStart, maxStart);
+
+    /* 排除口径（用户 2026-11-04 指定）：常驻标准 / 常驻中坚 / 单六寻访返场 */
+    check('跨服页：排除了常驻标准 / 常驻中坚',
+      rows.every((r) => r.type !== 'double' && r.type !== 'classic'), true);
+    check('跨服页：排除了单六寻访的「返场」（复刻保留）',
+      !rows.some((r) => Object.values(r.banners).some((b) => b?.rerunKind === '返场')), true);
+
+    /* 「出率提升」列：常态只有按钮，`≠` 只挂在「三服 6★ 名单不一致」的行 */
+    check('跨服页：每行一个「查看」按钮（常态不显示干员）', count(ch, /class="xup"/g), rows.length);
+    check('跨服页：`≠` 数与 6★ 名单不一致的行数一致',
+      count(ch, /class="xup-ne"/g), rows.filter((r) => r.up6Same === false).length);
+    check('跨服页：`≠` 一个都没漏（那几类确实不一致）',
+      rows.filter((r) => r.up6Same === false).length > 0, true);
+    check('跨服页：缺服的行有 `—` 占位',
+      count(body, /class="dash"/g) >= rows.filter((r) => r.servers.length < 3).length, true);
+
+    /* 右栏 */
+    check('跨服页：右栏标题 = 筛选与日期范围', pane.length > 0 && /筛选与日期范围/.test(ch), true);
+    check('跨服页：右栏两个日期框填的是上下界（不是空框）',
+      `${dateVal(ch, 'cs-from')}~${dateVal(ch, 'cs-to')}`,
+      `${CS.crossBounds.min}~${CS.crossBounds.max}`);
+    check('跨服页：结束日期封顶 = 最后一个「至少两服有数据」的卡池',
+      new RegExp(`<input[^>]*id="cs-to"[^>]*max="${CS.crossBounds.max}"`).test(ch), true);
+    /* 类型白名单：被排除的两类**连按钮都不该出现**（不是置灰） */
+    check('跨服页：右栏类型按钮里没有被排除的两类',
+      !pane.includes('常驻标准寻访') && !pane.includes('常驻中坚寻访'), true);
+    check('跨服页：右栏类型按钮仍有其余类型（单六 / 联合行动 / 中坚甄选）',
+      ['单六寻访', '联合行动', '中坚甄选'].every((t) => pane.includes(t)), true);
+    check('跨服页：右栏有 UP 干员多选', /class="oppick"/.test(pane), true);
+
+    /* 导航 / 顶栏 */
+    check('跨服页：左栏导航项高亮', clsHas(btnClass(ch, '跨服卡池对比'), 'navitem', 'active'), true);
+    check('跨服页：顶栏标题「跨服卡池对比」', topbar.includes('跨服卡池对比'), true);
+
+    /* 别的页不该串到这套面板 */
+    check('跨服页的右栏不会串到别的页（首次UP间隔 / 统计页都没有 cs-from）',
+      !ph.includes('id="cs-from"') && !sh.includes('id="cs-from"'), true);
+
+    /* ⭐ 核心：切服务器后本页**一行都不该变**（连表格 HTML 都一样）。
+       ⚠️ 别比整页 HTML —— 左栏「数据更新日」两行本来就跟着服变（2055 那组断言钉着这个行为）。 */
+    const crossEn = await renderRoute('/cross-server', (x) => x.setServer('en'));
+    const tableOf = (h) => h.slice(h.indexOf('<table'), h.indexOf('</table>'));
+    check('跨服页：切到国际服后表格逐字不变（与服务器选择无关）',
+      tableOf(crossEn.html), tableOf(ch));
+    check('跨服页：切服不重置它的筛选范围',
+      `${crossEn.store.crossFilters.from}~${crossEn.store.crossFilters.to}`,
+      `${CS.crossFilters.from}~${CS.crossFilters.to}`);
+
+    /* 弹窗：页面里由 `v-if="openRow"` 控制（SSR 不渲染），所以**裸 SSR** 一份，接线另外读源码钉 */
+    {
+      const { default: UpDlg } = await vite.ssrLoadModule('/src/components/CrossServerUpDialog.vue');
+      const fakeRow = {
+        name: '测试池', type: 'joint', servers: ['sc', 'en'],
+        banners: {
+          sc: {
+            startDate: '2026-01-01',
+            upOperators: [
+              { scCharName: '甲', rarity: 6, isLimited: true, isShop: false },
+              { scCharName: '乙', rarity: 5, isLimited: false, isShop: true },
+            ],
+          },
+          en: {
+            startDate: '2026-02-11',
+            upOperators: [{ scCharName: '甲', rarity: 6, isLimited: true, isShop: false }],
+          },
+          tc: null,
+        },
+        scStart: '2026-01-01', enStart: '2026-02-11', tcStart: null,
+        gapEnSc: 41, gapTcSc: null, gapTcEn: null, up6Same: true, up5Same: null,
+      };
+      const dlg = createSSRApp(UpDlg, { row: fakeRow });
+      const dh = await renderToString(dlg);
+      check('跨服弹窗：三栏并列（国服 / 国际服 / 繁中服）',
+        count(dh, /class="xup-col"/g) === 3
+        && ['sc', 'en', 'tc'].every((x) => dh.includes(`data-srv="${x}"`)), true);
+      /* 夹具里 tc 没有这一期 → 那一栏只有空态文案，所以两段标题只出现 2×2 = 4 次 */
+      check('跨服弹窗：有数据的栏各有 6★ / 5★ 两段（缺服的栏只给空态）',
+        count(dh, /class="xup-sub"/g), 4);
+      check('跨服弹窗：缺服的栏写「该服没有这一期卡池」',
+        count(dh, /该服没有这一期卡池/g), 1, true);
+      check('跨服弹窗：「限」「店」标记都画出来了（与卡池列表同款）',
+        count(dh, /mk mk-lim/g) >= 1 && count(dh, /mk mk-shop/g) >= 1, true);
+      const viewSrc = fs.readFileSync(path.join(ROOT, 'src/views/CrossServerView.vue'), 'utf8');
+      check('跨服页：弹窗接线（v-if="openRow" + 关闭时清空）',
+        /CrossServerUpDialog/.test(viewSrc) && /v-if="openRow"/.test(viewSrc)
+        && /@open="openRow = \$event"/.test(viewSrc) && /@close="openRow = null"/.test(viewSrc), true);
+    }
   }
 
   /* ---------------- 自定义卡池弹窗（单独 SSR 一遍） ----------------

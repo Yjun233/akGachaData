@@ -10,6 +10,9 @@
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
  *  - UP 历史一览  → 时间范围（横轴）+ 纵轴排序 + 卡池类型多选 + 只看进店
+ *  - 跨服卡池对比 → 寻访类型（白名单）+ **国服**开始日期范围 + UP 干员多选
+ *    ⚠️ 这一页三服并列、**与左栏服务器选择无关**，所以它的筛选状态也单独存
+ *    （`crossFilters` / `crossSort`），切服不重置。
  *
  * 两条「时间范围」共用同一套「草稿 + 确认」逻辑，见 composables/useRangeDraft.js。
  * ⚠️ **首次UP间隔**与**UP 历史**两处的**结束日期默认值 = 访问网站时的真实今天**
@@ -20,6 +23,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { FIRST_UP_MODES, FIRST_UP_POOLS, UP_SORT_ROWS } from '../lib/constants.js';
+import { CROSS_ALLOWED_TYPES } from '../lib/crossServer.js';
 import { lastStdWord as lastStdWordOf, modeFirstLabel, modeWord } from '../lib/firstUp.js';
 import { useSiteStore } from '../stores/site.js';
 import { useLayout } from '../composables/useLayout.js';
@@ -38,6 +42,8 @@ const isStats = computed(() => route.name === 'stats');
    同一份 `site.firstUp`、同一套统计模式与口径，所以判断要覆盖两条路由 */
 const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
 const isUp = computed(() => route.name === 'upHistory');
+/* 跨服卡池对比（2026-11-04）：三服并列，右栏只管类型 / 国服日期范围 / UP 干员 */
+const isCross = computed(() => route.name === 'crossServer');
 
 /* 当前统计模式的词：`首次进店` / `首次轮换`；**中坚模式下前面加「中坚」**
    （`首次中坚进店` / `首次中坚轮换`）—— 取词统一走 lib/firstUp.js，别在这儿另拼一份 */
@@ -48,6 +54,7 @@ const firstWord = computed(() => modeWord(site.firstUpMode, site.firstUpPool));
 const lastStdWord = computed(() => lastStdWordOf(site.firstUpMode));
 
 const filterTitle = computed(() => {
+  if (isCross.value) return '筛选与日期范围';
   if (isStats.value) return '参考日期';
   if (isFirstUp.value) return `${firstLabel.value}日期范围`;
   if (isUp.value) return '时间范围与筛选';
@@ -83,6 +90,21 @@ const upPresetOn = computed(() => presetOn(site.upRange, bannerBounds.value.min,
 const bannerResult = computed(
   () => `命中 ${site.bannerRows.length} / ${site.banners.length} 个卡池`,
 );
+
+/* ---------------- 跨服卡池对比：右栏摘要与结果条 ----------------
+   ⚠️ 分母用 `crossEntries`（**全部**配对行，163）而不是当前日期范围内的行 ——
+      这样「日期范围把国服独有的未来池切掉了」这件事在抽屉里是可见的。 */
+const crossTypesLabel = computed(() => (!site.crossFilters.types.length
+  ? '全部类型'
+  : `已选 ${site.crossFilters.types.length} 种`));
+
+const crossResult = computed(() => {
+  const rows = site.crossRows;
+  const n = (k) => rows.filter((r) => r.servers.length === k).length;
+  return `命中 ${rows.length} / ${site.crossEntries.length} 期`
+    + ` · 三服 ${n(3)} · 两服 ${n(2)} · 单服 ${n(1)}`
+    + ` · 6★ 不一致 ${rows.filter((r) => r.up6Same === false).length}`;
+});
 
 const statResult = computed(() => {
   const { visible, map } = site.statData;
@@ -470,6 +492,45 @@ function resetUp() {
         <button class="btn" type="button" @click="resetFup">全部</button>
       </div>
       <div class="fresult">{{ firstUpResult }}</div>
+    </div>
+
+    <!-- 跨服卡池对比（2026-11-04）：三服并列，右栏只管类型 / **国服**日期范围 / UP 干员 -->
+    <div v-else-if="isCross" class="drawer-bd pane pane-cross">
+      <div class="fgroup">
+        <TypeButtons
+          :selected="site.crossFilters.types" :only-types="CROSS_ALLOWED_TYPES"
+          :label-text="crossTypesLabel"
+          @toggle="site.toggleCrossType"
+          @toggle-category="site.toggleCrossCategory"
+          @clear="site.setCrossTypes([])"
+        />
+      </div>
+      <div class="fgroup">
+        <label for="cs-from">开始日期（国服）≥</label>
+        <input
+          id="cs-from" v-model="site.crossFilters.from" type="date"
+          :min="site.crossBounds.min" :max="site.crossBounds.max"
+        />
+      </div>
+      <div class="fgroup">
+        <label for="cs-to">开始日期（国服）≤</label>
+        <input
+          id="cs-to" v-model="site.crossFilters.to" type="date"
+          :min="site.crossBounds.min" :max="site.crossBounds.max"
+        />
+      </div>
+      <div class="fgroup">
+        <label>
+          UP 干员<span class="fcount">{{ site.crossFilters.ops.length ? `已选 ${site.crossFilters.ops.length} 位` : '可多选' }}</span>
+        </label>
+        <OpPicker
+          :model-value="site.crossFilters.ops" :pool="site.crossOpPool"
+          placeholder="名字 / 全拼 / 首字母"
+          @update:model-value="site.setCrossOps"
+        />
+      </div>
+      <button class="btn" type="button" @click="site.resetCrossFilters()">重置筛选</button>
+      <div class="fresult">{{ crossResult }}</div>
     </div>
 
     <!-- UP 历史一览 -->

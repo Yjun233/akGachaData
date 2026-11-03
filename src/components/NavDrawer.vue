@@ -74,6 +74,9 @@ const showCustom = ref(false);
       <button class="navitem" type="button" :class="{ active: route.name === 'banners' }" @click="go('banners')">
         <span class="ic" />卡池列表
       </button>
+      <button class="navitem" type="button" :class="{ active: route.name === 'crossServer' }" @click="go('crossServer')">
+        <span class="ic" />跨服卡池对比
+      </button>
       <button class="navitem" type="button" :class="{ active: route.name === 'stats' }" @click="go('stats')">
         <span class="ic" />出率提升记录
       </button>

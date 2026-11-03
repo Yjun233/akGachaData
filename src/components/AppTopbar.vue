@@ -19,6 +19,7 @@ const TITLES = {
   firstUp: '首次UP间隔 · 图表版',
   firstUpTable: '首次UP间隔 · 表格版',
   upHistory: 'UP 历史一览',
+  crossServer: '跨服卡池对比',
 };
 
 const title = computed(() => TITLES[route.name] ?? '');
