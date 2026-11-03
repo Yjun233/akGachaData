@@ -7,8 +7,10 @@
  * （要「能横着粘进 Excel」的表格数据，请用统计页 / 表格版的「复制」按钮，那边是 TSV：
  *   一个是「一行数据」，一个是「一段说明」，刻意不共用一套格式，见 `lib/clipboard.js` 文件头。）
  *
- * 字段与**表里看到的列**一一对应：卡池名称 / 类型 / 大类 / 开始日期 / 结束日期 /
+ * 字段与**表里看到的列**一一对应：卡池名称 / 类型 / 开始日期 / 结束日期 /
  * 出率提升 6★ / 出率提升 5★。
+ * ⚠️ 2026-11-03 **不再输出「大类」** —— 表格里那一列删掉了，大类的颜色改套在「类型」徽章上；
+ *    再说类型本身就唯一决定了大类（如「限定寻访·庆典」→ 限定寻访），留着是重复信息。
  * ⭐ 干员名后面带上与表格同款的标记：`（限）` = 限定干员、`（店）` = 商店兑换
  *    （标记字 2026-10-19 由「兑」改成「店」）—— 否则复制出来就丢了「谁进店」这个信息。
  *   两个都占时写成 `（限·店）`。
@@ -39,16 +41,14 @@ function opsOf(banner, rarity) {
 
 /**
  * 一个卡池 → 多行文本。
- * @param {object} banner      卡池对象（`{ id, scName, type, startDate, endDate, upOperators }`）
- * @param {object} [categories] type → 大类（store 的 `site.categories`；缺省时大类显示 `—`）
- * @returns {string} 七行，行间 `\n`，末尾无换行
+ * @param {object} banner 卡池对象（`{ id, scName, type, startDate, endDate, upOperators }`）
+ * @returns {string} 六行，行间 `\n`，末尾无换行
  */
-export function bannerText(banner, categories = {}) {
+export function bannerText(banner) {
   const b = banner || {};
   return [
     `卡池名称：${b.scName || DASH}`,
     `类型：${TYPE_LABEL[b.type] || b.type || DASH}`,
-    `大类：${categories[b.type] || DASH}`,
     `开始日期：${b.startDate || DASH}`,
     `结束日期：${b.endDate || DASH}`,
     `出率提升 6★：${opsOf(b, 6)}`,

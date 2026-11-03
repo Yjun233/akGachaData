@@ -182,10 +182,14 @@ export const DANGER_DAYS = 365; // ≥ 365 天标红
 
 /**
  * 卡池列表的列宽（px）—— 既决定各列的**比例**（`width: w/total%`），
- * 也作为各列的 **min-width 下限**；合计 1225px 是表格的 `min-width`，
+ * 也作为各列的 **min-width 下限**；合计 1120px 是表格的 `min-width`，
  * 低于它才横向滚动，宽屏时按比例铺满。
+ *
+ * ⚠️ 2026-11-03 由 7 列改成 6 列：**「大类」列删掉了**，那套配色改套在「类型」上
+ *    （见 `CAT_CLASS`；`BannerTable.vue` 的类型徽章直接用 `.badge.cat`）。
+ *    同时去掉的是 105px 那一档（原「大类」列）。
  */
-export const BANNER_COLS = [190, 130, 105, 100, 100, 280, 320];
+export const BANNER_COLS = [190, 130, 100, 100, 280, 320];
 
 /** 统计页四个分节的锚点（顶栏定位按钮用）——要与 StatsView 里的分区标题文案一致 */
 export const STAT_SECTIONS = [

@@ -183,10 +183,15 @@ try {
     count(bh.slice(bh.indexOf('<tbody>'), bh.indexOf('</tbody>')), /<tr[\s>]/g), BANNER_N);
   check('表头：出率提升（6★）', count(bh, /出率提升（6★）/g), 1);
   check('表头：出率提升（5★）', count(bh, /出率提升（5★）/g), 1);
-  /* ⚠️ 别再用 `includes('width:1225px')` —— `min-width:1225px` 里也含这个子串，
-     断言会一直「通过」，哪怕表格早就不这么排版了。这里按实际写法分别匹配。 */
-  check('卡池表：铺满可用宽度 + 1225px 兜底下限',
-    /width:100%;min-width:1225px/.test(bh.replace(/\s+/g, '')), true);
+  /* ⚠️ 别再用 `includes('width:1120px')` —— `min-width:1120px` 里也含这个子串，
+     断言会一直「通过」，哪怕表格早就不这么排版了。这里按实际写法分别匹配。
+     ⚠️ 2026-11-03 由 1225 改成 1120：删掉「大类」列（105px），表格从七列变六列。 */
+  check('卡池表：铺满可用宽度 + 1120px 兜底下限',
+    /width:100%;min-width:1120px/.test(bh.replace(/\s+/g, '')), true);
+  /* 「大类」列已经删掉，那套配色改套在「类型」徽章上 —— 表头不该再有这两个字 */
+  check('卡池表：「大类」列已删除（表头没有它、列数 7 → 6）',
+    !/<th[^>]*data-sort="cat"/.test(bh) && !/>大类<span class="arw">/.test(bh)
+    && (bh.match(/<col /g) || []).length === 6, true);
   check('「进行中」胶囊', count(bh, /pill-live/g) >= 1, true);
   /* 标记的**字**是「店」（2026-10-19 用户要求由「兑」改来）—— 这里钉字面量，
      因为这是个纯文案改动，光数 `mk-shop` 的个数是抓不到「改了但没生效」的。 */
@@ -220,19 +225,20 @@ try {
         { scCharName: '丙', rarity: 5, isShop: true },
       ],
     };
-    check('点名称复制：多行「字段：值」，字段与表格七列一一对应',
-      j(bannerText(sample, { limcel: '限定寻访' })), j([
-        '卡池名称：测试卡池', '类型：限定寻访·庆典', '大类：限定寻访',
+    /* ⚠️ 2026-11-03 起**不再输出「大类」** —— 表格里那一列删了，类型本身就唯一决定大类。
+       所以是六行，与表格六列一一对应。 */
+    check('点名称复制：多行「字段：值」，字段与表格六列一一对应（无「大类」行）',
+      j(bannerText(sample)), j([
+        '卡池名称：测试卡池', '类型：限定寻访·庆典',
         '开始日期：2026-10-01', '结束日期：2026-10-15',
         '出率提升 6★：甲（限·店）、乙', '出率提升 5★：丙（店）',
       ].join('\n')));
     check('点名称复制：某星级 UP 为空 → 该行给「—」（与表格的空列一致）',
       /出率提升 5★：—$/m.test(bannerText(
         { scName: '甲', type: 'classic', startDate: '2026-01-01', endDate: '2026-01-14' },
-        { classic: '中坚寻访' },
       )), true);
-    check('点名称复制：缺字段也不炸（空对象照样输出七行）',
-      bannerText(null).split('\n').length, 7);
+    check('点名称复制：缺字段也不炸（空对象照样输出六行）',
+      bannerText(null).split('\n').length, 6);
   }
   check('卡池列表：每个卡池名称都是一个可点击的按钮（宽屏表格）',
     count(bh, /class="bn-name"/g), BANNER_N);
@@ -256,11 +262,13 @@ try {
     const ubcSrc = fs.readFileSync(path.join(ROOT, 'src/composables/useBannerCopy.js'), 'utf8');
     check('点名称复制：两个视图都接到 useBannerCopy（不是各写一套状态机）',
       /useBannerCopy\(\)/.test(btSrc) && /useBannerCopy\(\)/.test(bcSrc)
-      && /copyBanner\(b, site\.categories\)/.test(btSrc)
-      && /copyBanner\(b, site\.categories\)/.test(bcSrc), true);
+      && /copyBanner\(b\)/.test(btSrc)
+      && /copyBanner\(b\)/.test(bcSrc), true);
+    /* ⚠️ 2026-11-03 起 `bannerText()` **不再收 categories** —— 复制文本里没有「大类」行了
+       （表格那一列删掉，类型本身就决定大类），所以这里钉的是单参调用。 */
     check('点名称复制：写剪贴板走 copyText（带 execCommand 兜底，局域网 http 也能用）',
       /import \{ copyText \} from '\.\.\/lib\/clipboard\.js'/.test(ubcSrc)
-      && /copyText\(bannerText\(banner, categories\)\)/.test(ubcSrc), true);
+      && /copyText\(bannerText\(banner\)\)/.test(ubcSrc), true);
     check('点名称复制：提示 1.6 秒后自动消失，卸载时清定时器',
       /const TIP_MS = 1600/.test(ubcSrc) && /onBeforeUnmount\(\(\) => clearTimeout\(timer\)\)/.test(ubcSrc), true);
     check('点名称复制：按钮与提示都有配套样式（不是裸按钮 / 裸文字）',
@@ -353,8 +361,17 @@ try {
   check('配色常量：大类三色', JSON.stringify(CAT_COLOR),
     JSON.stringify({ 标准寻访: '#FFD524', 中坚寻访: '#0098DC', 限定寻访: '#8b5cf6' }));
   check('配色常量：商店兑换 = 绿色', SHOP.color, '#15803d');
-  check('卡池列表：大类徽章按三色上色（c-std / c-mid / c-lim）',
-    ['c-std', 'c-mid', 'c-lim'].every((c) => bh.includes(c)), true);
+  /* 2026-11-03：「大类」列删掉后，那套三色改套在**「类型」徽章**上（`.badge cat` + CAT_CLASS）。
+     断言从「出现这三个类名」升级成「**同一个 class 里既有 `badge cat` 又有大类色**」——
+     否则有人把类型徽章改回中性色、只在别处留着 c-std，这条还会假绿。
+     ⚠️ 别写成 `class="badge cat c-std"`：Vue SSR 会把 `:class` 排在静态 class **前面**，
+        实际是 `class="c-std badge cat"` —— 只能按 token 判，不能按顺序拼。 */
+  {
+    const badgeCls = [...bh.matchAll(/class="([^"]*\bbadge cat\b[^"]*)"/g)].map((m) => m[1]);
+    check('卡池列表：「类型」徽章穿大类三色（同一个 .badge.cat 上带 c-std / c-mid / c-lim）',
+      ['c-std', 'c-mid', 'c-lim'].every((c) => badgeCls.some((x) => x.includes(c)))
+      && badgeCls.length === BANNER_N, true);
+  }
   check('卡池列表：「店」标记走全站绿色变量',
     /\.mk-shop\{background:var\(--shop-600\)\}/.test(cssAll)
     && /--shop-600:#15803d/.test(cssAll), true);
@@ -586,8 +603,8 @@ try {
 
   /* 首页不应出现统计表；统计页不应出现卡池表 */
   check('首页没有统计表', count(bh, /stat-tbl/g), 0);
-  check('统计页没有卡池表（无 1225px 兜底下限）',
-    /min-width:1225px/.test(bh) && !/min-width:1225px/.test(sh), true);
+  check('统计页没有卡池表（无 1120px 兜底下限）',
+    /min-width:1120px/.test(bh) && !/min-width:1120px/.test(sh), true);
 
   /* ---------------- 首次UP间隔 ---------------- */
   const fup = await renderRoute('/first-up');
@@ -673,13 +690,15 @@ try {
     check('卡池类型：中坚 + 首次轮换 = 首次出现在常驻中坚（人比进店多）',
       midRot.store.firstUp.rows.length > MS.rows.length, true);
 
-    /* 中坚模式下那两个「实装日」口径换成「迁入前最后一次在标准池露面」（2026-11-01 用户指定） */
-    check('卡池类型：中坚模式下横轴 / 纵轴按钮换成「最后标准进店」',
-      midFup.html.includes('按最后标准进店日期') && midFup.html.includes('距最后标准进店日期'), true);
-    check('卡池类型：标准模式仍是「按实装日期 / 距实装日期」',
-      ph.includes('按实装日期') && ph.includes('距实装日期'), true);
+    /* 中坚模式下那两个「实装日」口径换成「迁入前最后一次在标准池露面」（2026-11-01 用户指定）。
+       ⚠️ 2026-11-03 用户把按钮文案精简成「…日」（原「…日期」）—— 卡片的横轴 / 纵轴说明
+         仍是 `axisLabel()` 出的完整说法（「按实装日期」），两边故意不同，别一起改。 */
+    check('卡池类型：中坚模式下横轴 / 纵轴按钮换成「最后标准进店日」',
+      midFup.html.includes('按最后标准进店日') && midFup.html.includes('距最后标准进店日'), true);
+    check('卡池类型：标准模式仍是「按实装日 / 距实装日」',
+      ph.includes('按实装日') && ph.includes('距实装日'), true);
     check('卡池类型：中坚 + 轮换时那个词是「UP」（用户写的是 进店/UP）',
-      midRot.html.includes('按最后标准UP日期') && midRot.html.includes('距最后标准UP日期'), true);
+      midRot.html.includes('按最后标准UP日') && midRot.html.includes('距最后标准UP日'), true);
     /* 数据侧：切到「按最后标准…」时，横轴标签与排序都用 lastStdDate */
     const midAxisBase = await renderRoute('/first-up', (s) => {
       s.setFirstUpPool('mid');
@@ -796,11 +815,13 @@ try {
   check('统计页右栏不再显示进店筛选', !sh.includes('id="fup-from"'), true);
 
   /* ---------------- 口径切换（右栏，仅首次UP间隔页） ---------------- */
+  /* ⚠️ 2026-11-03 用户精简过这批按钮：`…日期` → `…日`，纵轴「gap」那个不再带模式词、
+     改成静态的「距上一个干员」（卡片头里仍是 `metricShort()` 出的完整说法，两边不同）。 */
   check('首次UP间隔页：右栏有横轴口径按钮',
-    ph.includes('按首次进店日期') && ph.includes('按实装日期'), true);
+    ph.includes('按首次进店日') && ph.includes('按实装日'), true);
   check('首次UP间隔页：右栏有纵轴口径按钮',
-    ph.includes('距上个首次进店') && ph.includes('距实装日期'), true);
-  check('统计页右栏没有口径切换', !sh.includes('距上个首次进店'), true);
+    ph.includes('距上一个干员') && ph.includes('距实装日'), true);
+  check('统计页右栏没有口径切换', !sh.includes('距上一个干员'), true);
 
   const relFup = await renderRoute('/first-up', (s) => {
     s.setFirstUpAxis('release');
@@ -1017,7 +1038,7 @@ try {
     count(ftHtml, /metric-on/g) > 3, true);
   check('表格版：右栏复用图表版那一套筛选（统计模式 / 横轴 / 纵轴 / 日期范围）',
     ftHtml.includes('id="fup-from"') && ftHtml.includes('id="fup-to"')
-    && ftHtml.includes('按实装日期') && ftHtml.includes('距实装日期'), true);
+    && ftHtml.includes('按实装日') && ftHtml.includes('距实装日'), true);
   /* 表格样式契约：自己一套 .fup-tbl（内容自适应 + inset 竖线 + sticky 表头），别去蹭 .stat-tbl
      —— 那套是**两行表头**、定宽与 sticky 选择器都限定 `tr:first-child`，混用会互相误伤。
      （2026-10-16 起两边**都有**冻结前两列，但仍是各自一套规则。） */
@@ -2296,8 +2317,11 @@ try {
         fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
       )
       && !/将自动命名为/.test(html), true);
-    check('自定义卡池弹窗：不带服务器选择（跟随当前浏览的服）',
-      html.includes('归属服务器跟随当前浏览的服'), true);
+    /* ⚠️ 2026-11-03 用户精简了说明，措辞从「归属服务器跟随当前浏览的服」改成
+       「当前自定义面板所在服务器：<服名>」—— 断言跟着走，但仍要钉住**没有服务器下拉**。 */
+    check('自定义卡池弹窗：不带服务器选择（只写出当前服，不能改）',
+      html.includes('当前自定义面板所在服务器') && html.includes(store.serverMeta.label)
+      && !/name="server"/.test(html), true);
     check('自定义卡池弹窗：「已生效」只数去重后活下来的（2 个）',
       html.includes('已生效（2 个）'), true);
     check('自定义卡池弹窗：「已忽略」写明撞上了谁 + 差几天',
@@ -2335,10 +2359,17 @@ try {
       jsonRes.ok && jsonRes.count === 1 && jsonRes.skipped.length === 1, true);
     check('JSON 编辑框：应用后 uid 重编为 1 起（免得框里带的 uid 撞车）',
       store.customEntries.length === 1 && store.customEntries[0].uid === 1, true);
-    /* 说明里那两个「标 / 中」示例本身就在 HTML 里（弹窗的表单初始为空、候选要输入才出，
-       所以**chip / 候选上的标记在这里渲不出来** → 见下面单独渲染 OpPicker 的那一段）。 */
-    check('自定义卡池弹窗：说明里画出了「标 / 中」两个标记示例',
-      count(html, /class="optag/g), 2);
+    /* ⚠️ 2026-11-03 用户把说明里那行「标 / 中」图例删掉了（精简文案），所以这里**不能再数
+       `optag` 的个数**（那个图例是弹窗里唯一能 SSR 出来的标记 —— 候选要输入才出现）。
+       改成钉接线：标记本身还在，由 `OpPicker` 的 `tag-of` = `tagOf()`（`midTag()` 判现实今天）提供。 */
+    check('自定义卡池弹窗：「标 / 中」标记仍由 OpPicker 的 tagOf 提供（说明里的图例已精简掉）',
+      /:tag-of="tagOf"/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
+      )
+      && /midTag\(site\.classicDateOf\(op\), today\)/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
+      )
+      && count(html, /class="optag/g) === 0, true);
   }
 
   /* ---------------- JSON 编辑**子窗**（也是单独 SSR 一遍） ----------------

@@ -27,10 +27,9 @@ export function useBannerCopy() {
   /**
    * 复制一个卡池的信息。
    * @param {object} banner 卡池对象
-   * @param {object} categories type → 大类（`site.categories`）
    */
-  async function copyBanner(banner, categories) {
-    const ok = await copyText(bannerText(banner, categories));
+  async function copyBanner(banner) {
+    const ok = await copyText(bannerText(banner));
     tip.value = { id: banner.id, state: ok ? 'ok' : 'fail' };
     clearTimeout(timer);
     timer = setTimeout(() => { tip.value = { id: null, state: 'idle' }; }, TIP_MS);

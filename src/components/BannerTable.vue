@@ -10,8 +10,11 @@
  * 商店兑换不单独占列，而是在干员名前加「店」标记（见 OpTag；2026-10-19 由「兑」改来）。
  *
  * ⭐ **点名可点击复制**（2026-10-19 加）：点卡池名称 → 把这一池的信息复制成多行文本
- * （字段与表格这七列一一对应，见 `lib/bannerCopy.js`），名称旁短暂显示「已复制 / 复制失败」。
+ * （字段与表格这些列一一对应，见 `lib/bannerCopy.js`），名称旁短暂显示「已复制 / 复制失败」。
  * 交互状态收在 `composables/useBannerCopy.js`，与窄屏卡片视图共用同一套。
+ *
+ * ⚠️ 2026-11-03 删掉了「大类」列（用户要求）：那套三色改套在「类型」徽章上
+ * （`.badge.cat` + `CAT_CLASS`），所以表格从七列变六列、总宽 1225 → 1120px。
  */
 import { computed } from 'vue';
 import { TYPE_LABEL, BANNER_COLS, CAT_CLASS } from '../lib/constants.js';
@@ -24,7 +27,7 @@ const props = defineProps({
 });
 
 const site = useSiteStore();
-/** 点名称复制：`copyBanner(b, site.categories)` + `stateOf(b.id)` 那截提示 */
+/** 点名称复制：`copyBanner(b)` + `stateOf(b.id)` 那截提示 */
 const { copyBanner, stateOf } = useBannerCopy();
 
 const totalWidth = computed(() => BANNER_COLS.reduce((a, b) => a + b, 0));
@@ -55,9 +58,6 @@ const sortClass = (key) =>
           <th :class="sortClass('type')" data-sort="type" @click="site.toggleBannerSort('type')">
             类型<span class="arw">▲</span>
           </th>
-          <th :class="sortClass('cat')" data-sort="cat" @click="site.toggleBannerSort('cat')">
-            大类<span class="arw">▲</span>
-          </th>
           <th :class="sortClass('startDate')" data-sort="startDate" @click="site.toggleBannerSort('startDate')">
             开始日期<span class="arw">▲</span>
           </th>
@@ -70,7 +70,7 @@ const sortClass = (key) =>
       </thead>
       <tbody>
         <tr v-if="!rows.length">
-          <td colspan="7">
+          <td colspan="6">
             <div class="empty">没有符合条件的卡池</div>
           </td>
         </tr>
@@ -78,15 +78,14 @@ const sortClass = (key) =>
           <td class="wrapcell">
             <span :class="{ 'pill-live': isLive(b), 'pill-pending': isPending(b) }"><button
               class="bn-name" type="button" title="点击复制这个卡池的信息"
-              @click="copyBanner(b, site.categories)"
+              @click="copyBanner(b)"
             >{{ b.scName }}</button></span>
             <i
               v-if="stateOf(b.id)" class="copy-tip" :class="stateOf(b.id)"
             >{{ stateOf(b.id) === 'ok' ? '已复制' : '复制失败' }}</i>
           </td>
-          <td class="wrapcell"><span class="badge">{{ TYPE_LABEL[b.type] }}</span></td>
           <td class="wrapcell"><span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{
-            site.categories[b.type] }}</span></td>
+            TYPE_LABEL[b.type] }}</span></td>
           <td class="num">{{ b.startDate }}</td>
           <td class="num">{{ b.endDate }}</td>
           <td class="ops">

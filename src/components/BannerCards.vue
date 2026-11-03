@@ -32,18 +32,17 @@ const opsOf = (b, rarity) => b.upOperators.filter((o) => o.rarity === rarity);
       <div class="bcard-hd">
         <button
           class="bcard-name bn-name" type="button" title="点击复制这个卡池的信息"
-          @click="copyBanner(b, site.categories)"
+          @click="copyBanner(b)"
         >{{ b.scName }}</button>
         <i
           v-if="stateOf(b.id)" class="copy-tip" :class="stateOf(b.id)"
         >{{ stateOf(b.id) === 'ok' ? '已复制' : '复制失败' }}</i>
         <span v-if="isLive(b)" class="pill-live">进行中</span>
         <span v-else-if="isPending(b)" class="pill-pending">未开始</span>
-        <span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{ site.categories[b.type] }}</span>
       </div>
       <div class="bcard-meta">
         <span class="bcard-date">{{ b.startDate }} ~ {{ b.endDate }}</span>
-        <span class="badge">{{ TYPE_LABEL[b.type] }}</span>
+        <span class="badge cat" :class="CAT_CLASS[site.categories[b.type]]">{{ TYPE_LABEL[b.type] }}</span>
       </div>
       <div v-if="opsOf(b, 6).length" class="bcard-row">
         <span class="k">出率提升 6★</span>

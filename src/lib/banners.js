@@ -18,7 +18,8 @@ export const emptyFilters = () => ({ types: [], from: '', to: '', ops: [] });
  * 按筛选条件过滤 + 排序。
  * @param {Array}  banners    当前服务器卡池（含 id）
  * @param {object} filters    { types, from, to, ops }
- * @param {object} categories type → 大类（未用；保留形参以免调用方大改）
+ * @param {object} categories type → 大类（**已不再参与排序** —— 「大类」列 2026-11-03 删掉了，
+ *        类型徽章直接穿大类配色；保留形参是因为 store / 核对脚本都还在传，改签名不划算）
  * @param {object} sort       { key, dir }
  */
 export function bannerRows(banners, filters, categories, sort) {
@@ -42,7 +43,6 @@ export function bannerRows(banners, filters, categories, sort) {
     let va;
     let vb;
     if (key === 'type') { va = TYPE_LABEL[a.type]; vb = TYPE_LABEL[b.type]; }
-    else if (key === 'cat') { va = categories[a.type]; vb = categories[b.type]; }
     else { va = a[key]; vb = b[key]; }
     if (va === vb) return a.id.localeCompare(b.id);
     return va > vb ? mul : -mul;

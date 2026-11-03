@@ -331,7 +331,7 @@ function resetUp() {
           type="checkbox" :checked="site.statIncludeClafesUp"
           @change="site.setStatIncludeClafesUp($event.target.checked)"
         />
-        <span>中坚甄选计入出率提升<small>默认不计入。甄选池每期会一次性放入 30 多位中坚干员</small></span>
+        <span>中坚甄选计入出率提升</span>
       </label>
       <!-- 「中坚寻访只看中坚」（2026-10-14 用户加）：中坚干员的「结束时间 / 距今天数」
            改按**中坚记录**算；从未在中坚 UP 过的，结束时间显示 —、天数自「迁入中坚寻访」日起算。
@@ -341,14 +341,14 @@ function resetUp() {
           type="checkbox" :checked="site.statMidOnly"
           @change="site.setStatMidOnly($event.target.checked)"
         />
-        <span>中坚寻访只看中坚<small>默认关。勾选后中坚干员只看中坚寻访里的上次UP / 进店；从未轮过的按「迁入中坚寻访」日起算</small></span>
+        <span>中坚寻访只看中坚<small>勾选后中坚干员只看中坚寻访里的上次UP / 进店；从未轮过的按「迁入中坚寻访」日起算</small></span>
       </label>
       <label class="chk">
         <input
           type="checkbox" :checked="site.statMidNoStd"
           @change="site.setStatMidNoStd($event.target.checked)"
         />
-        <span>中坚寻访不看标准次数<small>默认关。勾选后中坚寻访表隐藏「总次数 / 标准次数」两列，每组只看中坚次数</small></span>
+        <span>中坚寻访不看标准次数<small>勾选后中坚寻访表只显示中坚次数</small></span>
       </label>
       <!-- 「高亮干员」（2026-10-16 用户加）：选中的干员在下面四张表里那一行加**浅黄底**。
            纯浏览辅助 —— 不筛行、不改次数、不进复制内容；切服不重置（见 store 的说明）。
@@ -397,13 +397,13 @@ function resetUp() {
           <button
             type="button" :class="{ on: site.firstUpAxis === 'first' }"
             @click="site.setFirstUpAxis('first')"
-          >按{{ firstLabel }}日期</button>
+          >按{{ firstLabel }}日</button>
           <!-- ⚠️ 中坚模式下这个口径的基准不是实装日，而是「迁入前最后一次在标准池露面」
                —— 文案跟着变（用户 2026-11-01 指定），别写死「按实装日期」 -->
           <button
             type="button" :class="{ on: site.firstUpAxis === 'release' }"
             @click="site.setFirstUpAxis('release')"
-          >{{ site.firstUpPool === 'mid' ? `按最后标准${lastStdWord}日期` : '按实装日期' }}</button>
+          >{{ site.firstUpPool === 'mid' ? `按最后标准${lastStdWord}日` : '按实装日' }}</button>
         </div>
       </div>
       <div class="fgroup">
@@ -412,11 +412,11 @@ function resetUp() {
           <button
             type="button" :class="{ on: site.firstUpMetric === 'gap' }"
             @click="site.setFirstUpMetric('gap')"
-          >距上个{{ firstLabel }}</button>
+          >距上一个干员</button>
           <button
             type="button" :class="{ on: site.firstUpMetric === 'sinceRelease' }"
             @click="site.setFirstUpMetric('sinceRelease')"
-          >{{ site.firstUpPool === 'mid' ? `距最后标准${lastStdWord}日期` : '距实装日期' }}</button>
+          >{{ site.firstUpPool === 'mid' ? `距最后标准${lastStdWord}日` : '距实装日' }}</button>
         </div>
       </div>
       <div class="fgroup">
@@ -454,7 +454,7 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="fup-to">结束日期<small>默认今天</small></label>
+        <label for="fup-to">结束日期</label>
         <div class="date-row">
           <input
             id="fup-to" v-model="fupTo" type="date" :class="{ dirty: fupToDirty }"
@@ -468,15 +468,6 @@ function resetUp() {
 
       <div class="btn-row">
         <button class="btn" type="button" @click="resetFup">全部</button>
-      </div>
-      <div class="fhint">
-        只保留<b>{{ firstLabel }}日</b>落在区间内的干员（当前模式的可用范围
-        <code>{{ firstUpBounds.min }} ~ {{ firstUpBounds.max }}</code>），区间内按<b>同星级</b>重新计算相邻间隔，
-        纵轴起点与刻度会跟着数据变。<br />
-        切换<b>统计模式</b>时区间<b>保持不变</b>，只是筛的日期从「首次进店日」换成「首次轮换日」
-        （两种模式的可用范围略有不同）。<br />
-        日期框<b>描红</b>表示改动还没确认；两端冲突时以刚确认的一端为准，自动把另一端挪到相隔 1 天。
-        不影响其他页面。
       </div>
       <div class="fresult">{{ firstUpResult }}</div>
     </div>
@@ -525,7 +516,7 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="up-from">开始日期<small>不早于本服第一个卡池</small></label>
+        <label for="up-from">开始日期</label>
         <div class="date-row">
           <input
             id="up-from" v-model="upFrom" type="date" :class="{ dirty: upFromDirty }"
@@ -535,7 +526,7 @@ function resetUp() {
         </div>
       </div>
       <div class="fgroup">
-        <label for="up-to">结束日期<small>默认今天，时间轴不伸到未来</small></label>
+        <label for="up-to">结束日期</label>
         <div class="date-row">
           <input
             id="up-to" v-model="upTo" type="date" :class="{ dirty: upToDirty }"
