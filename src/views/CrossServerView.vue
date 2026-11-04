@@ -6,11 +6,9 @@
  * 筛选与排序都在右栏（`pane-cross`），状态在 `site.crossFilters` / `site.crossSort`，
  * 与卡池列表那套**分开存**，互不影响。
  *
- * 卡片头写两件事：
- * - `命中 N / M 期` —— M 是**全部**配对行。差额来自右栏的日期范围（默认上界是
- *   「最后一个至少两服有数据的卡池」，所以国服独有的未来池默认看不到，清空日期框才出来）；
- * - `6★ 名单不一致 K 期` —— 就是表格里「查看」按钮是琥珀色的那些
- *   （联合行动 12 期起 / 定向甄选 / 中坚甄选）。
+ * ⚠️ **没有卡片头**（2026-11-04 用户删掉）。原来那行「三服按卡池名称配对 · 命中 N / M 期 ·
+ * 6★ 名单不一致 K 期」与右栏结果条（`FilterDrawer.vue` 的 `crossResult`）完全重复，而右栏还多给了
+ * 三服 / 两服 / 单服的行数拆分 → 只留右栏，别再往回加。
  */
 import { computed, ref } from 'vue';
 import { useSiteStore } from '../stores/site.js';
@@ -20,8 +18,6 @@ import CrossServerUpDialog from '../components/CrossServerUpDialog.vue';
 const site = useSiteStore();
 
 const rows = computed(() => site.crossRows);
-const total = computed(() => site.crossEntries.length);
-const diffCount = computed(() => site.crossDiffCount);
 
 /** 弹窗当前展示的那一行（null = 不显示） */
 const openRow = ref(null);
@@ -29,13 +25,6 @@ const openRow = ref(null);
 
 <template>
   <div class="card">
-    <div class="hd">
-      <span class="count">
-        三服按卡池名称配对 · 命中 {{ rows.length }} / {{ total }} 期 ·
-        6★ 名单不一致 {{ diffCount }} 期
-      </span>
-    </div>
-
     <CrossServerTable :rows="rows" @open="openRow = $event" />
 
     <CrossServerUpDialog v-if="openRow" :row="openRow" @close="openRow = null" />

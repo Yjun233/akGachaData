@@ -308,11 +308,6 @@ export const useSiteStore = defineStore('site', {
       return crossRows(this.crossEntries, s.crossFilters, s.crossSort);
     },
 
-    /** 当前行里「三服 6★ 名单不一致」的条数（页面卡片头与结果条用） */
-    crossDiffCount() {
-      return this.crossRows.filter((r) => r.up6Same === false).length;
-    },
-
     /** 统计页：参考日期下的可见卡池与统计表 */
     statData(s) {
       return computeStats({
