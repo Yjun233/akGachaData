@@ -36,6 +36,7 @@ import {
   CROSS_ALLOWED_TYPES, CROSS_SERVER_LABELS, CROSS_SERVERS, buildCrossEntries, crossBounds,
   crossRows, emptyCrossFilters, isCrossEligible, nextCrossSort,
 } from '../src/lib/crossServer.js';
+import { sortUpOperators } from '../src/lib/bannerOps.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /* 数据与头像的真身在**独立资源仓库** ../akGachaResource；
@@ -2420,69 +2421,28 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
 }
 
 /* ---------------- upOperators 的**统一排序**（2026-11-04 用户定） ----------------
-   口径见 `akGachaResource/scripts/lib/banner-ops.mjs` 的文件头：
-   **星级（6★ 前）→ 限定/首发/进店 → 实装日从早到晚 → charId 数字**。
+   口径实现在 `src/lib/bannerOps.js`（站点侧唯一一份，自定义卡池保存时也用它在 `customBanners.js` 里）。
 
-   ⚠️ 这里**故意独立实现一遍**而不是 import 资源仓库的 lib（跨仓库 import 不合适，而且
-      两套实现互为对撞才有价值）：哪天爬虫那侧改了口径或接错了地方，这里立刻红。
-
-   ⚠️ 「首发」的判据不用「去找同系列首发池」——复刻池会换人、历史池名有三种写法，
-      按名字归组会静默漏掉。用**本池里实装最晚的那批**（首发池 = 新干员实装日 == 池开始日，
-      复刻池的陪跑都是老干员，两种情形都成立）。 */
+   ⚠️ 与资源仓库 `akGachaResource/scripts/lib/banner-ops.mjs` 是**两份独立实现**，
+      互为对撞：这里拿站点那份去重排爬虫产出的数据，两者不一致就红 ——
+      哪天只改了一边、或哪侧的接线漏了，立刻暴露。
+   ⚠️ 别在这里再写第三份内联实现（2026-11-04 第一版是内联的，接自设时合并成一份）。 */
 {
-  const LIMITED_TYPES = new Set(['limcel', 'limspr', 'limsum']);
-  const SERIES_TYPES = new Set(['single', 'five']);
   const releaseOf = (op) => (op?.charId ? rawOperators[op.charId]?.scReleaseDate ?? null : null);
-  const charNum = (id) => {
-    const m = /^char_(\d+)_/.exec(String(id ?? ''));
-    return m ? Number(m[1]) : null;
+
+  /** 重排后与原顺序的第一个差异位置（-1 = 完全一致） */
+  const firstMismatch = (b) => {
+    const got = b.upOperators || [];
+    const want = sortUpOperators(got, { type: b.type, releaseOf });
+    return want.findIndex((o, i) => o.scCharName !== got[i]?.scCharName);
   };
 
-  /** 一个池子的顺序哪里不合规（合规返回 null） */
-  const poolOrderProblem = (b) => {
-    const u = b.upOperators || [];
-    if (u.length < 2) return null;
-    const rel = u.map(releaseOf);
-
-    /* 单六 / 双五的首发组 = 实装最晚的那批；实装日全缺时整池算首发 */
-    let firstRun = null;
-    if (SERIES_TYPES.has(b.type)) {
-      const latest = rel.filter(Boolean).sort().pop() ?? null;
-      firstRun = new Set(latest ? u.filter((_, i) => rel[i] === latest) : u);
-    }
-    const group = (op) => {
-      if (LIMITED_TYPES.has(b.type)) return op.isLimited ? 0 : 1;
-      if (firstRun) return firstRun.has(op) ? 0 : 1;
-      return op.isShop ? 0 : 1;
-    };
-
-    for (let i = 0; i < u.length - 1; i += 1) {
-      const a = u[i];
-      const c = u[i + 1];
-      if ((a.rarity || 0) < (c.rarity || 0)) return `${a.scCharName} 在 ${c.scCharName} 前，但星级更低`;
-      if (a.rarity !== c.rarity) continue;
-      const ga = group(a);
-      const gc = group(c);
-      if (ga > gc) return `顺位反了：${a.scCharName}(${ga}) → ${c.scCharName}(${gc})`;
-      if (ga !== gc) continue;
-      if (rel[i] && rel[i + 1] && rel[i] > rel[i + 1]) {
-        return `同顺位实装日逆序：${a.scCharName}(${rel[i]}) → ${c.scCharName}(${rel[i + 1]})`;
-      }
-      if (rel[i] === rel[i + 1]) {
-        const na = charNum(a.charId);
-        const nc = charNum(c.charId);
-        if (na !== null && nc !== null && na > nc) {
-          return `同实装日 charId 逆序：${a.scCharName}(${a.charId}) → ${c.scCharName}(${c.charId})`;
-        }
-      }
-    }
-    return null;
-  };
-
-  const badOrder = banners.map((b) => [b, poolOrderProblem(b)]).filter(([, p]) => p);
-  check('干员排序：全部卡池（含中坚）都满足「星级 → 顺位 → 实装日 → charId」',
+  const badOrder = banners
+    .map((b) => [b, firstMismatch(b)])
+    .filter(([, i]) => i >= 0);
+  check('干员排序：全部卡池（含中坚）的顺序 = sortUpOperators 排出来的（星级 → 顺位 → 实装日 → charId）',
     badOrder.length
-      ? `${badOrder.length} 个不合规，首个：${badOrder[0][0].scName} —— ${badOrder[0][1]}`
+      ? `${badOrder.length} 个不一致，首个：${badOrder[0][0].scName} 第 ${badOrder[0][1] + 1} 位`
       : 0,
     0);
 
@@ -2507,6 +2467,51 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
       (one?.upOperators || []).map((o) => o.scCharName).join(' → '),
       '归溟幽灵鲨 → 艾丽妮 → 掠风');
   }
+
+  /* ---- 自定义卡池：保存时也按同一口径重排（用户 2026-11-04 追加） ----
+     ⚠️ 输入是**故意打乱**的（表单里填的顺序就是干员被选中的顺序），
+        所以这里能抓到「保存时没排」或「排错了」。 */
+  const cidOf = (n) => operators[n]?.charId ?? null;
+  const relOf = (n) => operators[n]?.scReleaseDate ?? null;
+
+  const cDouble = formToEntry({
+    scName: '', type: 'double', startDate: '2026-12-03', server: 'sc',
+    star6: ['怒潮凛冬', '妮芙'], star5: ['雪猎', '波卜', '玫拉'],
+    shop: ['波卜', '妮芙'],
+  }, cidOf, relOf);
+  check('自定义卡池：保存时重排（进店在前、组内按实装日）',
+    cDouble.upOperators.map((o) => o.scCharName).join(' → '),
+    '妮芙 → 怒潮凛冬 → 波卜 → 玫拉 → 雪猎');
+
+  const cSingle = formToEntry({
+    scName: '', type: 'single', startDate: '2026-12-03', server: 'sc', rerunKind: '复刻',
+    star6: ['酒神'], star5: ['阿兰娜', '蒂比'], shop: [],
+  }, cidOf, relOf);
+  check('自定义卡池：单六按「首发时的情况」排（蒂比在阿兰娜前）',
+    cSingle.upOperators.map((o) => o.scCharName).join(' → '),
+    '酒神 → 蒂比 → 阿兰娜');
+
+  /* 老条目 / 导入的 JSON 是旧顺序 → `toEntry()` 归一化时要顺手排好 */
+  const legacy = toEntry({
+    scName: '自定义_旧顺序', type: 'classic', startDate: '2026-12-03', server: 'sc',
+    upOperators: [
+      { scCharName: '月禾', charId: 'char_343_tknogi', rarity: 5, isLimited: false, isShop: false },
+      { scCharName: '莫斯提马', charId: 'char_213_mostma', rarity: 6, isLimited: false, isShop: false },
+      { scCharName: '红', charId: 'char_144_red', rarity: 5, isLimited: false, isShop: false },
+      { scCharName: '阿', charId: 'char_225_haak', rarity: 6, isLimited: false, isShop: true },
+    ],
+  }, cidOf, { releaseOf: relOf });
+  check('自定义卡池：老条目 / 导入的乱序也会被 toEntry 排好',
+    legacy.upOperators.map((o) => o.scCharName).join(' → '),
+    '阿 → 莫斯提马 → 红 → 月禾');
+
+  /* 幂等：排过的再排一次不变（`loadEntries` 每次加载都排一遍，必须稳定） */
+  const twice = sortUpOperators(
+    sortUpOperators(cDouble.upOperators, { type: 'double', releaseOf }), { type: 'double', releaseOf },
+  );
+  check('自定义卡池：排序幂等（加载时反复排不会抖动）',
+    twice.map((o) => o.scCharName).join(','),
+    cDouble.upOperators.map((o) => o.scCharName).join(','));
 }
 
 // ---- 输出 ----

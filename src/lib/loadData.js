@@ -209,7 +209,10 @@ export async function loadSiteData() {
   /* ⚠️ 传 `charIdOf`：本地存储里的 v1 / v2 老数据要按名字补 `charId` 才能迁到 v3
      （`loadEntries` 会**自动迁移并写回**，见 `customBanners.js`）。 */
   const charIdOf = (name) => operators[name]?.charId ?? null;
-  const stored = loadEntries({ charIdOf });
+  /* `releaseOf` 只给 `upOperators` 的排序用（2026-11-04 起自设也走全站统一排序）：
+     存储里的老条目顺序是旧口径，加载时按新口径排一遍，免得「刚存的」和「以前存的」先后不一致。 */
+  const releaseOf = (name) => operators[name]?.scReleaseDate ?? null;
+  const stored = loadEntries({ charIdOf, releaseOf });
   const customByServer = {};
   /** 每服**真正生效**的那些自设的 `uid`（去重后被吃掉的**不在**里面）—— 弹窗的「已生效」列表用 */
   const customActiveUids = {};

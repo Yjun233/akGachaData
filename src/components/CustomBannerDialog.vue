@@ -80,7 +80,7 @@ const preview = computed(() => site.validateCustom(toEntry(form)));
 
 /** 表单 → v3 条目（`scName` 补前缀、`endDate` 派生、`rerunKind` / `canRerun` 自动填） */
 function toEntry(f) {
-  return formToEntry({ ...f, server: site.server }, site.charIdOf);
+  return formToEntry({ ...f, server: site.server }, site.charIdOf, site.releaseDateOf);
 }
 
 /* 三个候选池：六星 / 五星取该星级的**全部**干员；**进店只给「已选的六星 + 五星」**

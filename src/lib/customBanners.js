@@ -282,6 +282,21 @@ export const stripPrefix = (name) => String(name ?? '').replace(/^(?:自定义_)
 
 const pad4 = (n) => String(n).padStart(4, '0');
 
+/* ⚠️ 自设卡池的 `upOperators` 也走**全站统一排序**（2026-11-04 用户要求）：
+   星级 → 限定/首发/进店 → 实装日 → charId，口径与爬虫侧
+   `akGachaResource/scripts/lib/banner-ops.mjs` 完全一致（站点侧实现在 `lib/bannerOps.js`）。 */
+import { sortUpOperators } from './bannerOps.js';
+
+/**
+ * 本文件里对外暴露的 `releaseOf` 一律是 **「干员名 → 实装日」**（与 `charIdOf` 同款，
+ * 因为自设卡池从头到尾都是按名字走的：表单、存储、导入 JSON 都只存名字）。
+ * ⚠️ 但 `sortUpOperators` 的回调收的是**整个 op 对象** —— 这里包一层，
+ *    别像 2026-11-04 第一版那样直接把「按名字」的回调塞进去：
+ *    那样 `operators[对象]` 恒为 undefined、实装日全成 null，顺序只会「看起来有点怪」，
+ *    不会报任何错（同一类错在爬虫侧的 `extractMid` 也踩过一次）。
+ */
+const relOfOp = (releaseOf) => (releaseOf ? (op) => releaseOf(op.scCharName) : null);
+
 /* ---------------------------------------------------------------- 序号与自动开始日（2026-11-03） */
 
 /**
@@ -430,7 +445,7 @@ export const makeCustomId = (entry) =>
  *        `defaultRerunKind`：单六寻访缺 `rerunKind` 时填什么（**迁移**时填「首发」；
  *        导入手写 JSON 时留 null → 交给 `validate` 报错，别替用户猜）
  */
-export function toEntry(raw, charIdOf = () => null, { defaultRerunKind = null } = {}) {
+export function toEntry(raw, charIdOf = () => null, { defaultRerunKind = null, releaseOf = null } = {}) {
   const old = raw || {};
   const type = old.type;
   const startDate = old.startDate;
@@ -456,18 +471,25 @@ export function toEntry(raw, charIdOf = () => null, { defaultRerunKind = null } 
   }
   out.server = old.server;
   out.uid = old.uid;
+  /* 统一排序（幂等）—— 老的 v3 条目、导入的 JSON、迁移上来的都会在这里被排一次，
+     所以存储里的顺序始终与刚保存时一致。口径见 `lib/bannerOps.js`。 */
+  out.upOperators = sortUpOperators(out.upOperators, { type, releaseOf: relOfOp(releaseOf) });
   return out;
 }
 
 /** v1 条目（`name` + 名字数组 / 顿号文本）→ v3 */
-export function migrateV1Entry(entry, charIdOf = () => null) {
+export function migrateV1Entry(entry, charIdOf = () => null, releaseOf = null) {
   const old = entry || {};
-  return toEntry({ ...old, scName: old.scName ?? old.name }, charIdOf, { defaultRerunKind: RERUN_KINDS[0] });
+  return toEntry(
+    { ...old, scName: old.scName ?? old.name },
+    charIdOf,
+    { defaultRerunKind: RERUN_KINDS[0], releaseOf },
+  );
 }
 
 /** v2 条目（`scName` 原始名 + `star6/star5/shop`）→ v3 */
-export function migrateV2Entry(entry, charIdOf = () => null) {
-  return toEntry(entry, charIdOf, { defaultRerunKind: RERUN_KINDS[0] });
+export function migrateV2Entry(entry, charIdOf = () => null, releaseOf = null) {
+  return toEntry(entry, charIdOf, { defaultRerunKind: RERUN_KINDS[0], releaseOf });
 }
 
 /* ---------------------------------------------------------------- 读写 */
@@ -480,16 +502,24 @@ export function migrateV2Entry(entry, charIdOf = () => null) {
  *
  * @param {{charIdOf?: (name:string)=>(string|null)}} [opts] 干员名 → charId（迁移老数据用）
  */
-export function loadEntries({ charIdOf = () => null } = {}) {
+export function loadEntries({ charIdOf = () => null, releaseOf = null } = {}) {
   if (!storageAvailable()) return [];
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!raw || !Array.isArray(raw.banners)) return [];
     const base = raw.banners.filter((e) => e && typeof e === 'object' && e.type && e.startDate);
-    if (raw.version === STORE_VERSION) return base;
+    /* ⚠️ v3 条目**不做归一化**（原样返回），但顺序要按统一口径排一遍：
+       2026-11-04 之前存下的老条目是旧顺序，不排的话「刚存的」与「以前存的」在列表里先后不一致。
+       只排内存、**不写回存储**（顺序不是数据变更，下次编辑保存时自然落新顺序）。 */
+    if (raw.version === STORE_VERSION) {
+      return base.map((e) => ({
+        ...e,
+        upOperators: sortUpOperators(e.upOperators, { type: e.type, releaseOf: relOfOp(releaseOf) }),
+      }));
+    }
     const migrate = raw.version === 1 ? migrateV1Entry : (raw.version === 2 ? migrateV2Entry : null);
     if (!migrate) return [];
-    const migrated = base.map((e) => migrate(e, charIdOf));
+    const migrated = base.map((e) => migrate(e, charIdOf, releaseOf));
     saveEntries(migrated);
     console.info(`[自定义卡池] 本地存储 v${raw.version} → v${STORE_VERSION} 已自动迁移 ${migrated.length} 条`);
     return migrated;
@@ -525,7 +555,7 @@ export const nextUid = (list) =>
  * ⚠️ `uid` 不在这里给 —— 由 store 的 `addCustom` / `updateCustom` 统一分配 / 保留。
  * @param {object} form `{ scName, type, startDate, rerunKind, star6, star5, shop, server }`
  */
-export function formToEntry(form, charIdOf = () => null) {
+export function formToEntry(form, charIdOf = () => null, releaseOf = null) {
   const type = form.type;
   /* ⚠️ **没有进店的类型直接忽略 `form.shop`**（2026-10-24）：弹窗里这个框在其余四类是
      **灰掉不可编辑**的，但用户可能「先选了进店、再把类型切成单六」→ 残留的名字会被打成 `isShop`，
@@ -543,7 +573,13 @@ export function formToEntry(form, charIdOf = () => null) {
     type,
     startDate: form.startDate,
     endDate: endDateOf(form.startDate),
-    upOperators: [...mk(6, form.star6), ...mk(5, form.star5)],
+    /* 统一排序（2026-11-04 用户要求「自定义卡池在保存时也按这个顺序重排」）——
+       表单里是「六星一组、五星一组」分别填的，直接拼起来就是「先选的在前」，
+       所以必须排：同星级内按 限定/首发/进店 → 实装日 → charId。 */
+    upOperators: sortUpOperators(
+      [...mk(6, form.star6), ...mk(5, form.star5)],
+      { type, releaseOf: relOfOp(releaseOf) },
+    ),
   };
   if (type === 'single') {
     const kind = RERUN_KINDS.includes(form.rerunKind) ? form.rerunKind : RERUN_KINDS[0];
@@ -575,8 +611,8 @@ export function entryToForm(entry) {
  * 只是补上 `id`（合成的）与 `enName`，其余字段原样带过去 —— 所以自设的
  * `rerunKind` / `canRerun` 也能像正式卡池那样被读到。
  */
-export function entryToBanner(entry, charIdOf = () => null) {
-  const e = toEntry(entry, charIdOf);
+export function entryToBanner(entry, charIdOf = () => null, releaseOf = null) {
+  const e = toEntry(entry, charIdOf, { releaseOf });
   const out = {
     id: makeCustomId(e),
     scName: e.scName,
@@ -757,7 +793,7 @@ export function serialize(list) {
  * @param {{charIdOf?: (name:string)=>(string|null)}} [opts]
  * @returns {{ok:boolean, entries:object[], error:string|null, migrated:boolean}}
  */
-export function parseImport(text, { charIdOf = () => null } = {}) {
+export function parseImport(text, { charIdOf = () => null, releaseOf = null } = {}) {
   let raw;
   try {
     raw = JSON.parse(text);
@@ -779,8 +815,10 @@ export function parseImport(text, { charIdOf = () => null } = {}) {
   return {
     ok: true,
     entries: migrated
-      ? entries.map((e) => (version === 1 ? migrateV1Entry(e, charIdOf) : migrateV2Entry(e, charIdOf)))
-      : entries.map((e) => toEntry(e, charIdOf)),   // 当前版本也过一遍归一化（补 charId / 缺键）
+      ? entries.map((e) => (version === 1
+        ? migrateV1Entry(e, charIdOf, releaseOf)
+        : migrateV2Entry(e, charIdOf, releaseOf)))
+      : entries.map((e) => toEntry(e, charIdOf, { releaseOf })),   // 当前版本也过一遍归一化（补 charId / 缺键）
     error: null,
     migrated,
   };

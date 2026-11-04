@@ -187,6 +187,9 @@ export const useSiteStore = defineStore('site', {
     /** 干员名 → charId（自设卡池的干员列表要存 charId；查不到给 null —— 允许强存新干员） */
     charIdOf: (s) => (name) => s.operators[name]?.charId ?? null,
 
+    /** 干员名 → 国服实装日（自设卡池的 `upOperators` 排序用；查不到给 null） */
+    releaseDateOf: (s) => (name) => s.operators[name]?.scReleaseDate ?? null,
+
     /** 干员名 → { rarity, isLimited }，统计计算用 */
     operatorIndex(s) {
       const idx = {};
@@ -547,7 +550,7 @@ export const useSiteStore = defineStore('site', {
      * @returns {{ok:boolean, error:string|null, added:number, skipped:Array<{entry:object,errors:string[]}>}}
      */
     importCustom(text) {
-      const parsed = parseImport(text, { charIdOf: this.charIdOf });
+      const parsed = parseImport(text, { charIdOf: this.charIdOf, releaseOf: this.releaseDateOf });
       if (!parsed.ok) return { ok: false, error: parsed.error, added: 0, skipped: [] };
       const add = [];
       const skipped = [];
@@ -577,7 +580,7 @@ export const useSiteStore = defineStore('site', {
      * @returns {{ok:boolean, error:string|null, count:number, skipped:Array, migrated:boolean}}
      */
     replaceCustom(text) {
-      const parsed = parseImport(text, { charIdOf: this.charIdOf });
+      const parsed = parseImport(text, { charIdOf: this.charIdOf, releaseOf: this.releaseDateOf });
       if (!parsed.ok) return { ok: false, error: parsed.error, count: 0, skipped: [], migrated: false };
       const kept = [];
       const skipped = [];
