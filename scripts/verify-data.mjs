@@ -2419,6 +2419,96 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
     null);
 }
 
+/* ---------------- upOperators 的**统一排序**（2026-11-04 用户定） ----------------
+   口径见 `akGachaResource/scripts/lib/banner-ops.mjs` 的文件头：
+   **星级（6★ 前）→ 限定/首发/进店 → 实装日从早到晚 → charId 数字**。
+
+   ⚠️ 这里**故意独立实现一遍**而不是 import 资源仓库的 lib（跨仓库 import 不合适，而且
+      两套实现互为对撞才有价值）：哪天爬虫那侧改了口径或接错了地方，这里立刻红。
+
+   ⚠️ 「首发」的判据不用「去找同系列首发池」——复刻池会换人、历史池名有三种写法，
+      按名字归组会静默漏掉。用**本池里实装最晚的那批**（首发池 = 新干员实装日 == 池开始日，
+      复刻池的陪跑都是老干员，两种情形都成立）。 */
+{
+  const LIMITED_TYPES = new Set(['limcel', 'limspr', 'limsum']);
+  const SERIES_TYPES = new Set(['single', 'five']);
+  const releaseOf = (op) => (op?.charId ? rawOperators[op.charId]?.scReleaseDate ?? null : null);
+  const charNum = (id) => {
+    const m = /^char_(\d+)_/.exec(String(id ?? ''));
+    return m ? Number(m[1]) : null;
+  };
+
+  /** 一个池子的顺序哪里不合规（合规返回 null） */
+  const poolOrderProblem = (b) => {
+    const u = b.upOperators || [];
+    if (u.length < 2) return null;
+    const rel = u.map(releaseOf);
+
+    /* 单六 / 双五的首发组 = 实装最晚的那批；实装日全缺时整池算首发 */
+    let firstRun = null;
+    if (SERIES_TYPES.has(b.type)) {
+      const latest = rel.filter(Boolean).sort().pop() ?? null;
+      firstRun = new Set(latest ? u.filter((_, i) => rel[i] === latest) : u);
+    }
+    const group = (op) => {
+      if (LIMITED_TYPES.has(b.type)) return op.isLimited ? 0 : 1;
+      if (firstRun) return firstRun.has(op) ? 0 : 1;
+      return op.isShop ? 0 : 1;
+    };
+
+    for (let i = 0; i < u.length - 1; i += 1) {
+      const a = u[i];
+      const c = u[i + 1];
+      if ((a.rarity || 0) < (c.rarity || 0)) return `${a.scCharName} 在 ${c.scCharName} 前，但星级更低`;
+      if (a.rarity !== c.rarity) continue;
+      const ga = group(a);
+      const gc = group(c);
+      if (ga > gc) return `顺位反了：${a.scCharName}(${ga}) → ${c.scCharName}(${gc})`;
+      if (ga !== gc) continue;
+      if (rel[i] && rel[i + 1] && rel[i] > rel[i + 1]) {
+        return `同顺位实装日逆序：${a.scCharName}(${rel[i]}) → ${c.scCharName}(${rel[i + 1]})`;
+      }
+      if (rel[i] === rel[i + 1]) {
+        const na = charNum(a.charId);
+        const nc = charNum(c.charId);
+        if (na !== null && nc !== null && na > nc) {
+          return `同实装日 charId 逆序：${a.scCharName}(${a.charId}) → ${c.scCharName}(${c.charId})`;
+        }
+      }
+    }
+    return null;
+  };
+
+  const badOrder = banners.map((b) => [b, poolOrderProblem(b)]).filter(([, p]) => p);
+  check('干员排序：全部卡池（含中坚）都满足「星级 → 顺位 → 实装日 → charId」',
+    badOrder.length
+      ? `${badOrder.length} 个不合规，首个：${badOrder[0][0].scName} —— ${badOrder[0][1]}`
+      : 0,
+    0);
+
+  const namesOf = (n) => (banners.find((b) => b.scName === n)?.upOperators || [])
+    .map((o) => o.scCharName).join(' → ');
+
+  /* 黄金样本：正好覆盖四条规则 */
+  check('干员排序：限定寻访「海蚀」= 限定 6★ → 标准 6★ → 5★',
+    namesOf('海蚀'), '归溟幽灵鲨 → 艾丽妮 → 掠风');
+  check('干员排序：单六「永不落幕·复刻」两个五星**按首发时的情况**（蒂比在前，阿兰娜在后）',
+    namesOf('永不落幕·复刻'), '酒神 → 蒂比 → 阿兰娜');
+  check('干员排序：「常驻标准寻访196」进店在前，组内按实装日',
+    namesOf('常驻标准寻访196'), '妮芙 → 怒潮凛冬 → 波卜 → 玫拉 → 雪猎');
+  check('干员排序：「常驻中坚寻访77」进店在前（6★ / 5★ 各一位）',
+    namesOf('常驻中坚寻访77'), '阿 → 莫斯提马 → 普罗旺斯 → 红 → 月禾');
+
+  /* 三服必须排出同一个顺序（脚本各写各的，共用一份口径） */
+  for (const srv of ['en', 'tc']) {
+    const rows = Object.values(read(`banners_${srv}.json`));
+    const one = rows.find((b) => b.scName === '海蚀');
+    check(`干员排序：${srv} 服务器同一期排出来与国服一致`,
+      (one?.upOperators || []).map((o) => o.scCharName).join(' → '),
+      '归溟幽灵鲨 → 艾丽妮 → 掠风');
+  }
+}
+
 // ---- 输出 ----
 let bad = 0;
 for (const r of results) {
