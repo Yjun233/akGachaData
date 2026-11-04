@@ -42,6 +42,37 @@ export const CROSS_SERVERS = ['sc', 'en', 'tc'];
 /** 列头里的服名。⚠️ 必须与 `metadata.servers[].label` 一致（verify-data 有断言钉着） */
 export const CROSS_SERVER_LABELS = { sc: '国服', en: '国际服', tc: '繁中服' };
 
+/**
+ * 「差异对比」能选的那几服（**不含国服** —— 对比永远是「国服 vs 某一服」，
+ * 两两互斥，同一时刻最多选中一个）。用户 2026-11-04 追加。
+ */
+export const CROSS_DIFF_SERVERS = ['en', 'tc'];
+
+/**
+ * 国服 vs 指定服的 UP 干员**对称差集**（名字集合）—— 弹窗里画「深蓝下划线」的依据。
+ *
+ * - 一边有、另一边没有的才算差异（两边都有的不标）；限定 / 进店标记不参与判断。
+ * - 那一服**没有这一期**时，国服的全部干员都算差异（对方一份都没有）——
+ *   语义上没错，弹窗里也有「该服没有这一期卡池」的文案兜着。
+ * - 只按**名字**比：同一期的干员名单在数据里本来就用 `scCharName` 对齐（`charId` 三服一致）。
+ *
+ * @param {object} row CrossRow（`buildCrossEntries()` 产出的行）
+ * @param {'en'|'tc'} server 要对比的服（传 `sc` 或空 → 空集合，调用方自己判空）
+ * @returns {Set<string>}
+ */
+export function upDiffNames(row, server) {
+  const out = new Set();
+  if (!server || server === 'sc') return out;
+  const namesIn = (s) => new Set(
+    (row?.banners?.[s]?.upOperators || []).map((o) => o?.scCharName).filter(Boolean),
+  );
+  const base = namesIn('sc');
+  const other = namesIn(server);
+  for (const n of base) if (!other.has(n)) out.add(n);
+  for (const n of other) if (!base.has(n)) out.add(n);
+  return out;
+}
+
 /** 不参与对比的类型：常驻标准 / 常驻中坚（三服各自独立编号，同名不是同一场） */
 export const CROSS_EXCLUDED_TYPES = ['double', 'classic'];
 

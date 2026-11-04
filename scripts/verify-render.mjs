@@ -2245,6 +2245,40 @@ try {
         count(dh, /该服没有这一期卡池/g), 1, true);
       check('跨服弹窗：「限」「店」标记都画出来了（与卡池列表同款）',
         count(dh, /mk mk-lim/g) >= 1 && count(dh, /mk mk-shop/g) >= 1, true);
+
+      /* ``差异对比`` 标记（2026-11-04 用户加）：默认不选，所以一格都不该有下划线 */
+      check('跨服弹窗：默认就有「差异对比」那组按钮（国际服 / 繁中服，互斥）',
+        dh.includes('差异对比') && count(dh, /class="seg"/g) === 1
+        && /aria-label="差异对比"/.test(dh)
+        && ['国际服', '繁中服'].every((t) => dh.includes(`>${t}</button>`)), true);
+      check('跨服弹窗：默认不选任何一服 → 没有任何下划线标记',
+        count(dh, /is-diff/g), 0);
+
+      /* 选中态：**只能靠 `initialDiff` prop** 渲出来（弹窗内部是 ref，SSR 点不了按钮）。
+         夹具里 sc = 甲(6★限) + 乙(5★店)、en = 甲 → 差集只有「乙」1 位。 */
+      const dlgEn = await renderToString(createSSRApp(UpDlg, { row: fakeRow, initialDiff: 'en' }));
+      /* 取带 `is-diff` 的那个标签、剥掉里面的 `<i>` 标记，看剩下的文字是不是「乙」——
+         比写一条长正则稳（也不用管 SSR 把 `:class` 排在静态 class 前面这件事）。 */
+      const diffTag = /class="[^"]*is-diff[^"]*"[^>]*>([\s\S]*?)<\/span>/.exec(dlgEn);
+      /* 剥标签后会剩下「限 / 店」这些标记文字，一起剥掉，只留干员名 */
+      const diffText = diffTag
+        ? diffTag[1].replace(/<[^>]+>/g, '').replace(/^[限店]+/, '').trim()
+        : '(没找到)';
+      check('跨服弹窗：选「国际服」→ 下划线只落在差异干员「乙」上',
+        `${count(dlgEn, /is-diff/g)}|${diffText}`, '1|乙');
+      check('跨服弹窗：选中的那枚按钮是 on 态（另一枚不是）',
+        count(dlgEn, /class="on"/g), 1);
+      check('跨服弹窗：选中时给出下划线说明与差异位数',
+        dlgEn.includes('深蓝下划线') && dlgEn.includes('共 1 位'), true);
+      /* 繁中服这一期没有 → 国服全体（甲、乙）都算差异，且只标国服那一栏 */
+      const dlgTc = await renderToString(createSSRApp(UpDlg, { row: fakeRow, initialDiff: 'tc' }));
+      check('跨服弹窗：对比的那一服没有这期 → 国服全体算差异（2 位）',
+        count(dlgTc, /is-diff/g), 2);
+      /* 接线：再次点击关闭 + 两枚互斥，都由「单值 + 三元」保证 */
+      const dlgSrc = fs.readFileSync(path.join(ROOT, 'src/components/CrossServerUpDialog.vue'), 'utf8');
+      check('跨服弹窗：再点同一枚 = 关掉、点另一枚 = 切过去（单值 + 三元）',
+        /diffServer\.value === s \? null : s/.test(dlgSrc)
+        && /CROSS_DIFF_SERVERS\.includes\(props\.initialDiff\)/.test(dlgSrc), true);
       const viewSrc = fs.readFileSync(path.join(ROOT, 'src/views/CrossServerView.vue'), 'utf8');
       check('跨服页：弹窗接线（v-if="openRow" + 关闭时清空）',
         /CrossServerUpDialog/.test(viewSrc) && /v-if="openRow"/.test(viewSrc)

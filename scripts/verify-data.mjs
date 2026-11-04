@@ -33,8 +33,9 @@ import {
   splitList, stripPrefix, summarizeCustom, toEntry, toOpList, validate,
 } from '../src/lib/customBanners.js';
 import {
-  CROSS_ALLOWED_TYPES, CROSS_SERVER_LABELS, CROSS_SERVERS, buildCrossEntries, crossBounds,
-  crossRows, emptyCrossFilters, isCrossEligible, nextCrossSort,
+  CROSS_ALLOWED_TYPES, CROSS_DIFF_SERVERS, CROSS_SERVER_LABELS, CROSS_SERVERS,
+  buildCrossEntries, crossBounds, crossRows, emptyCrossFilters, isCrossEligible, nextCrossSort,
+  upDiffNames,
 } from '../src/lib/crossServer.js';
 import { sortUpOperators } from '../src/lib/bannerOps.js';
 
@@ -2394,6 +2395,27 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
     realEntries.some((r) => r.servers.length >= 2 && r.scStart === realBounds.max), true);
   check('跨服（真实数据）：没有两服行比上界更晚（单服行不受此限）',
     realEntries.every((r) => r.servers.length < 2 || !r.scStart || r.scStart <= realBounds.max), true);
+
+  /* ---- 「差异对比」标记（2026-11-04 用户加）：国服 vs 指定服的**对称差集** ---- */
+  check('跨服差异：能选的就两服（国际服 / 繁中服，不含国服）',
+    CROSS_DIFF_SERVERS.join(','), 'en,tc');
+  check('跨服差异：名单完全一致 → 空集合（不标任何干员）',
+    [...upDiffNames(fixOf('P1'), 'en')].length, 0);
+  check('跨服差异：一边多一个 → 只标那一个（国服有、对方没有的不算重复）',
+    [...upDiffNames(fixOf('P2'), 'en')].join(','), '戊');
+  check('跨服差异：两边各换一个 → 两个都标（对称差集）',
+    [...upDiffNames(fixOf('复刻池 复刻'), 'en')].sort().join(','), '壬,辛');
+  check('跨服差异：对方没有这一期 → 国服全体都算差异',
+    [...upDiffNames(fixOf('P3'), 'en')].join(','), '癸');
+  check('跨服差异：传国服 / 空 → 空集合（对比永远是「国服 vs 某一服」）',
+    `${upDiffNames(fixOf('P2'), 'sc').size}|${upDiffNames(fixOf('P2'), null).size}`, '0|0');
+  check('跨服差异：不改动入参（只读 row）',
+    (() => { const before = JSON.stringify(fixOf('P2')); upDiffNames(fixOf('P2'), 'en'); return before === JSON.stringify(fixOf('P2')); })(),
+    true);
+  /* 真实数据：那几类「编号各服自己排」的池子必然有差异 */
+  /* ⚠️ 这里用 `realEntries.find` 而不是下面才定义的 `realOf` —— 本块插在它前面 */
+  check('跨服差异（真实数据抽样）：定向甄选1 国服 vs 国际服有差异',
+    upDiffNames(realEntries.find((r) => r.name === '定向甄选1'), 'en').size > 0, true);
 
   const realOf = (n) => realEntries.find((r) => r.name === n);
   const first = realOf('银灰色的荣耀');

@@ -1226,3 +1226,17 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 @media (max-width:640px){
   .xup-cols{grid-template-columns:1fr}
 }
+
+/* ---------------- 跨服对比弹窗：「差异对比」标记（2026-11-04 用户加） ----------------
+   标题下一组 `国际服 / 繁中服` 分段按钮（复用 `.seg`），选中后把**国服 vs 那一服**
+   的名单差异干员画上深蓝下划线；再点同一枚 = 关掉，两枚互斥。 */
+.xup-diffbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.xup-difflabel{font-size:12px;font-weight:700;color:var(--muted)}
+.xup-diffbar .seg button{padding:5px 12px}
+.xup-diffhint{font-size:11.5px;color:var(--blue-900)}
+/* ⚠️ 用 `text-decoration` 而不是 `border-bottom`：`.tag` 有 1px 边框，改成 2px 会撑高 1px、
+   一开一关整行轻微跳动；下划线不影响布局。深蓝取 `--blue-900`（#123863）。 */
+.xup-ops .tag.is-diff{
+  text-decoration:underline;text-decoration-thickness:2px;
+  text-underline-offset:3px;text-decoration-color:var(--blue-900);
+}
