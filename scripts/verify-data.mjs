@@ -37,7 +37,7 @@ import {
   buildCrossEntries, crossBounds, crossRows, emptyCrossFilters, isCrossEligible, nextCrossSort,
   upDiffNames,
 } from '../src/lib/crossServer.js';
-import { sortUpOperators } from '../src/lib/bannerOps.js';
+import { resortSeriesBanners, sortUpOperators } from '../src/lib/bannerOps.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /* 数据与头像的真身在**独立资源仓库** ../akGachaResource；
@@ -1550,9 +1550,10 @@ const upStd = computeUpHistory({
 });
 check('UP 历史：按类型筛选后只含该类型',
   upStd.all.every((r) => r.marks.every((m) => m.type === 'double')), true);
-/* 同上：随新卡池增长（2026-10-23 快照新增 常驻标准寻访196 → 187/975 → 188/980） */
+/* 同上：随新卡池增长（2026-10-23 新增 常驻标准寻访196 → 187/975 → 188/980；
+   2026-11-13 新增一期 → 188/985） */
 check('UP 历史：只选 double 的干员 / 标记数',
-  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '188/980');
+  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '188/985');
 
 const upSort = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, sort: 'lastUp-desc',
@@ -1781,9 +1782,15 @@ check('最小宽度 = 名字列 + 天数×1px + 左右内缩',
   TL.nameW + TL.padLeft + TL.padRight
     + diffDays(monthStartDate(tlFull.xMax), monthStartDate(tlFull.xMin)) * TL.dayPx);
 check('最小宽度口径：1 天 1px', TL.dayPx, 1);
-check('最小宽度 ≈ 全范围天数（2019-04-01 → 2026-10-01，2740 天左右）',
-  minInnerWidth(tlFull.xMin, tlFull.xMax) > 2700
-  && minInnerWidth(tlFull.xMin, tlFull.xMax) < 2900, true);
+/* ⚠️ 别写死天数（每加一期就往外长，2026-11-13 就因为从 2740 天变成 2917 而误报）——
+   改成验证「范围确实覆盖了数据里的最早开池 ~ 最晚关池」，这条才不随数据漂移。 */
+{
+  const starts = Object.values(banners).map((b) => b.startDate).filter(Boolean).sort();
+  const ends = Object.values(banners).map((b) => b.endDate).filter(Boolean).sort();
+  check('时间轴全范围覆盖所有卡池（首月 ≤ 最早开池、末月 ≥ 最晚关池）',
+    monthLabel(tlFull.xMin) <= starts[0].slice(0, 7)
+    && monthLabel(tlFull.xMax) >= ends[ends.length - 1].slice(0, 7), true);
+}
 check('横轴标签斜排（与首次UP间隔一致的 60°，自绘时用 TL.labelRotate）',
   TL.labelRotate, 60);
 /* 刻度条与表体必须共用同一份 grid 与同一套 scale —— 这是「竖线对齐」的根据 */
@@ -2424,9 +2431,14 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
     first && `${first.scStart}|${first.enStart}|${diffDays(first.enStart, first.scStart)}`);
   check('跨服（真实数据抽样）：定向甄选1 三服 6★ 名单不一致（编号池各服自己排）',
     realOf('定向甄选1')?.up6Same, false);
-  check('跨服（真实数据抽样）：定向甄选7 繁中服还没有（两服行）',
-    `${realOf('定向甄选7')?.servers.length}|${realOf('定向甄选7')?.tcStart}|${realOf('定向甄选7')?.gapTcSc}`,
-    '2|null|null');
+  /* ⚠️ 别绑死具体某一期 —— 2026-11-13 繁中服也上「定向甄选7」了，写死池名的断言当场失效。
+     改成扫全量找一个「缺繁中服」的行来验：缺的那一服必须是 null，脚本不许去猜日期。 */
+  {
+    const short = realEntries.find((r) => r.servers.length === 2)
+      || realEntries.find((r) => !r.servers.includes('tc') && r.servers.length < 3);
+    check('跨服（真实数据抽样）：缺繁中服的行 tcStart / gapTcSc 都是 null（不猜日期）',
+      !!short && short.tcStart === null && short.gapTcSc === null, true);
+  }
 
   const realDefault = crossRows(
     realEntries,
@@ -2452,19 +2464,19 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
 {
   const releaseOf = (op) => (op?.charId ? rawOperators[op.charId]?.scReleaseDate ?? null : null);
 
-  /** 重排后与原顺序的第一个差异位置（-1 = 完全一致） */
-  const firstMismatch = (b) => {
-    const got = b.upOperators || [];
-    const want = sortUpOperators(got, { type: b.type, releaseOf });
-    return want.findIndex((o, i) => o.scCharName !== got[i]?.scCharName);
-  };
+  /* ⚠️ 2026-11-13：复刻池的首发组要沿用**同系列首发池**（爬虫侧已改），所以对撞前先用站点那份
+     `resortSeriesBanners()` 把克隆体归位一次 —— 对撞的是「整份口径」而不是单个 `sortUpOperators`。
+     **必须克隆**：原地改 `banners` 会污染后面那几条黄金样本断言（它们看的是真实产出顺序）。 */
+  const cloned = banners.map((b) => ({ ...b, upOperators: [...(b.upOperators || [])] }));
+  resortSeriesBanners(cloned, { releaseOf });
 
+  const orderKey = (b) => (b.upOperators || []).map((o) => o.scCharName).join('|');
   const badOrder = banners
-    .map((b) => [b, firstMismatch(b)])
+    .map((b, i) => [b, orderKey(b) === orderKey(cloned[i]) ? -1 : 0])
     .filter(([, i]) => i >= 0);
-  check('干员排序：全部卡池（含中坚）的顺序 = sortUpOperators 排出来的（星级 → 顺位 → 实装日 → charId）',
+  check('干员排序：全部卡池（含中坚）的顺序 = 站点侧口径排出来的（星级 → 顺位 → 实装日 → charId；复刻池按系列首发组）',
     badOrder.length
-      ? `${badOrder.length} 个不一致，首个：${badOrder[0][0].scName} 第 ${badOrder[0][1] + 1} 位`
+      ? `${badOrder.length} 个不一致，首个：${badOrder[0][0].scName}`
       : 0,
     0);
 

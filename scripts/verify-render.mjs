@@ -1546,8 +1546,13 @@ try {
   /* 时间范围：**范围内一次 UP 都没有的干员默认不占行**（2026-09-30 口径调整，
      以前时间范围只改横轴、纵轴始终保留全部干员）；可用「显示范围内未 UP 干员」开关关掉这层过滤 */
   const upNoRange = await renderRoute('/up-history', () => {});
-  const upRange = await renderRoute('/up-history', (s) => s.setUpRange('2026-01-01', ''));
-  check('时间范围：范围内无标记的干员被隐藏（行数变少）',
+  /* ⚠️ 别写死 `2026-01-01`（2026-11-13 实测失效）：**中坚寻访把老干员轮了个遍**，
+     从年初起算能覆盖全部 94 位 6★，行数一位都不少、断言变成假通过。
+     改成「只留最近一期」—— 一期最多 3 个 6★，永远有区分度，也不会随日期漂移。 */
+  const latestStart = Object.values(upNoRange.store.banners)
+    .map((b) => b.startDate).filter(Boolean).sort().pop();
+  const upRange = await renderRoute('/up-history', (s) => s.setUpRange(latestStart, ''));
+  check('时间范围：只留最近一期时，未在该期 UP 的干员被隐藏（行数明显变少）',
     upRange.store.upHistory.six.length < upNoRange.store.upHistory.six.length, true);
   const upFullRange = await renderRoute('/up-history', (s) => s.setUpRange('2000-01-01', '2099-12-31'));
   check('时间范围：覆盖全时段时行数与不限范围一致',
@@ -1656,7 +1661,15 @@ try {
   const texts = (svg) => [...svg.matchAll(/<text[^>]*>([^<]*)</g)].map((m) => m[1]);
   const pathXs = (svg) => [...svg.matchAll(/<path d="M([\d.]+)[ ,]/g)].map((m) => Number(m[1]));
 
-  check('时间轴：图表宽度 ≈ 天数（1 天 1px）', W > 2700 && W < 2900, true);
+  /* ⚠️ 别写死 px 区间（2026-11-13 就因为跨度从 2740 天长到 2917 天而误报）——
+     改成验证「横轴覆盖了全部卡池的时段」，这条不随数据漂移。 */
+  {
+    const starts = Object.values(up.store.banners).map((b) => b.startDate).filter(Boolean).sort();
+    const ends = Object.values(up.store.banners).map((b) => b.endDate).filter(Boolean).sort();
+    check('时间轴：横轴覆盖全部卡池（首月 ≤ 最早开池、末月 ≥ 最晚关池）',
+      monthLabel(built6.xMin) <= starts[0].slice(0, 7)
+      && monthLabel(built6.xMax) >= ends[ends.length - 1].slice(0, 7), true);
+  }
   check('时间轴 SVG SSR：产出了 SVG（刻度条 + 主体）',
     svgAxis.startsWith('<svg') && svgBody.startsWith('<svg'), true);
   check('时间轴 SVG SSR：主体画出了横条 + 标记', shapes(svgBody) >= 92 * 2, true);
@@ -1701,10 +1714,10 @@ try {
   check('时间轴 SVG SSR：横条在横轴起点被截断（没有图形越过绘图区左边界）',
     limitedMinX >= 11, true);
 
-  /* 最小宽度口径：**1 天 = 1px**（用户指定） */
+  /* 最小宽度口径：**1 天 = 1px**（用户指定）。
+     具体覆盖范围由上面「横轴覆盖全部卡池」那条守 —— 这里不再写死 px 区间。 */
   check('时间轴最小宽度随跨度变化（范围越窄越窄）',
     minInnerWidth(builtRanged.xMin, builtRanged.xMax) < minInnerWidth(built6.xMin, built6.xMax), true);
-  check('时间轴最小宽度 ≈ 全范围天数（2740 天 → 约 2860px）', W > 2700 && W < 2900, true);
 
   /* 标记配色：两种模式同一套（浅底圆 + 大类色圆环），进店点是**右上角**的绿色 */
   check('时间轴 SVG SSR：简洁模式标记是「浅底圆 + 大类色圆环」',
