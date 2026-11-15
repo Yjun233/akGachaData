@@ -1148,6 +1148,17 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
   padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:#fcfdff;
 }
 .cbd-list li.editing{border-color:var(--blue-500);background:var(--blue-50)}
+/* 「已生效」是三服合并列表（2026-11-15）：每行开头一个服务器标签；非当前服整行压暗、正文用灰字，
+   一眼能分出「这条不是我在看的那个服」。 */
+.cbd-list .svr{
+  flex:0 0 auto;font-size:11px;line-height:1.5;padding:0 5px;border-radius:4px;white-space:nowrap;
+  background:var(--blue-50);color:var(--blue-700);border:1px solid var(--blue-200);
+}
+.cbd-list li.other{background:#fafbfc}
+.cbd-list li.other .n{color:var(--muted)}
+.cbd-list li.other .t{color:var(--muted)}
+.cbd-mini:disabled{opacity:.45;cursor:not-allowed}
+.cbd-mini:disabled:hover{background:#fff}
 .cbd-list .d{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .cbd-list .n{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbd-list .t{color:var(--blue-700);white-space:nowrap}

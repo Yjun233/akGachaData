@@ -184,6 +184,25 @@ export const useSiteStore = defineStore('site', {
       return s.customEntries.filter((e) => e.server === s.server && uids.has(e.uid));
     },
 
+    /**
+     * **三服**所有生效的自设（弹窗「已生效」列表用，用户 2026-11-15 要求跨服全列出）。
+     * 每项自带 `server`，弹窗据此打服务器标签；顺序跟 `metadata.servers`（国服 → 国际服 → 繁中服），
+     * 表里没有的服（正常不会有）按出现顺序垫在后面。
+     * ⚠️ 只有「已生效」这一段跨服 —— 「已忽略 / 已自动删除」两段仍是当前服。
+     */
+    allActiveEntries(s) {
+      const known = (s.meta.servers || []).map((x) => x.id);
+      const extra = [...new Set(s.customEntries.map((e) => e.server))].filter((id) => !known.includes(id));
+      const out = [];
+      for (const srv of [...known, ...extra]) {
+        const uids = new Set(s.customActiveUids[srv] || []);
+        for (const e of s.customEntries) {
+          if (e.server === srv && uids.has(e.uid)) out.push(e);
+        }
+      }
+      return out;
+    },
+
     /** 干员名 → charId（自设卡池的干员列表要存 charId；查不到给 null —— 允许强存新干员） */
     charIdOf: (s) => (name) => s.operators[name]?.charId ?? null,
 

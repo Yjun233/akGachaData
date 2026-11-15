@@ -2302,7 +2302,8 @@ try {
   /* ---------------- 自定义卡池弹窗（单独 SSR 一遍） ----------------
      弹窗在页面里由 `v-if` 控制、**默认不渲染**（而且自设数据在浏览器本地、测试环境恒为空），
      所以上面五个页面的核对覆盖不到它。这里把它单独渲染出来：既验证模板本身能跑，
-     也验证「已生效 / 已忽略」两段的划分（`myActiveEntries` 只含去重后活下来的那些）。 */
+     也验证「已生效 / 已忽略」两段的划分（「已生效」= 三服去重后活下来的那些，2026-11-15 起跨服全列）。
+     「已忽略 / 已自动删除」两段仍只看当前服。 */
   {
     const { default: Dialog } = await vite.ssrLoadModule('/src/components/CustomBannerDialog.vue');
     const app = createSSRApp(Dialog);
@@ -2336,15 +2337,24 @@ try {
         { scCharName: '戊', charId: null, rarity: 6, isLimited: false, isShop: false },
       ],
     };
+    /* 一条**国际服**的已生效条目 —— 「已生效」从 2026-11-15 起是**三服合并**列表，
+       要验跨服那行会带服务器标签、且「编辑」按钮置灰（只能删，避免把条目串到别的服）。 */
+    const enAlive = {
+      uid: 5, server: 'en', scName: '自定义_国际服池', type: 'single',
+      startDate: '2099-04-01', endDate: '2099-04-15', rerunKind: '首发', canRerun: true,
+      upOperators: [
+        { scCharName: '己', charId: null, rarity: 6, isLimited: false, isShop: false },
+      ],
+    };
     /* 直接按形状塞进去（不必真去写本地存储）—— 这三个字段正是 loadData / _syncCustom 的产物 */
-    store.customEntries = [alive, singleAlive, eaten];
+    store.customEntries = [alive, singleAlive, eaten, enAlive];
     store.customByServer = {
       sc: [{
         id: '2099-01-07_double_custom_0001', scName: '自定义_常驻标准寻访0107', type: 'double',
         startDate: '2099-01-07', endDate: '2099-01-21', upOperators: [], custom: true,
       }],
     };
-    store.customActiveUids = { sc: [1, 4] };
+    store.customActiveUids = { sc: [1, 4], en: [5] };
     store.customDropped = [
       { entry: eaten, banner: {}, hit: { id: 'w', scName: '某个已公布的池' }, gap: 2, server: 'sc' },
     ];
@@ -2502,8 +2512,13 @@ try {
     check('自定义卡池弹窗：不带服务器选择（只写出当前服，不能改）',
       html.includes('当前自定义面板所在服务器') && html.includes(store.serverMeta.label)
       && !/name="server"/.test(html), true);
-    check('自定义卡池弹窗：「已生效」只数去重后活下来的（2 个）',
-      html.includes('已生效（2 个）'), true);
+    /* 「已生效」自 2026-11-15 起是**三服合并**列表（用户要求跨服全列出 + 每行打服务器标签）：
+       夹具里 sc 两条生效、en 一条生效 → 标题应写「全部服务器 3 个」，且跨服那行带标签、编辑置灰。 */
+    check('自定义卡池弹窗：「已生效」跨三服全列出（国服 2 + 国际服 1）',
+      html.includes('已生效（全部服务器 3 个）'), true);
+    check('自定义卡池弹窗：跨服条目带服务器标签 + 编辑按钮置灰（只能删）',
+      html.includes('自定义_国际服池') && html.includes('class="svr"')
+      && html.includes('切到该服务器后可编辑'), true);
     check('自定义卡池弹窗：「已忽略」写明撞上了谁 + 差几天',
       html.includes('已忽略') && html.includes('某个已公布的池') && html.includes('相差 2 天'), true);
     check('自定义卡池弹窗：「已自动删除」单列一段（告知「为什么不见了」）+ 提示下次会自动清理',

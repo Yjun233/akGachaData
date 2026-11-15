@@ -66,9 +66,13 @@ const autoNamed = computed(() => hasSerial(form.type));
 const fullName = computed(() => NAME_PREFIX + stripPrefix(form.scName));
 
 const serverLabel = computed(() => site.serverMeta.label || site.server);
-/* ⚠️ 「已生效」用 `myActiveEntries`（**去重后活下来的**），不是 `myCustomEntries`（全部原始输入）——
-   否则被去重吃掉的条目会同时出现在「已生效」和「已忽略」两段里。 */
-const myList = computed(() => site.myActiveEntries);
+/* ⚠️ 「已生效」= **三服**去重后活下来的那些（2026-11-15 用户要求跨服全列出、每行打服务器标签）；
+   不是 `myCustomEntries`（全部原始输入），否则被去重吃掉的条目会同时出现在「已生效」和「已忽略」两段里。
+   ⚠️ 跨服那几行**只能删、不能编辑** —— 表单绑定的是当前服，跨服编辑会把条目串到别的服去。
+   （`removeCustom(uid)` 按 uid 全局删，三服通用。） */
+const myList = computed(() => site.allActiveEntries);
+/** 服务器 id → 标签（国服 / 国际服 / 繁中服），取不到就退回 id */
+const serverNameOf = (id) => site.servers.find((x) => x.id === id)?.label || id;
 const dropped = computed(() => site.myDroppedCustom);
 /** 加载时**已被自动删除**的自设（撞上已公布的池 → 从存储删掉了，这里只作告知） */
 const autoRemoved = computed(() => site.myAutoRemovedCustom);
@@ -349,14 +353,17 @@ const showJson = ref(false);
         <button v-if="editingUid != null" class="btn" type="button" @click="reset">取消编辑</button>
       </div>
 
-      <div class="cbd-subhd">已生效（{{ myList.length }} 个）</div>
+      <div class="cbd-subhd">已生效（全部服务器 {{ myList.length }} 个）</div>
       <p v-if="!myList.length" class="cbd-hint">还没有添加过。</p>
       <ul v-else class="cbd-list">
-        <li v-for="e in myList" :key="e.uid" :class="{ editing: e.uid === editingUid }">
+        <li v-for="e in myList" :key="`${e.server}:${e.uid}`"
+          :class="{ editing: e.uid === editingUid, other: e.server !== site.server }">
+          <span class="svr">{{ serverNameOf(e.server) }}</span>
           <span class="d">{{ e.startDate }} ~ {{ e.endDate }}</span>
           <span class="n">{{ e.scName || '(自动命名)' }}</span>
           <span class="t">{{ TYPE_LABEL[e.type] }}<template v-if="e.rerunKind">·{{ e.rerunKind }}</template></span>
-          <button class="cbd-mini" type="button" @click="edit(e)">编辑</button>
+          <button class="cbd-mini" type="button" :disabled="e.server !== site.server"
+            :title="e.server !== site.server ? '切到该服务器后可编辑' : ''" @click="edit(e)">编辑</button>
           <button class="cbd-mini" type="button" @click="remove(e.uid)">删除</button>
         </li>
       </ul>
