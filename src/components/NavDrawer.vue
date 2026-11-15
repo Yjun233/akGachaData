@@ -3,9 +3,13 @@
  * 左抽屉：页面导航 + 服务器选择 + 数据元信息。
  * 服务器下拉只渲染 metadata.servers 里 available 的项 —— 未来接入新服务器时前端无需改动。
  *
- * 导航条目与路由一一对应；**「首次UP间隔」带一个二级菜单**（图表版 / 表格版）——
- * 同一份 `firstUp` 数据的两种呈现，路由是两条并列路由（`/first-up` 与 `/first-up/table`，
- * 见 router/index.js）。父项在两个子页面都高亮，子项各自高亮当前那个。
+ * 导航条目与路由一一对应；**两组二级菜单**，顺序**刻意相反**（用户 2026-11-15 指定）：
+ *   · 「跨服卡池对比」→ **表格版（上）/ 图表版（下）** —— `/cross-server` / `/cross-server/chart`
+ *   · 「首次UP间隔」→ **图表版（上）/ 表格版（下）** —— `/first-up` / `/first-up/table`
+ * 各自都是**两条并列路由**（见 router/index.js），父项在任一子页面都高亮、子项各高亮当前那个。
+ * ⚠️ 二级菜单的按钮在左栏各出现两次（「表格版」「图表版」各有两组）—— 核对脚本按 `.navsub` 块比，
+ *    别用 `indexOf` 全文找。
+ * ⚠️ **别在模板里写 HTML 注释**：Vue SSR 会原样输出，注释里的字会污染文本断言。
  *
  * 底部还挂一块**自定义卡池**（全局开关 + 添加弹窗入口）—— 口径见
  * `akGachaDocs/site/自定义卡池功能预研.md`。开关是**界面状态**、不持久化（刷新回默认「只显示」）。
@@ -48,6 +52,8 @@ const { navShow, toggleNav, closeDrawers, isDocked } = useLayout();
 
 /** 「首次UP间隔」的两个页面（图表版 / 表格版）—— 父项在**任一**页都要高亮 */
 const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
+/** 「跨服卡池对比」的两个页面（**表格版 / 图表版**，2026-11-15 起也拆成两条并列路由） */
+const isCross = computed(() => route.name === 'crossServer' || route.name === 'crossServerChart');
 
 function go(name) {
   router.push({ name });
@@ -74,9 +80,19 @@ const showCustom = ref(false);
       <button class="navitem" type="button" :class="{ active: route.name === 'banners' }" @click="go('banners')">
         <span class="ic" />卡池列表
       </button>
-      <button class="navitem" type="button" :class="{ active: route.name === 'crossServer' }" @click="go('crossServer')">
+      <button class="navitem" type="button" :class="{ active: isCross }" @click="go('crossServer')">
         <span class="ic" />跨服卡池对比
       </button>
+      <div class="navsub">
+        <button
+          class="navsubitem" type="button" :class="{ active: route.name === 'crossServer' }"
+          @click="go('crossServer')"
+        >表格版</button>
+        <button
+          class="navsubitem" type="button" :class="{ active: route.name === 'crossServerChart' }"
+          @click="go('crossServerChart')"
+        >图表版</button>
+      </div>
       <button class="navitem" type="button" :class="{ active: route.name === 'stats' }" @click="go('stats')">
         <span class="ic" />出率提升记录
       </button>

@@ -42,8 +42,10 @@ const isStats = computed(() => route.name === 'stats');
    同一份 `site.firstUp`、同一套统计模式与口径，所以判断要覆盖两条路由 */
 const isFirstUp = computed(() => route.name === 'firstUp' || route.name === 'firstUpTable');
 const isUp = computed(() => route.name === 'upHistory');
-/* 跨服卡池对比（2026-11-04）：三服并列，右栏只管类型 / 国服日期范围 / UP 干员 */
-const isCross = computed(() => route.name === 'crossServer');
+/* 跨服卡池对比（2026-11-04）：三服并列，右栏只管类型 / 国服日期范围 / UP 干员。
+   ⚠️ 2026-11-15 起拆成两条路由（表格 `crossServer` / 图表 `crossServerChart`），
+      两页共用同一套 `crossFilters`，所以判断要覆盖两条。 */
+const isCross = computed(() => route.name === 'crossServer' || route.name === 'crossServerChart');
 
 /* 当前统计模式的词：`首次进店` / `首次轮换`；**中坚模式下前面加「中坚」**
    （`首次中坚进店` / `首次中坚轮换`）—— 取词统一走 lib/firstUp.js，别在这儿另拼一份 */

@@ -8,12 +8,15 @@ import BannerListView from '../views/BannerListView.vue';
  *   /first-up        首次UP间隔（折线图；两种统计模式：首次进店 / 首次轮换）
  *   /first-up/table  首次UP间隔 · 表格版（同一份数据的表格呈现，左栏二级菜单）
  *   /up-history      UP 历史一览（横向时间轴）
- *   /cross-server    跨服卡池对比（**三服并列，不受服务器选择控制**）
+ *   /cross-server    跨服卡池对比 · **表格版**（三服并列，不受服务器选择控制）
+ *   /cross-server/chart  跨服卡池对比 · **图表版**（同一份数据的时差折线）
  * 不设干员列表页与详情页。
  *
  * ⚠️ `/first-up` 与 `/first-up/table` 是**两条并列路由**，不是父子嵌套：
  * 两页各是一个独立视图（图表 / 表格），谁也不渲染对方的 `<router-view>`。
  * 左栏把它们做成一个「首次UP间隔」+ 二级菜单（见 NavDrawer.vue）。
+ * ⚠️ 跨服对比同理（2026-11-15 起也是两条并列路由，`/cross-server` = 表格、`/cross-server/chart` = 图表），
+ * 但**二级菜单的顺序反过来：表格版在上、图表版在下**（用户指定）。
  */
 export default createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -24,6 +27,11 @@ export default createRouter({
     { path: '/first-up/table', name: 'firstUpTable', component: () => import('../views/FirstUpTableView.vue') },
     { path: '/up-history', name: 'upHistory', component: () => import('../views/UpHistoryView.vue') },
     { path: '/cross-server', name: 'crossServer', component: () => import('../views/CrossServerView.vue') },
+    {
+      path: '/cross-server/chart',
+      name: 'crossServerChart',
+      component: () => import('../views/CrossServerChartView.vue'),
+    },
     /*
      * 老路径（页面还叫「首次进店间隔」时的 `/shop-interval`）留一条**前端跳转**，
      * 免得被分享 / 收藏过的旧链接直接落到首页（catch-all 的 redirect 会让人以为"打开就回首页"）。

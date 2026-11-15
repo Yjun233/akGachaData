@@ -1159,9 +1159,9 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .cbd-list li.other .t{color:var(--muted)}
 .cbd-mini:disabled{opacity:.45;cursor:not-allowed}
 .cbd-mini:disabled:hover{background:#fff}
-/* 跨服对比：表格下面的时差折线（2026-11-15 用户加）——
-   与「首次UP间隔」不同，那边图表 / 表格是两个路由，这里是同一页表格在上、图在下。 */
-.cross-chart{margin-top:14px;padding-top:10px;border-top:1px solid var(--border)}
+/* 跨服对比 · 图表版（2026-11-15）—— 独立路由 `/cross-server/chart`，
+   与表格版共用右栏筛选；左栏二级菜单里**表格版在上、图表版在下**（用户指定）。 */
+.cross-chart{display:flex;flex-direction:column;gap:2px}
 .cc-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
 .cc-title{font-size:13px;font-weight:700;color:var(--blue-700)}
 .cc-hint{margin:0;font-size:11px;color:var(--muted);line-height:1.6}

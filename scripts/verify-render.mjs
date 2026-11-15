@@ -99,10 +99,22 @@ const dateVal = (html, id) => {
  * `class="active navitem"`，直接照 HTML 源码里的属性顺序写就会匹配不上（踩过一次）。
  * 所以这里把 class 值取出来按**词**判，与顺序无关。
  */
-const btnClass = (html, text) => {
-  const re = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>((?:(?!</button>)[\\s\\S])*?)${text}`);
-  const m = re.exec(html);
-  return m ? m[1] : '';
+/**
+ * 取指定文本的按钮 class。
+ * @param {string} html
+ * @param {string} text 按钮里的文本（正则会直接拼进去，别传含特殊字符的）
+ * @param {number} [nth] 同名按钮取第几个（0 起）。2026-11-15 起左栏有**两组**二级菜单
+ *        （跨服 / 首次UP），「表格版」「图表版」各出现两次 —— 首次UP那组是**第 2 个**。
+ */
+const btnClass = (html, text, nth = 0) => {
+  const re = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>((?:(?!</button>)[\\s\\S])*?)${text}`, 'g');
+  let m;
+  let i = 0;
+  while ((m = re.exec(html))) {
+    if (i === nth) return m[1];
+    i += 1;
+  }
+  return '';
 };
 /** class 值里是否**同时**含这些类名（按词比，不看顺序） */
 const clsHas = (cls, ...names) => {
@@ -127,6 +139,8 @@ try {
         { path: '/first-up/table', name: 'firstUpTable', component: (await vite.ssrLoadModule('/src/views/FirstUpTableView.vue')).default },
         { path: '/up-history', name: 'upHistory', component: (await vite.ssrLoadModule('/src/views/UpHistoryView.vue')).default },
         { path: '/cross-server', name: 'crossServer', component: (await vite.ssrLoadModule('/src/views/CrossServerView.vue')).default },
+        /* 跨服对比的图表版（2026-11-15 起是**另一条并列路由**，与 src/router/index.js 保持一致） */
+        { path: '/cross-server/chart', name: 'crossServerChart', component: (await vite.ssrLoadModule('/src/views/CrossServerChartView.vue')).default },
         /* 与 src/router/index.js 保持一致：老路径的前端跳转（核对脚本也要能走这条） */
         { path: '/shop-interval', redirect: '/first-up' },
       ],
@@ -770,15 +784,28 @@ try {
     count(sinceFup.html, /class="tk"[^>]*>0</g), 0);
   check('首次UP间隔页：顶栏标题已切换', /首次UP间隔/.test(ph) && !/出率提升记录<\/span>/.test(ph.slice(0, ph.indexOf('<main'))), true);
 
-  /* 右栏随页面切换：各页面自己的筛选面板（左栏导航共四个**顶级**项，卡池列表页不显示进店那块）。
-     「首次UP间隔」下面还挂了一个**二级菜单**（图表版 / 表格版）—— 同一份数据的两种呈现。 */
+  /* 左栏导航共五个**顶级**项；其中两个带**二级菜单**（2026-11-15 起）：
+     「跨服卡池对比」= 表格版（上）→ 图表版（下）；「首次UP间隔」= 图表版（上）→ 表格版（下）。 */
   const NAV_TOP = ['卡池列表', '跨服卡池对比', '出率提升记录', '首次UP间隔', 'UP 历史一览'];
   const NAV_SUB = ['图表版', '表格版'];
   check('左栏导航：五个顶级项',
     NAV_TOP.every((t) => ph.includes(t)), true);
-  check('左栏导航：「首次UP间隔」下有二级菜单（图表版 / 表格版）',
+  check('左栏导航：两组二级菜单（跨服对比 / 首次UP间隔），各两个子项',
     NAV_SUB.every((t) => ph.includes(t))
-    && count(ph, /navsubitem/g) === 2 && count(ph, /class="navsub"/g) === 1, true);
+    && count(ph, /navsubitem/g) === 4 && count(ph, /class="navsub"/g) === 2, true);
+  /* 两组二级菜单的**顺序相反**（用户 2026-11-15 指定）—— 钉在源码上，两种顺序都别搞混 */
+  /* 两组二级菜单的**顺序相反**（用户 2026-11-15 指定）—— 直接从渲染出的 `.navsub` 块里取，
+     不去读源码：SSR 会把模板注释原样输出，按 indexOf 找关键词会被注释里的字带偏。
+     块顺序 = 模板顺序：**跨服那组在前**（顶级项里它也排在「首次UP间隔」之前）。 */
+  {
+    const navsubs = [...ph.matchAll(/<div class="navsub">([\s\S]*?)<\/div>/g)].map((m) => m[1]);
+    check('左栏：跨服「表格版→图表版」，首次UP「图表版→表格版」',
+      navsubs.length === 2
+      && navsubs[0].indexOf('表格版') >= 0
+      && navsubs[0].indexOf('表格版') < navsubs[0].indexOf('图表版')
+      && navsubs[1].indexOf('图表版') >= 0
+      && navsubs[1].indexOf('图表版') < navsubs[1].indexOf('表格版'), true);
+  }
   /* 二级菜单的样式契约：缩进 + 左侧引导线（父子层级要看得出来），子项有自己的高亮态 */
   check('左栏二级菜单：缩进 + 左侧引导线 + 子项高亮态',
     /\.navsub\{[^}]*border-left/.test(cssAll) && /\.navsubitem\.active\{/.test(cssAll), true);
@@ -995,10 +1022,12 @@ try {
 
   check('表格版：顶栏标题区分出版本（· 表格版）', /首次UP间隔 · 表格版/.test(ftHtml), true);
   check('图表版：顶栏标题也带版本名（· 图表版）', /首次UP间隔 · 图表版/.test(ph), true);
+  /* ⚠️ 「表格版」「图表版」在左栏各出现**两次**（跨服那组在前、首次UP那组在后），
+     这里要看的是**首次UP那组** → nth = 1 */
   check('表格版：左栏「表格版」子项高亮',
-    clsHas(btnClass(ftHtml, '表格版'), 'navsubitem', 'active'), true);
+    clsHas(btnClass(ftHtml, '表格版', 1), 'navsubitem', 'active'), true);
   check('图表版：左栏「图表版」子项高亮',
-    clsHas(btnClass(ph, '图表版'), 'navsubitem', 'active'), true);
+    clsHas(btnClass(ph, '图表版', 1), 'navsubitem', 'active'), true);
   check('表格版：父项「首次UP间隔」在子页面仍高亮',
     clsHas(btnClass(ftHtml, '首次UP间隔'), 'navitem', 'active'), true);
 
@@ -2192,12 +2221,23 @@ try {
     check('跨服页：缺服的行有 `—` 占位',
       count(body, /class="dash"/g) >= rows.filter((r) => r.servers.length < 3).length, true);
 
-    /* ⭐ 图表版在**表格下面**（2026-11-15 用户加）—— 与「首次UP间隔」不同：那边图表 / 表格是
-       两个独立路由，这里是同一页上下排。option 构造在 `lib/crossChart.js`（纯函数），
-       这里直接吃它，顺带钉住页面接线。 */
+    /* ⭐ 图表版是**另一条并列路由** `/cross-server/chart`（2026-11-15 用户加）——
+       与「首次UP间隔」同构（两条并列路由、右栏共用），只差左栏二级菜单里**表格在上**。
+       option 构造在 `lib/crossChart.js`（纯函数），这里直接吃它。 */
     {
-      check('跨服页：表格下面渲染出「时差走势」图',
-        ch.includes('时差走势') && ch.includes('横轴 = 国服开始日期'), true);
+      check('跨服表格页：不内嵌图表（图表版是独立路由，别再塞回表格页）',
+        !ch.includes('时差走势'), true);
+      const chartPage = await renderRoute('/cross-server/chart');
+      check('跨服图表页：渲染出「时差走势」+ 口径说明',
+        chartPage.html.includes('时差走势') && chartPage.html.includes('横轴 = 国服开始日期'), true);
+      check('跨服图表页：右栏仍是「筛选与日期范围」（与表格页共用 crossFilters）',
+        /筛选与日期范围/.test(chartPage.html), true);
+      /* 左栏二级菜单的顺序（用户 2026-11-15 指定：**表格版在上、图表版在下**，与首次UP相反） */
+      const navSrc = fs.readFileSync(path.join(ROOT, 'src/components/NavDrawer.vue'), 'utf8');
+      const iCross = navSrc.indexOf('跨服卡池对比');
+      check('左栏：跨服二级菜单「表格版」排在「图表版」之前',
+        iCross > 0 && navSrc.indexOf('表格版', iCross) < navSrc.indexOf('图表版', iCross), true);
+
       const { crossChartOption, crossChartPoints } = await vite.ssrLoadModule('/src/lib/crossChart.js');
       const fx = [
         { name: '甲池', scStart: '2024-01-01', gapEnSc: 200, gapTcSc: 180 },
