@@ -113,14 +113,17 @@ const copyRows = computed(() => {
         <div class="pair-col">
           <div class="grp-sep">
             <span>{{ sec.label }} · {{ firstLabel }}间隔</span>
-            <CopyButton v-if="sec.rows.length" :rows="copyRows[sec.key]" />
+            <CopyButton
+              v-if="sec.rows.length" :rows="copyRows[sec.key]"
+              :table-id="`tbl-fup-${sec.key}`" range="below"
+            />
           </div>
 
           <div v-if="!sec.rows.length" class="empty">
             当前筛选范围内没有{{ sec.label }}的{{ word }}记录
           </div>
 
-          <div v-else class="tbl-scroll plain">
+          <div v-else class="tbl-scroll plain" :id="`tbl-fup-${sec.key}`">
             <table class="grid floating fup-tbl" :class="{ 'img-mode': isImage }">
               <!-- 前两列要 sticky 冻结（2026-10-16 用户要求），第 2 列的 `left` 必须恒等于
                    第 1 列的实际宽度 → 只能钉死。

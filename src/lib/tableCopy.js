@@ -92,3 +92,28 @@ export function firstUpCopyRows(rows, { word = '进店', mid = false, lastStdWor
   ]);
   return [head, ...body];
 }
+
+/**
+ * 复制模式下，按选中的那一行裁出**要复制的那部分**（2026-11-15 用户加）。
+ *
+ * 两个方向是用户按页面分别指定的：
+ *   · 出率提升记录（统计页）：选中的行 **及其上方** → 看「到这一行为止」；
+ *   · 首次UP间隔·表格版：选中的行 **及其下方** → 看「从这一行开始」。
+ *
+ * ⚠️ **永远含表头**：`rows[0]` 是表头（见 `statCopyRows` / `firstUpCopyRows`），
+ *    无论选哪一行都保留。
+ * ⚠️ `sel` 是 **`tbody` 行下标**（0 起），不是 `rows` 下标 —— 两者差 1（表头）。
+ *
+ * @param {Array<Array<string|number>>} rows 含表头的二维数组
+ * @param {number|null} sel 选中行（`tbody` 下标）；`null` = 没选 → 整表
+ * @param {'above'|'below'} [range]
+ * @returns {Array<Array<string|number>>}
+ */
+export function sliceCopyRows(rows, sel, range = 'above') {
+  const all = Array.isArray(rows) ? rows : [];
+  if (sel == null || all.length < 2) return all;
+  const i = Math.max(0, Math.min(Number(sel) || 0, all.length - 2));
+  const head = all[0];
+  const body = all.slice(1);
+  return range === 'below' ? [head, ...body.slice(i)] : [head, ...body.slice(0, i + 1)];
+}

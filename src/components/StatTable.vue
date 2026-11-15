@@ -78,7 +78,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
 </script>
 
 <template>
-  <div class="tbl-scroll plain">
+  <div class="tbl-scroll plain" :id="`tbl-${tableId}`">
     <!-- img-mode：图片模式的样式钩子（长方形蒙版头像 + 干员格的占位行框，见 main.css） -->
     <table class="grid floating stat-tbl" :class="{ 'img-mode': isImage }">
       <!-- 只给前两列定宽：它们要 sticky 冻结，第 2 列的 left 偏移必须等于第 1 列的实际宽度，

@@ -51,20 +51,54 @@ function isDiff(s, name) {
   if (s !== 'sc' && s !== diffServer.value) return false;
   return diffSet.value.has(name);
 }
+
+/* ---- 复制为图片（2026-11-15 用户加）----
+   截**整个弹窗主体**（标题 + 三栏），`.shot-capturing` 期间会把关闭按钮藏掉、放开滚动限制。
+   与表格那三个复制动作共用 `lib/tableShot.js`（同一套「写剪贴板失败 → 下载 PNG」兜底）。 */
+const boxEl = ref(null);
+/** idle | working | ok | download | fail */
+const shotState = ref('idle');
+let shotTimer = null;
+async function onShot() {
+  if (!boxEl.value || shotState.value === 'working') return;
+  shotState.value = 'working';
+  clearTimeout(shotTimer);
+  try {
+    const { tableToBlob, copyImageBlob, downloadBlob } = await import('../lib/tableShot.js');
+    const blob = await tableToBlob(boxEl.value, { pixelRatio: 2 });
+    if (!blob) shotState.value = 'fail';
+    else if (await copyImageBlob(blob)) shotState.value = 'ok';
+    else {
+      downloadBlob(blob, `akgacha-${new Date().toISOString().slice(0, 10)}.png`);
+      shotState.value = 'download';
+    }
+  } catch {
+    shotState.value = 'fail';
+  }
+  shotTimer = setTimeout(() => { shotState.value = 'idle'; }, 2000);
+}
+/** 关窗时清定时器（避免往已卸载组件写状态） */
+function onClose() {
+  clearTimeout(shotTimer);
+  emit('close');
+}
 </script>
 
 <template>
   <div class="cbd-mask" @click.self="emit('close')">
-    <div class="cbd-box xup-box" role="dialog" aria-label="三服出率提升">
+    <div ref="boxEl" class="cbd-box xup-box" role="dialog" aria-label="三服出率提升">
       <div class="cbd-hd">
         <span class="h">{{ row.name }} · 出率提升</span>
-        <button class="drawer-close" type="button" title="关闭" @click="emit('close')">✕</button>
+        <button
+          class="xup-shot" type="button"
+          :class="{ ok: shotState === 'ok' || shotState === 'download', fail: shotState === 'fail' }"
+          title="把这一窗截成 PNG（本机不支持写图片剪贴板时会下载文件）" @click="onShot"
+        >{{ shotState === 'working' ? '生成中…'
+          : shotState === 'ok' ? '已复制图片'
+            : shotState === 'download' ? '已下载图片'
+              : shotState === 'fail' ? '生成失败' : '复制为图片' }}</button>
+        <button class="drawer-close" type="button" title="关闭" @click="onClose">✕</button>
       </div>
-
-      <p class="cbd-tip">
-        三服并列。<b>限</b> = 限定干员、<b>店</b> = 商店兑换；「—」= 该服没有这一期，或这一期没有该星级。
-      </p>
-
       <div class="xup-diffbar">
         <span class="xup-difflabel">差异对比</span>
         <div class="seg" role="group" aria-label="差异对比">

@@ -394,11 +394,29 @@ try {
     count(sh, /class="sec-title c-std"/g) === 2 && count(sh, /class="sec-title c-mid"/g) === 2, true);
   /* 「复制」按钮（2026-10-11）：四张表各一个，挂在**表格标题行**（`.sec-title`）里。
      ⚠️ 复制内容在 HTML 里看不到（点击时才算）→ 另见文件末尾「剪贴板」那一组的行为断言。 */
-  check('统计页：每张表都有一个「复制」按钮（4 张表 = 4 个）',
-    count(sh, /class="copy-btn"/g), 4);
-  check('统计页：复制按钮挂在**标题行**里（不是表格上方的工具条）',
-    count(sh, /class="sec-title[^"]*"[^>]*>[\s\S]{0,90}?<button class="copy-btn"/g) === 4
+  /* 2026-11-15：每张表的复制动作由 1 个变 3 个（复制为文本 / 复制模式 / 复制为图片） */
+  check('统计页：每张表三个复制动作（4 张表 × 3 = 12）',
+    count(sh, /class="copy-btn"/g) === 12
+    && ['text', 'mode', 'image'].every((k) => count(sh, new RegExp(`data-act="${k}"`, 'g')) === 4), true);
+  check('统计页：复制按钮组挂在**标题行**里（不是表格上方的工具条）',
+    count(sh, /class="sec-title[^"]*"[^>]*>[\s\S]{0,140}?class="copy-actions"/g) === 4
     && count(sh, /class="tbl-tools"/g) === 0, true);
+  /* 复制模式（2026-11-15）：选中某行只复制「表头 + 该行及以上 / 及以下」。
+     两个方向是用户按页面分别指定的 —— 统计页 above、首次UP表格版 below。 */
+  {
+    const { sliceCopyRows } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
+    const fx = [['头'], ['a'], ['b'], ['c'], ['d']];
+    check('复制模式：统计页口径 = 表头 + 该行及以上',
+      sliceCopyRows(fx, 1, 'above').map((r) => r[0]).join(''), '头ab');
+    check('复制模式：首次UP表格版口径 = 表头 + 该行及以下',
+      sliceCopyRows(fx, 1, 'below').map((r) => r[0]).join(''), '头bcd');
+    check('复制模式：没选行 = 整表（仍含表头）', sliceCopyRows(fx, null, 'below').length, 5);
+    check('复制模式：行下标越界也不炸（夹到末行）', sliceCopyRows(fx, 99, 'above').length, 5);
+    check('接线：统计页 range=above、表格版 range=below',
+      /range="above"/.test(fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8'))
+      && /range="below"/.test(fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8')), true);
+  }
+
   check('统计页：样式表里两套标题配色存在',
     /\.sec-title\.c-std\{[\s\S]*?#FFD524/.test(cssAll)
     && /\.sec-title\.c-mid\{[\s\S]*?#0098DC/.test(cssAll), true);
@@ -1033,9 +1051,11 @@ try {
 
   check('表格版：两个分节（与图表版一一对应）', count(ftHtml, /class="grp-sep"/g), 2);
   /* 「复制」按钮（2026-10-11）：两个分节各一个，挂在**分节标题行**（`.grp-sep`）里 */
-  check('表格版：两个分节各一个「复制」按钮', count(ftHtml, /class="copy-btn"/g), 2);
-  check('表格版：复制按钮挂在**分节标题行**里（不是表格上方的工具条）',
-    count(ftHtml, /class="grp-sep"[\s\S]{0,140}?<button class="copy-btn"/g) === 2
+  check('表格版：两个分节各三个复制动作（6 个）',
+    count(ftHtml, /class="copy-btn"/g) === 6
+    && ['text', 'mode', 'image'].every((k) => count(ftHtml, new RegExp(`data-act="${k}"`, 'g')) === 2), true);
+  check('表格版：复制按钮组挂在**分节标题行**里（不是表格上方的工具条）',
+    count(ftHtml, /class="grp-sep"[\s\S]{0,180}?class="copy-actions"/g) === 2
     && count(ftHtml, /class="tbl-tools"/g) === 0, true);
   check('表格版：分节标题与图表版同款',
     /六星干员 · 首次进店间隔/.test(ftHtml) && /五星干员 · 首次进店间隔/.test(ftHtml), true);
@@ -1977,12 +1997,16 @@ try {
   /* ---------------- 干员名的自适应字号（2026-10-16 用户要求） ----------------
      干员列收窄（103 → 84px）后，**超字数的名字降字号塞进去**，而不是截断 / 撑换行 /
      溢出到邻列。口径与算法收口在 `lib/opNameFit.js`（纯函数）→ 这里直接真跑它。 */
-  check('干员名宽度：半角字符按半格算（`Mon3tr` 不该被当成 6 个汉字那么宽）',
+  /* 2026-11-15 用户调参：半角按 0.25 格、内边距 12→4（`Mon3tr` 从 3 变 1.5；
+     「凯尔希·思衡托」里的 `·` 码点 < 0x2e80，也算 0.25 → 6.25） */
+  check('干员名宽度：半角字符按四分之一格算（`Mon3tr` 不该被当成 6 个汉字那么宽）',
     [opNameWidth('Mon3tr'), opNameWidth('凯尔希·思衡托'), opNameWidth('陈'), opNameWidth('')],
-    [3, 6.5, 1, 0]);
+    [1.5, 6.25, 1, 0]);
+  /* 超长名逐档降：常见名保常规字号；最长名要**降档**但**不低于下限**
+     （2026-11-15 调参后它降到 12px 就够，不再一路降到 10） */
   check('干员名字号：常见长度保持常规字号，超长才逐档降，且不低于下限',
     [opNameFontSize('陈'), opNameFontSize('德·托莱多'), opNameFontSize('凯尔希·思衡托')],
-    [OP_NAME_MAX_FS, OP_NAME_MAX_FS, OP_NAME_MIN_FS]);
+    [OP_NAME_MAX_FS, OP_NAME_MAX_FS, 12]);
   /* ⚠️⚠️ 核心保证：拿**全部真实干员名**验算「一个都不会溢出内容区」——
      溢出的小尾巴会被右边相邻列的不透明背景盖住，等于用户看到的「名字显示不全」
      （2026-10-16 的「实装时间」列就是这么出事的，所以这条必须守死）。 */

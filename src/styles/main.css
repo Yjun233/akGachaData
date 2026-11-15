@@ -465,6 +465,27 @@ main.content{
 .copy-btn.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
 .copy-btn.fail{color:var(--danger);border-color:var(--danger)}
 
+/* 三个复制动作（2026-11-15）：复制为文本 / 复制模式 / 复制为图片，横排挂在表标题右侧 */
+.copy-actions{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.copy-btn.active{color:#fff;background:var(--blue-700);border-color:var(--blue-700)}
+.copy-btn.active:hover{background:var(--blue-800,#1b4f9c);border-color:var(--blue-800,#1b4f9c)}
+.copy-mode-hint{font-size:11px;color:var(--muted);white-space:nowrap}
+
+/* 复制模式：整表可点、悬停提示，选中行浅蓝底（与「高亮干员」的浅黄 `.hl` 区分开） */
+.tbl-scroll.copy-mode tbody tr{cursor:pointer}
+.tbl-scroll.copy-mode tbody tr:hover td{background:#f1f7ff}
+/* ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压 */
+.tbl-scroll tbody tr.row-sel td{background:#dbeafe !important}
+
+/* 截图期间（lib/tableShot.js）：sticky 会按当前滚动位置算，截出来可能错位/重叠 → 一律改回 static */
+.shot-capturing th,.shot-capturing td{position:static !important;left:auto !important;z-index:auto !important}
+/* 截图要截**完整内容**：滚动容器的 max-height 与弹窗里的关闭按钮都得让开 */
+.shot-capturing{max-height:none !important;overflow:visible !important}
+/* ⚠️ 表格容器平时是 `width:fit-content;max-width:100%` —— 宽表会横向滚动，
+   截图时若不放开宽度，右侧整片列会被裁掉 */
+.tbl-scroll.shot-capturing{width:max-content !important;max-width:none !important}
+.shot-capturing .drawer-close{display:none !important}
+
 /* 宽度足够时容器收缩到表格宽度（width:fit-content）——
    否则容器会铺满父级，纵向滚动条被推到内容区右边缘、离表格老远。
    fit-content 在窄容器下自动退化为「可用宽度」，横向滚动照常。 */
@@ -565,7 +586,7 @@ table.grid.stat-tbl thead tr:first-child th:last-child{
    ⚠️ 上下 padding 不在这里给：行高已由上面「两表行高统一」的 `height:35px` 钉死，
    这里再多给 8px 会把干员格撑到 37.8px，行高又跟表格版对不上（2026-10-05 删）。 */
 table.grid.stat-tbl td.wrapcell{
-  white-space:nowrap;overflow-wrap:normal;word-break:normal;
+  white-space:nowrap;overflow-wrap:normal;word-break:normal;padding: 4px 2px;
 }
 
 /* ---------------- 统计表：冻结「实装时间」「干员」两列 ----------------
@@ -1227,6 +1248,15 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .xup.diff:hover{background:#fdf0d8;border-color:var(--warn)}
 /* 弹窗：比自定义卡池那个宽一点（三栏），窄屏竖排 */
 .xup-box{width:min(880px,100%)}
+/* 弹窗标题栏右侧的「复制为图片」（2026-11-15） */
+.xup-shot{
+  margin-left:auto;margin-right:8px;font-family:inherit;font-size:12px;font-weight:600;
+  color:var(--blue-700);background:#fff;border:1px solid var(--blue-200);border-radius:7px;
+  padding:3px 9px;cursor:pointer;line-height:1.4;white-space:nowrap;
+}
+.xup-shot:hover{background:var(--blue-50);border-color:var(--blue-500)}
+.xup-shot.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+.xup-shot.fail{color:var(--danger);border-color:var(--danger)}
 .xup-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .xup-col{
   border:1px solid var(--border);border-radius:10px;padding:8px 10px 10px;

@@ -31,7 +31,7 @@
 /** 干员列**总宽**（含左右内边距）—— 三处必须一致：本文件 / main.css / `<colgroup>` */
 export const OP_NAME_COL_W = 84;
 /** 单元格左右内边距合计（`table.grid.stat-tbl th, td{padding:4px 6px}` → 6+6） */
-export const OP_NAME_PAD = 12;
+export const OP_NAME_PAD = 4;
 /** 常规字号 / 最小字号（px） */
 export const OP_NAME_MAX_FS = 13;
 export const OP_NAME_MIN_FS = 10;
@@ -39,7 +39,7 @@ export const OP_NAME_MIN_FS = 10;
 export const OP_NAME_FIT_RATIO = 0.94;
 
 /**
- * 名字的**等效汉字宽度**：半角字符按 0.5 计，其余（汉字 / 全角标点）按 1 计。
+ * 名字的**等效汉字宽度**：半角字符按 0.25 计，其余（汉字 / 全角标点）按 1 计。
  * 按**码点**遍历，代理对（罕见字）不会被拆成两半。
  * @param {string} name
  * @returns {number}
@@ -47,7 +47,7 @@ export const OP_NAME_FIT_RATIO = 0.94;
 export function opNameWidth(name) {
   let w = 0;
   for (const ch of String(name ?? '')) {
-    w += ch.codePointAt(0) < 0x2e80 ? 0.5 : 1;
+    w += ch.codePointAt(0) < 0x2e80 ? 0.25 : 1;
   }
   return w;
 }
