@@ -45,14 +45,14 @@ const copyRows = computed(() => {
       <div class="pair-col">
         <div id="s-6-std" class="sec-title c-std">
           <span>六星干员·标准寻访</span>
-          <CopyButton :rows="copyRows['6-std']" table-id="6-std" range="above" />
+          <CopyButton :rows="copyRows['6-std']" table-id="tbl-6-std" range="above" />
         </div>
         <StatTable table-id="6-std" :rows="groups['6-std']" />
       </div>
       <div class="pair-col">
         <div id="s-6-mid" class="sec-title c-mid">
           <span>六星干员·中坚寻访</span>
-          <CopyButton :rows="copyRows['6-mid']" table-id="6-mid" range="above" />
+          <CopyButton :rows="copyRows['6-mid']" table-id="tbl-6-mid" range="above" />
         </div>
         <StatTable table-id="6-mid" :rows="groups['6-mid']" split />
       </div>
@@ -63,14 +63,14 @@ const copyRows = computed(() => {
       <div class="pair-col">
         <div id="s-5-std" class="sec-title c-std">
           <span>五星干员·标准寻访</span>
-          <CopyButton :rows="copyRows['5-std']" table-id="5-std" range="above" />
+          <CopyButton :rows="copyRows['5-std']" table-id="tbl-5-std" range="above" />
         </div>
         <StatTable table-id="5-std" :rows="groups['5-std']" />
       </div>
       <div class="pair-col">
         <div id="s-5-mid" class="sec-title c-mid">
           <span>五星干员·中坚寻访</span>
-          <CopyButton :rows="copyRows['5-mid']" table-id="5-mid" range="above" />
+          <CopyButton :rows="copyRows['5-mid']" table-id="tbl-5-mid" range="above" />
         </div>
         <StatTable table-id="5-mid" :rows="groups['5-mid']" split />
       </div>

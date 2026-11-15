@@ -10,7 +10,7 @@
  *    而且复制内容与「表格当前显示的口径」完全一致（都由视图层算好）。
  * ⚠️ 行选中是**直接操作表格 DOM**（`tableId` 指向 `.tbl-scroll`）而不是把状态提上去：
  *    按钮在标题栏、表格是**兄弟节点**，提状态要改 3 个组件的 props 链；
- *    而 `.copy-mode` / `.row-sel` 只是纯视觉，不进数据流，用 DOM 反而更省。
+ *    而 `.copy-mode` / `.row-out` 只是纯视觉，不进数据流，用 DOM 反而更省。
  *    代价：**只在客户端可用**（SSR 下 `mode` 恒 false，渲染出来的还是三个按钮 + 无选中态）。
  * ⚠️ 复制结果的状态（已复制 / 复制失败 / 已下载图片）是**临时**的，1.6~2 秒后自己落回；
  *    组件卸载时清掉定时器，免得往已卸载的组件上写状态。
@@ -19,7 +19,7 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { copyText, toTSV } from '../lib/clipboard.js';
-import { sliceCopyRows } from '../lib/tableCopy.js';
+import { copyRangeIndexes, sliceCopyRows } from '../lib/tableCopy.js';
 
 const props = defineProps({
   /** 含表头的二维数组，见 lib/clipboard.js 的 `toTSV` */
@@ -49,17 +49,6 @@ const tableEl = () => (props.tableId && typeof document !== 'undefined'
 /** 按选中行裁出的复制范围：**永远含表头**（算法在 lib/tableCopy.js，那里单测） */
 const rowsForCopy = computed(() => sliceCopyRows(props.rows, sel.value, props.range));
 
-/** 复制模式下的提示（未选 / 已选） */
-const selHint = computed(() => {
-  const body = Math.max(0, (props.rows || []).length - 1);
-  if (sel.value == null) {
-    return props.range === 'below'
-      ? `点表格里某一行：只复制它及以下（含表头，共 ${body} 行）`
-      : `点表格里某一行：只复制它及以上（含表头，共 ${body} 行）`;
-  }
-  return `已选第 ${sel.value + 1} 行 · 将复制 ${rowsForCopy.value.length - 1} 行（含表头）`;
-});
-
 async function onCopy() {
   const ok = await copyText(toTSV(rowsForCopy.value));
   textState.value = ok ? 'ok' : 'fail';
@@ -67,25 +56,40 @@ async function onCopy() {
   textTimer = setTimeout(() => { textState.value = 'idle'; }, 1600);
 }
 
-/** 行点击（只在复制模式下绑定） */
+/** 行点击（只在复制模式下绑定）—— 选中行，并把**整个复制范围**涂成浅蓝底 */
 function onRowClick(e) {
   const box = tableEl();
   if (!box) return;
   const tr = e.target?.closest?.('tbody tr');
   if (!tr || !box.contains(tr)) return;
-  const all = [...box.querySelectorAll('tbody tr')];
-  const i = all.indexOf(tr);
+  const trs = [...box.querySelectorAll('tbody tr')];
+  const i = trs.indexOf(tr);
   if (i < 0) return;
-  for (const x of all) x.classList.remove('row-sel');
-  tr.classList.add('row-sel');
   sel.value = i;
+  paintRange(trs, i);
+}
+
+/**
+ * 把「**不会被复制**的那部分行」涂暗（2026-11-15 用户要求：只染范围外，选中行不染）。
+ *
+ * ⚠️ 范围与复制/截图用的是**同一个** `copyRangeIndexes()` —— 涂色、复制文本、截图三处
+ *    各算各的迟早会错开（用户就是照着颜色判断会复制到哪几行）。
+ * ⚠️ 表头永远在复制范围里，所以表头**不染色**。
+ * ⚠️ 点中的那一行**也不染色** —— 用户明确要求（染了会被带进「复制为图片」的截图里，
+ *    而且灰色边界本身已经指明「从哪一行开始算」）。
+ */
+function paintRange(trs, i) {
+  const [a, b] = copyRangeIndexes(trs.length, i, props.range);
+  trs.forEach((tr, k) => {
+    tr.classList.toggle('row-out', k < a || k > b);
+  });
 }
 
 function clearSel() {
   sel.value = null;
   const box = tableEl();
   if (!box) return;
-  for (const x of box.querySelectorAll('tbody tr.row-sel')) x.classList.remove('row-sel');
+  for (const tr of box.querySelectorAll('tbody tr.row-out')) tr.classList.remove('row-out');
 }
 
 function bindMode(on) {
@@ -101,20 +105,30 @@ watch(mode, (on) => {
   if (!on) clearSel();
 });
 
+/* 排序 / 筛选一变，行的下标就不可信了 → 直接作废选中（用户 2026-11-15：改排序后失效）。
+   `props.rows` 是视图层的 computed，依赖（排序键、筛选、参考日）没变时**引用不变**，
+   所以这里不会因为「点按钮引起的重渲染」误清选中。 */
+watch(() => props.rows, () => {
+  if (sel.value != null) clearSel();
+});
+
 async function onImage() {
   const box = tableEl();
   if (!box) return;
   imgState.value = 'working';
   clearTimeout(imgTimer);
   try {
-    const { tableToBlob, copyImageBlob, downloadBlob } = await import('../lib/tableShot.js');
-    const keepRow = sel.value == null
+    const { tableToBlob, copyImage, downloadBlob } = await import('../lib/tableShot.js');
+    /* 部分复制：范围与页面上涂的浅蓝底同一份算法 */
+    const keep = sel.value == null
       ? null
-      : (i) => (props.range === 'below' ? i >= sel.value : i <= sel.value);
-    const blob = await tableToBlob(box, { keepRow });
+      : copyRangeIndexes(box.querySelectorAll('tbody tr').length, sel.value, props.range);
+    const blob = await tableToBlob(box, {
+      keepRow: keep ? (i) => i >= keep[0] && i <= keep[1] : null,
+    });
     if (!blob) {
       imgState.value = 'fail';
-    } else if (await copyImageBlob(blob)) {
+    } else if (await copyImage(blob)) {
       imgState.value = 'ok';
     } else {
       downloadBlob(blob, `akgacha-${new Date().toISOString().slice(0, 10)}.png`);
@@ -176,7 +190,5 @@ onBeforeUnmount(() => {
           : imgState === 'download' ? '已下载图片'
             : imgState === 'fail' ? '生成失败' : '复制为图片' }}</span>
     </button>
-
-    <span v-if="mode" class="copy-mode-hint">{{ selHint }}</span>
   </div>
 </template>

@@ -112,8 +112,27 @@ export function firstUpCopyRows(rows, { word = '进店', mid = false, lastStdWor
 export function sliceCopyRows(rows, sel, range = 'above') {
   const all = Array.isArray(rows) ? rows : [];
   if (sel == null || all.length < 2) return all;
-  const i = Math.max(0, Math.min(Number(sel) || 0, all.length - 2));
   const head = all[0];
   const body = all.slice(1);
-  return range === 'below' ? [head, ...body.slice(i)] : [head, ...body.slice(0, i + 1)];
+  const [a, b] = copyRangeIndexes(body.length, sel, range);
+  return [head, ...body.slice(a, b + 1)];
+}
+
+/**
+ * 选中某一行后，**哪些行**在复制范围内（`tbody tr` 的闭区间下标）。
+ *
+ * 与 `sliceCopyRows()` 共用同一套算法 —— 页面上把这段涂成浅蓝底、复制/截图取同一段，
+ * 三处必须是同一个口径，所以收口在这里（`verify-render` 直接吃这个纯函数）。
+ *
+ * @param {number} count `tbody tr` 行数
+ * @param {number|null} sel 选中行（0 起）
+ * @param {'above'|'below'} [range]
+ * @returns {[number, number]} `[start, end]` 闭区间；没有行时给 `[-1, -1]`
+ */
+export function copyRangeIndexes(count, sel, range = 'above') {
+  const n = Math.max(0, Number(count) || 0);
+  if (!n) return [-1, -1];
+  if (sel == null) return [0, n - 1];
+  const i = Math.max(0, Math.min(Number(sel) || 0, n - 1));
+  return range === 'below' ? [i, n - 1] : [0, i];
 }

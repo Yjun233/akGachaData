@@ -64,10 +64,10 @@ async function onShot() {
   shotState.value = 'working';
   clearTimeout(shotTimer);
   try {
-    const { tableToBlob, copyImageBlob, downloadBlob } = await import('../lib/tableShot.js');
+    const { tableToBlob, copyImage, downloadBlob } = await import('../lib/tableShot.js');
     const blob = await tableToBlob(boxEl.value, { pixelRatio: 2 });
     if (!blob) shotState.value = 'fail';
-    else if (await copyImageBlob(blob)) shotState.value = 'ok';
+    else if (await copyImage(blob)) shotState.value = 'ok';
     else {
       downloadBlob(blob, `akgacha-${new Date().toISOString().slice(0, 10)}.png`);
       shotState.value = 'download';

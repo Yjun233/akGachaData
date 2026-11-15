@@ -469,13 +469,18 @@ main.content{
 .copy-actions{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .copy-btn.active{color:#fff;background:var(--blue-700);border-color:var(--blue-700)}
 .copy-btn.active:hover{background:var(--blue-800,#1b4f9c);border-color:var(--blue-800,#1b4f9c)}
-.copy-mode-hint{font-size:11px;color:var(--muted);white-space:nowrap}
 
-/* 复制模式：整表可点、悬停提示，选中行浅蓝底（与「高亮干员」的浅黄 `.hl` 区分开） */
+/* 复制模式（2026-11-15）：整表可点；选中一行后只把「**不会被复制**的行」涂暗
+   （范围外 = 灰底 + 压暗文字），复制范围与选中行本身都保持原样 ——
+   用户明确要求「别给选中行染色」，因为染色会被带进「复制为图片」的截图里。
+   ⚠️ 范围由 `lib/tableCopy.js` 的 `copyRangeIndexes()` 算 —— 与复制文本、截图共用同一份算法。
+   ⚠️ 表头永远在范围内，所以表头不染色。
+   ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压。 */
 .tbl-scroll.copy-mode tbody tr{cursor:pointer}
 .tbl-scroll.copy-mode tbody tr:hover td{background:#f1f7ff}
-/* ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压 */
-.tbl-scroll tbody tr.row-sel td{background:#dbeafe !important}
+/* 范围外的行：冷灰底 + 压暗文字（只靠底色太淡，扫一眼分不清「哪些不会被复制」）。
+   彩色小标签（进行中 / 标红的逾期天数）保留自己的颜色，正好还能看清）。 */
+.tbl-scroll tbody tr.row-out td{background:#eceff4 !important;color:var(--muted)}
 
 /* 截图期间（lib/tableShot.js）：sticky 会按当前滚动位置算，截出来可能错位/重叠 → 一律改回 static */
 .shot-capturing th,.shot-capturing td{position:static !important;left:auto !important;z-index:auto !important}
@@ -484,7 +489,10 @@ main.content{
 /* ⚠️ 表格容器平时是 `width:fit-content;max-width:100%` —— 宽表会横向滚动，
    截图时若不放开宽度，右侧整片列会被裁掉 */
 .tbl-scroll.shot-capturing{width:max-content !important;max-width:none !important}
-.shot-capturing .drawer-close{display:none !important}
+/* 截图期间把「操作按钮」自己藏掉 —— 否则截出来的图里带着 ✕ 和「复制为图片」，
+   用户 2026-11-15 反馈跨服「出率提升」弹窗就中过这一枪。 */
+.shot-capturing .drawer-close,
+.shot-capturing .xup-shot{display:none !important}
 
 /* 宽度足够时容器收缩到表格宽度（width:fit-content）——
    否则容器会铺满父级，纵向滚动条被推到内容区右边缘、离表格老远。

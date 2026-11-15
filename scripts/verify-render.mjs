@@ -404,7 +404,7 @@ try {
   /* 复制模式（2026-11-15）：选中某行只复制「表头 + 该行及以上 / 及以下」。
      两个方向是用户按页面分别指定的 —— 统计页 above、首次UP表格版 below。 */
   {
-    const { sliceCopyRows } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
+    const { sliceCopyRows, copyRangeIndexes } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
     const fx = [['头'], ['a'], ['b'], ['c'], ['d']];
     check('复制模式：统计页口径 = 表头 + 该行及以上',
       sliceCopyRows(fx, 1, 'above').map((r) => r[0]).join(''), '头ab');
@@ -415,6 +415,59 @@ try {
     check('接线：统计页 range=above、表格版 range=below',
       /range="above"/.test(fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8'))
       && /range="below"/.test(fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8')), true);
+
+    /* 页面上涂的暗色必须与「会复制到哪几行」是同一个范围（算法同一份，这里钉住它） */
+    check('复制模式：高亮范围 = 复制范围（above：首行到选中行）',
+      copyRangeIndexes(5, 2, 'above').join('~'), '0~2');
+    check('复制模式：高亮范围（below：选中行到末行）',
+      copyRangeIndexes(5, 2, 'below').join('~'), '2~4');
+    check('复制模式：没选行时高亮整表 / 空表不越界',
+      `${copyRangeIndexes(5, null, 'below').join('~')}|${copyRangeIndexes(0, 0, 'above').join('~')}`,
+      '0~4|-1~-1');
+    /* 2026-11-15 用户改口径：只染**范围外**的行；表头与选中行都不染（染色会被带进截图） */
+    check('复制模式：只染范围外的行，表头与选中行都不染',
+      /\.tbl-scroll tbody tr\.row-out td\{[^}]*background/.test(cssAll)
+      && !/\.tbl-scroll\.has-sel thead th/.test(cssAll)
+      && !/tr\.row-sel td\{[^}]*background/.test(cssAll), true);
+
+    /* ⚠️ 2026-11-15 真踩过：StatsView 传的是 `table-id="6-std"`，而 StatTable 的容器 id 是
+       `tbl-6-std` → `getElementById` 拿到 null，复制模式**点了行毫无反应、也不报错**。
+       这里拿 SSR 产出的真实 id 对撞：每个复制按钮的 table-id 都必须在页面上存在。
+       （`table-id` 是声明过的 prop，不会作为属性渲染进 HTML，所以只能从视图源码里读。） */
+    const statsSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
+    /* 只看 `<CopyButton … />` 自己的 table-id —— `<StatTable table-id="6-std">` 那个是另一种口径
+       （组件内部再拼 `tbl-` 前缀），混在一起数会把两条都算进来 */
+    const ids = [...statsSrc.matchAll(/<CopyButton[\s\S]*?\/>/g)]
+      .map((m) => (/table-id="([^"]+)"/.exec(m[0]) || [])[1])
+      .filter(Boolean);
+    const missing = ids.filter((id) => !new RegExp(`id="${id}"`).test(sh));
+    check('统计页：四个复制按钮的 table-id 都指向真实存在的表格容器',
+      `${ids.length}|${missing.join(',') || '无'}`, '4|无');
+    /* 表格版是动态 id，静态对不上 SSR —— 只钉「两边拼的是同一个字符串」 */
+    const fupSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8');
+    check('表格版：复制按钮与表格容器的 id 是同一个表达式（tbl-fup-${sec.key}）',
+      (fupSrc.match(/`tbl-fup-\$\{sec\.key\}`/g) || []).length >= 2, true);
+    check('复制模式：排序（rows 引用变化）会作废选中',
+      /watch\(\(\) => props\.rows/.test(fs.readFileSync(path.join(ROOT, 'src/components/CopyButton.vue'), 'utf8')), true);
+  }
+
+  /* 复制为图片：先写剪贴板，真写不进去才下载（用户 2026-11-15「我希望复制到剪贴板而不是下载」） */
+  {
+    const shotSrc = fs.readFileSync(path.join(ROOT, 'src/lib/tableShot.js'), 'utf8');
+    check('复制为图片：有 copyImage 兜底链（异步剪贴板 → execCommand → 下载）',
+      /export async function copyImage\(/.test(shotSrc)
+      && /export async function copyImageByDom\(/.test(shotSrc)
+      && /execCommand\('copy'\)/.test(shotSrc), true);
+    check('复制为图片：表格与跨服弹窗都走 copyImage（不是直接下载）',
+      /copyImage\(blob\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/CopyButton.vue'), 'utf8'))
+      && /copyImage\(blob\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/CrossServerUpDialog.vue'), 'utf8')), true);
+    /* 截图里不能出现「因为选中而染的色」—— 也不能出现按钮自己（用户 2026-11-15 两次反馈） */
+    check('复制为图片：截图前摘掉复制模式的染色，截完补回',
+      /querySelectorAll\('tbody tr\.row-out'\)/.test(shotSrc)
+      && /classList\.remove\('row-out'\)/.test(shotSrc)
+      && /classList\.add\('row-out'\)/.test(shotSrc), true);
+    check('复制为图片：截图期间藏掉弹窗自己的按钮（✕ 与「复制为图片」）',
+      /\.shot-capturing \.xup-shot\{display:none/.test(cssAll), true);
   }
 
   check('统计页：样式表里两套标题配色存在',
