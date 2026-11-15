@@ -2192,6 +2192,30 @@ try {
     check('跨服页：缺服的行有 `—` 占位',
       count(body, /class="dash"/g) >= rows.filter((r) => r.servers.length < 3).length, true);
 
+    /* ⭐ 图表版在**表格下面**（2026-11-15 用户加）—— 与「首次UP间隔」不同：那边图表 / 表格是
+       两个独立路由，这里是同一页上下排。option 构造在 `lib/crossChart.js`（纯函数），
+       这里直接吃它，顺带钉住页面接线。 */
+    {
+      check('跨服页：表格下面渲染出「时差走势」图',
+        ch.includes('时差走势') && ch.includes('横轴 = 国服开始日期'), true);
+      const { crossChartOption, crossChartPoints } = await vite.ssrLoadModule('/src/lib/crossChart.js');
+      const fx = [
+        { name: '甲池', scStart: '2024-01-01', gapEnSc: 200, gapTcSc: 180 },
+        { name: '乙池', scStart: '2023-06-01', gapEnSc: null, gapTcSc: 150 },
+        { name: '丙池', scStart: null, gapEnSc: 100, gapTcSc: 90 },
+      ];
+      const pts = crossChartPoints(fx);
+      check('跨服图：只收有国服开始日的行、按时间升序（缺国服的池不画）',
+        `${pts.length}|${pts[0].scStart}|${pts[1].scStart}`, '2|2023-06-01|2024-01-01');
+      const opt = crossChartOption(fx);
+      check('跨服图：只有两条线，都是「相对国服」的差值（EN-TC 不进图）',
+        opt.series.map((s) => s.name).join('|'), '国际服 − 国服|繁中服 − 国服');
+      check('跨服图：横轴是时间轴；缺值的点给 null（给 0 会画出假的「同期」）',
+        opt.xAxis.type === 'time' && opt.series[0].data[0][1] === null, true);
+      check('跨服图：0 轴画虚线参照（负值 = 该服比国服早）',
+        !!opt.series[0].markLine && opt.series[0].markLine.data[0].yAxis === 0, true);
+    }
+
     /* 右栏 */
     check('跨服页：右栏标题 = 筛选与日期范围', pane.length > 0 && /筛选与日期范围/.test(ch), true);
     check('跨服页：右栏两个日期框填的是上下界（不是空框）',
