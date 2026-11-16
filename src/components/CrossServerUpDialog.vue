@@ -20,7 +20,7 @@
  */
 import { computed, ref } from 'vue';
 import {
-  CROSS_DIFF_SERVERS, CROSS_SERVER_LABELS, CROSS_SERVERS, upDiffNames,
+  CROSS_DIFF_SERVERS, CROSS_SERVER_LABELS, CROSS_SERVERS, diffSlots, upDiffByRarity,
 } from '../lib/crossServer.js';
 
 const props = defineProps({
@@ -43,8 +43,19 @@ const diffServer = ref(CROSS_DIFF_SERVERS.includes(props.initialDiff) ? props.in
 function toggleDiff(s) {
   diffServer.value = diffServer.value === s ? null : s;
 }
-/** 差异干员名（`null` = 没开对比）。只算一次，模板里按栏过滤 */
-const diffSet = computed(() => (diffServer.value ? upDiffNames(props.row, diffServer.value) : null));
+/** 差异干员名，**按星级分开**（`null` = 没开对比）。只算一次，模板里按栏过滤 */
+const diffBy = computed(() => (diffServer.value ? upDiffByRarity(props.row, diffServer.value) : null));
+/**
+ * 画下划线用的并集（两个星级合起来）。
+ * ⚠️ 注意它与「席位数」不是一回事：并集里一个名字 = 一个干员，席位要 ÷2，见 `diffSlots`。
+ */
+const diffSet = computed(() => (diffBy.value
+  ? new Set([...diffBy.value[6], ...diffBy.value[5]])
+  : null));
+/** 6★ / 5★ 各有几个**席位**不同（2026-11-16 用户口径：名字数 ÷ 2） */
+const diffSlotCount = computed(() => (diffBy.value
+  ? { 6: diffSlots(diffBy.value[6]), 5: diffSlots(diffBy.value[5]) }
+  : { 6: 0, 5: 0 }));
 /** 这个干员在这一栏要不要画下划线 —— 只标「国服」与「当前对比的那一服」两栏 */
 function isDiff(s, name) {
   if (!diffSet.value) return false;
@@ -110,7 +121,7 @@ function onClose() {
           >{{ CROSS_SERVER_LABELS[s] }}</button>
         </div>
         <span v-if="diffServer" class="xup-diffhint">
-          深蓝下划线 = 与{{ CROSS_SERVER_LABELS[diffServer] }}不一致的干员 · 共 {{ diffSet.size }} 位
+          深蓝下划线 = 与{{ CROSS_SERVER_LABELS[diffServer] }}不一致的干员 · 共 6★ {{ diffSlotCount[6] }} 席 · 5★ {{ diffSlotCount[5] }} 席
         </span>
       </div>
 

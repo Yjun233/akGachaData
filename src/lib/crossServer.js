@@ -49,7 +49,18 @@ export const CROSS_SERVER_LABELS = { sc: '国服', en: '国际服', tc: '繁中�
 export const CROSS_DIFF_SERVERS = ['en', 'tc'];
 
 /**
- * 国服 vs 指定服的 UP 干员**对称差集**（名字集合）—— 弹窗里画「深蓝下划线」的依据。
+ * 「席位差」= 对称差集里的名字数 ÷ 2（2026-11-16 用户口径）。
+ *
+ * 一席差异会在两边各留下**一个**只出现一次的名字（A 有 X、B 有 Y → `{X, Y}`），
+ * 所以数「几个席位不同」= 名字数 ÷ 2，而不是名字数。
+ * ⚠️ 只有一边有名单时（某服没有这一期）会得到奇数，向上取整，别显示成「1.5 席」。
+ * @param {Set<string>|null} set
+ * @returns {number}
+ */
+export const diffSlots = (set) => Math.ceil((set?.size || 0) / 2);
+
+/**
+ * 国服 vs 指定服的 UP 干员**对称差集**，**按星级分开**（2026-11-16 用户要求六星 / 五星分开列）。
  *
  * - 一边有、另一边没有的才算差异（两边都有的不标）；限定 / 进店标记不参与判断。
  * - 那一服**没有这一期**时，国服的全部干员都算差异（对方一份都没有）——
@@ -57,20 +68,39 @@ export const CROSS_DIFF_SERVERS = ['en', 'tc'];
  * - 只按**名字**比：同一期的干员名单在数据里本来就用 `scCharName` 对齐（`charId` 三服一致）。
  *
  * @param {object} row CrossRow（`buildCrossEntries()` 产出的行）
- * @param {'en'|'tc'} server 要对比的服（传 `sc` 或空 → 空集合，调用方自己判空）
+ * @param {'en'|'tc'} server 要对比的服（传 `sc` 或空 → 两个空集，调用方自己判空）
+ * @returns {{6:Set<string>, 5:Set<string>}}
+ */
+export function upDiffByRarity(row, server) {
+  const out = { 6: new Set(), 5: new Set() };
+  if (!server || server === 'sc') return out;
+  /** 按星级分好的一服名单（UP 只有 5★ / 6★，其余一律归 5★ 兜底） */
+  const pick = (s) => {
+    const by = { 6: new Set(), 5: new Set() };
+    for (const o of row?.banners?.[s]?.upOperators || []) {
+      if (!o?.scCharName) continue;
+      by[(o.rarity || 0) === 6 ? 6 : 5].add(o.scCharName);
+    }
+    return by;
+  };
+  const base = pick('sc');
+  const other = pick(server);
+  for (const r of [6, 5]) {
+    for (const n of base[r]) if (!other[r].has(n)) out[r].add(n);
+    for (const n of other[r]) if (!base[r].has(n)) out[r].add(n);
+  }
+  return out;
+}
+
+/**
+ * 名单差异（**不区分星级**的并集）—— 只用来决定「哪些标签画下划线」。
+ * @param {object} row `CrossRow`
+ * @param {string} server
  * @returns {Set<string>}
  */
 export function upDiffNames(row, server) {
-  const out = new Set();
-  if (!server || server === 'sc') return out;
-  const namesIn = (s) => new Set(
-    (row?.banners?.[s]?.upOperators || []).map((o) => o?.scCharName).filter(Boolean),
-  );
-  const base = namesIn('sc');
-  const other = namesIn(server);
-  for (const n of base) if (!other.has(n)) out.add(n);
-  for (const n of other) if (!base.has(n)) out.add(n);
-  return out;
+  const by = upDiffByRarity(row, server);
+  return new Set([...by[6], ...by[5]]);
 }
 
 /** 不参与对比的类型：常驻标准 / 常驻中坚（三服各自独立编号，同名不是同一场） */

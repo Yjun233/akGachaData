@@ -2465,8 +2465,40 @@ try {
         `${count(dlgEn, /is-diff/g)}|${diffText}`, '1|乙');
       check('跨服弹窗：选中的那枚按钮是 on 态（另一枚不是）',
         count(dlgEn, /class="on"/g), 1);
-      check('跨服弹窗：选中时给出下划线说明与差异位数',
-        dlgEn.includes('深蓝下划线') && dlgEn.includes('共 1 位'), true);
+      /* 2026-11-16 用户：六星 / 五星**分开列**，且给的是**席位数**（名字数 ÷ 2）而不是名字数。
+         夹具里只有 5★ 差一位（sc 的「乙」）→ 6★ 0 席、5★ 1 席。 */
+      check('跨服弹窗：选中时给出下划线说明，6★ / 5★ 席位分开列',
+        dlgEn.includes('深蓝下划线')
+        && dlgEn.includes('共 6★ 0 席 · 5★ 1 席'), true);
+      /* 纯函数：按星级分开 + 席位数 = 名字数 ÷ 2（2026-11-16 用户口径） */
+      {
+        const lib = await vite.ssrLoadModule('/src/lib/crossServer.js');
+        const row2 = {
+          banners: {
+            sc: {
+              upOperators: [
+                { scCharName: '甲', rarity: 6 }, { scCharName: '丙', rarity: 6 },
+                { scCharName: '乙', rarity: 5 },
+              ],
+            },
+            en: {
+              upOperators: [{ scCharName: '甲', rarity: 6 }, { scCharName: '丁', rarity: 6 }],
+            },
+          },
+        };
+        const d = lib.upDiffByRarity(row2, 'en');
+        check('跨服弹窗差异：按星级分开算（6★ 对称差 2 个名字 / 5★ 1 个）',
+          `${d[6].size}|${d[5].size}`, '2|1');
+        check('跨服弹窗差异：席位数 = 名字数 ÷ 2（2→1 席、1→1 席）',
+          `${lib.diffSlots(d[6])}|${lib.diffSlots(d[5])}`, '1|1');
+        check('跨服弹窗差异：两边都有的不算（甲 不在任何一档里）',
+          d[6].has('甲') || d[5].has('甲'), false);
+        check('跨服弹窗差异：upDiffNames 仍是不分星级的并集（3 个名字 → 画 3 条下划线）',
+          lib.upDiffNames(row2, 'en').size, 3);
+        check('跨服弹窗差异：没选服 / 选国服 → 两档都是空集',
+          `${lib.upDiffByRarity(row2, null)[6].size}|${lib.upDiffByRarity(row2, 'sc')[5].size}`, '0|0');
+      }
+
       /* 繁中服这一期没有 → 国服全体（甲、乙）都算差异，且只标国服那一栏 */
       const dlgTc = await renderToString(createSSRApp(UpDlg, { row: fakeRow, initialDiff: 'tc' }));
       check('跨服弹窗：对比的那一服没有这期 → 国服全体算差异（2 位）',
