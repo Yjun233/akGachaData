@@ -2309,6 +2309,38 @@ try {
         chartPage.html.includes('时差走势') && chartPage.html.includes('横轴 = 国服开始日期'), true);
       check('跨服图表页：右栏仍是「筛选与日期范围」（与表格页共用 crossFilters）',
         /筛选与日期范围/.test(chartPage.html), true);
+
+      /* 「只显示仅国服存在的卡池」（2026-11-16 用户加）—— **表格版专用**，默认关。
+         图表画的是「外服 − 国服」差值，单服行没有差值，所以图表页既不显示这一项、
+         也不受它影响（走 store 的 crossRowsForChart）。 */
+      check('跨服表格页：右栏有「只显示仅国服存在的卡池」，且默认不勾',
+        /id="cs-only-sc"/.test(ch)
+        && !/<input[^>]*id="cs-only-sc"[^>]*\schecked/.test(ch), true);
+      check('跨服图表页：右栏没有这一项',
+        !/cs-only-sc/.test(chartPage.html), true);
+      const forcedSc = await renderRoute('/cross-server/chart', (s) => s.setCrossOnlySc(true));
+      check('跨服图表页：表格页勾了它也不影响图表数据（否则图会莫名变空白）',
+        forcedSc.store.crossRowsForChart.length > forcedSc.store.crossRows.length, true);
+
+      /* 纯函数口径：onlySc 只认 `servers === ['sc']`；且开启时忽略 `to` 上界 */
+      {
+        const lib = await vite.ssrLoadModule('/src/lib/crossServer.js');
+        const cfx = [
+          { name: '甲', type: 'single', servers: ['sc'], scStart: '2024-01-01' },
+          { name: '乙', type: 'single', servers: ['sc', 'en'], scStart: '2024-02-01' },
+          { name: '丙', type: 'single', servers: ['tc'], scStart: '2024-03-01' },
+          { name: '丁', type: 'single', servers: ['en', 'tc'], scStart: '2024-04-01' },
+          /* 戊 = 「国服上了、外服还没上」的典型：排在默认上界之后 */
+          { name: '戊', type: 'single', servers: ['sc'], scStart: '2026-11-15' },
+        ];
+        const names = (f) => lib.crossRows(cfx, f, {}).map((r) => r.name).join(',');
+        check('跨服筛选：onlySc 默认关', lib.emptyCrossFilters().onlySc, false);
+        check('跨服筛选：onlySc 只留「仅国服」的行（只有繁中 / 只有国际服的不算）',
+          names({ onlySc: true }), '戊,甲');
+        check('跨服筛选：onlySc 开启时忽略「开始日期 ≤」上界（否则勾了恒为 0 行）',
+          names({ onlySc: true, to: '2024-05-01' }), '戊,甲');
+        check('跨服筛选：不勾时上界照常生效', names({ to: '2024-05-01' }), '丁,丙,乙,甲');
+      }
       /* 左栏二级菜单的顺序（用户 2026-11-15 指定：**表格版在上、图表版在下**，与首次UP相反） */
       const navSrc = fs.readFileSync(path.join(ROOT, 'src/components/NavDrawer.vue'), 'utf8');
       const iCross = navSrc.indexOf('跨服卡池对比');

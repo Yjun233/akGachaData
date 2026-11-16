@@ -80,8 +80,15 @@ export const CROSS_EXCLUDED_TYPES = ['double', 'classic'];
 export const CROSS_ALLOWED_TYPES = Object.keys(TYPE_LABEL)
   .filter((t) => !CROSS_EXCLUDED_TYPES.includes(t));
 
-/** 空筛选条件（形状与 `lib/banners.js` 的 `emptyFilters` 一致，便于复用同一套交互） */
-export const emptyCrossFilters = () => ({ types: [], from: '', to: '', ops: [] });
+/**
+ * 空筛选条件（形状与 `lib/banners.js` 的 `emptyFilters` 一致，便于复用同一套交互）。
+ *
+ * `onlySc`（2026-11-16 用户加，**默认关**）：「只显示**仅国服存在**的卡池」——
+ * 即该期只有国服有、国际服 / 繁中服都没有。用途是排查「国服上了、外服还没上」的那批。
+ * ⚠️ 它是**表格版专用**：图表版画的是「外服 − 国服」的差值，单服行没有差值可画，
+ *    所以图表侧走 `crossRowsForChart()`（忽略这一项），见 store。
+ */
+export const emptyCrossFilters = () => ({ types: [], from: '', to: '', ops: [], onlySc: false });
 
 const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
 
@@ -218,13 +225,15 @@ function sortValue(row, key) {
  * - `types`：空 = 全部；非空时按白名单外的类型也会被自然过滤（行里根本没有那些类型）
  * - `from` / `to`：**以国服开始日期为准**（闭区间）。没有国服日期的行，只要设了任一端就不参与
  * - `ops`：**任意一服**的 UP 干员命中即保留（精确名 OR，与卡池列表同语义）
+ * - `onlySc`（2026-11-16 加，默认关）：只要**仅国服存在**的行 —— `servers` 恰好是 `['sc']`。
+ *   ⚠️ 别写成「`!banners.en` 或 `!banners.tc`」：那样会把「只有繁中」的行也放进来。
  *
  * 排序口径：差值 / 日期按**数值**比（`-3` 排在 `-10` 前面，别用字符串比）；
  * 空值**恒排末尾**（与方向无关）；平局用 `scStart` 降序兜不住时按名字**码点序**
  * （不用 `localeCompare`：它在 Node 与浏览器里对中文的排序可能不同，会让「首行是谁」的断言偶发失败）。
  *
  * @param {Array} entries
- * @param {{types?:string[], from?:string, to?:string, ops?:string[]}} filters
+ * @param {{types?:string[], from?:string, to?:string, ops?:string[], onlySc?:boolean}} filters
  * @param {{key?:string, dir?:string}} sort
  * @returns {Array}
  */
@@ -235,8 +244,13 @@ export function crossRows(entries = [], filters = {}, sort = {}) {
 
   const rows = entries.filter((r) => {
     if (typeSet && !typeSet.has(r.type)) return false;
+    /* 仅国服存在：servers 恰好一个且是 sc（「只有繁中」「只有国际服」的不算） */
+    if (f.onlySc && !(r.servers.length === 1 && r.servers[0] === 'sc')) return false;
     if (f.from && (!r.scStart || r.scStart < f.from)) return false;
-    if (f.to && (!r.scStart || r.scStart > f.to)) return false;
+    /* ⚠️ `to` 上界在 `onlySc` 开启时**不生效**：`crossBounds.max` 取的是「至少两服有数据」的最晚一期
+       （2026-05-15），而「仅国服存在」的那批恰恰全在它之后（实测 9 条，2026-06-26 ~ 2026-11-15）——
+       照默认范围筛的话勾了永远 0 行，看着像功能坏了。下界 `from` 仍然生效。 */
+    if (f.to && !f.onlySc && (!r.scStart || r.scStart > f.to)) return false;
     if (opSet && !CROSS_SERVERS.some((s) => (r.banners[s]?.upOperators || [])
       .some((o) => opSet.has(o.scCharName)))) return false;
     return true;

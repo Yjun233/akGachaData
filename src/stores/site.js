@@ -327,6 +327,17 @@ export const useSiteStore = defineStore('site', {
       return crossRows(this.crossEntries, s.crossFilters, s.crossSort);
     },
 
+    /**
+     * **图表版**用的行：与表格同一套筛选，但**忽略 `onlySc`**（2026-11-16）。
+     *
+     * 「只显示仅国服存在的卡池」是表格版专用的排查口径 —— 那批行的 `servers` 只有国服，
+     * `gapEnSc` / `gapTcSc` 恒为 null，画不出任何点；若不忽略，切到图表版会莫名其妙变空白。
+     * 其余筛选（类型 / 日期 / UP 干员）两页共用，切换不丢。
+     */
+    crossRowsForChart(s) {
+      return crossRows(this.crossEntries, { ...s.crossFilters, onlySc: false }, s.crossSort);
+    },
+
     /** 统计页：参考日期下的可见卡池与统计表 */
     statData(s) {
       return computeStats({
@@ -932,6 +943,11 @@ export const useSiteStore = defineStore('site', {
 
     setCrossOps(list) {
       this.crossFilters = { ...this.crossFilters, ops: Array.isArray(list) ? [...list] : [] };
+    },
+
+    /** 跨服表格：是否**只显示仅国服存在**的卡池（2026-11-16 用户加，默认关） */
+    setCrossOnlySc(v) {
+      this.crossFilters = { ...this.crossFilters, onlySc: !!v };
     },
 
     toggleCrossOp(name) {

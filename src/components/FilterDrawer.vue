@@ -46,6 +46,10 @@ const isUp = computed(() => route.name === 'upHistory');
    ⚠️ 2026-11-15 起拆成两条路由（表格 `crossServer` / 图表 `crossServerChart`），
       两页共用同一套 `crossFilters`，所以判断要覆盖两条。 */
 const isCross = computed(() => route.name === 'crossServer' || route.name === 'crossServerChart');
+/* 「只显示仅国服存在」这条**只在表格版**出现（2026-11-16 用户加）：
+   图表画的是「外服 − 国服」的差值，单服行没有差值可画，放上去只会让人以为图坏了。
+   store 侧对应 `crossRowsForChart`（忽略这一项），别在图表页用 `crossRows`。 */
+const isCrossTable = computed(() => route.name === 'crossServer');
 
 /* 当前统计模式的词：`首次进店` / `首次轮换`；**中坚模式下前面加「中坚」**
    （`首次中坚进店` / `首次中坚轮换`）—— 取词统一走 lib/firstUp.js，别在这儿另拼一份 */
@@ -531,6 +535,15 @@ function resetUp() {
           @update:model-value="site.setCrossOps"
         />
       </div>
+      <!-- 「只显示仅国服存在」：表格版专用（图表版没有差值可画，见 script 里的 isCrossTable） -->
+      <label v-if="isCrossTable" class="chk">
+        <input
+          id="cs-only-sc"
+          type="checkbox" :checked="site.crossFilters.onlySc"
+          @change="site.setCrossOnlySc($event.target.checked)"
+        />
+        <span>只显示仅国服存在的卡池<small>勾选后只留「国服上了、国际服 / 繁中服都还没有」的那几期；<b>此时忽略上面的「开始日期 ≤」上限</b>（这批池必然排在最后一期之后）</small></span>
+      </label>
       <button class="btn" type="button" @click="site.resetCrossFilters()">重置筛选</button>
       <div class="fresult">{{ crossResult }}</div>
     </div>
