@@ -1,9 +1,11 @@
 <script setup>
 /**
- * 表格右上角的**三个复制动作**（2026-11-15 扩展）：
+ * 表格右上角的**三个复制动作**（2026-11-15 扩展；**顺序 2026-11-16 由用户微调**）：
+ *   · 复制模式   —— 点表格某一行，只复制「表头 + 该行及以上 / 及以下」（先开模式，再复制）；
  *   · 复制为文本 —— 原来的「复制」（TSV，可直接粘进 Excel）；
- *   · 复制模式   —— 点表格某一行，只复制「表头 + 该行及以上 / 及以下」；
- *   · 复制为图片 —— 把那部分截成 PNG（写剪贴板，非安全上下文退化成下载）。
+ *   · 复制为图片 —— 把那部分截成 PNG（优先写剪贴板：异步 ClipboardItem → execCommand → 下载）。
+ *   ⚠️ 顺序是用户定的（复制模式排第一），`verify-render` 只数个数与 `data-act`、**不认顺序**，
+ *      以后想调直接在模板里挪，别顺手“统一”回去。
  *
  * ⚠️ 传进来的是**二维数组**（`rows`，第一行是表头），不是 DOM ——
  *    这样图片模式（表格里只有头像、没有名字）也能复制到干员名，
@@ -151,18 +153,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="copy-actions">
     <button
-      class="copy-btn" type="button" data-act="text"
-      :class="{ ok: textState === 'ok', fail: textState === 'fail' }"
-      :title="title" :aria-label="title" @click="onCopy"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">
-        <rect x="8.6" y="8.6" width="11.4" height="11.4" rx="2.6" />
-        <path d="M15.4 6.4V5.6A2.6 2.6 0 0 0 12.8 3H5.6A2.6 2.6 0 0 0 3 5.6v7.2a2.6 2.6 0 0 0 2.6 2.6h.8" />
-      </svg>
-      <span aria-live="polite">{{ textState === 'ok' ? '已复制' : textState === 'fail' ? '复制失败' : '复制为文本' }}</span>
-    </button>
-
-    <button
       class="copy-btn" type="button" data-act="mode" :class="{ active: mode }"
       :title="mode ? '退出复制模式（恢复整表复制）' : '进入复制模式：点表格某一行，只复制那一部分'"
       :aria-pressed="mode" @click="mode = !mode"
@@ -172,6 +162,18 @@ onBeforeUnmount(() => {
         <circle cx="19.5" cy="17" r="2.2" />
       </svg>
       <span>{{ mode ? '退出复制' : '复制模式' }}</span>
+    </button>
+
+    <button
+      class="copy-btn" type="button" data-act="text"
+      :class="{ ok: textState === 'ok', fail: textState === 'fail' }"
+      :title="title" :aria-label="title" @click="onCopy"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">
+        <rect x="8.6" y="8.6" width="11.4" height="11.4" rx="2.6" />
+        <path d="M15.4 6.4V5.6A2.6 2.6 0 0 0 12.8 3H5.6A2.6 2.6 0 0 0 3 5.6v7.2a2.6 2.6 0 0 0 2.6 2.6h.8" />
+      </svg>
+      <span aria-live="polite">{{ textState === 'ok' ? '已复制' : textState === 'fail' ? '复制失败' : '复制为文本' }}</span>
     </button>
 
     <button

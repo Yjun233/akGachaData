@@ -58,10 +58,19 @@ export function nextBannerSort(current, key) {
   return { key, dir: key === 'startDate' || key === 'endDate' ? 'desc' : 'asc' };
 }
 
-/** 统计表：点击表头后的下一个排序状态（默认升序） */
+/**
+ * 统计表：**第一次点就该「从大到小」**的列（2026-11-16 用户要求）。
+ *
+ * 只有「距今天数」这一类：看这张表就是为了找出**等得最久**的干员，
+ * 首次点击给升序等于把有用的排到最后，还得再点一次。
+ * ⚠️ 别顺手把「结束时间」也加进来 —— 那是日期，用户没提，改了反而要重新适应。
+ */
+const STAT_DESC_FIRST = new Set(['upDays', 'shopDays']);
+
+/** 统计表：点击表头后的下一个排序状态（距今天数默认降序，其余默认升序） */
 export function nextStatSort(current, key) {
   if (current && current.key === key) {
     return { key, dir: current.dir === 'asc' ? 'desc' : 'asc' };
   }
-  return { key, dir: 'asc' };
+  return { key, dir: STAT_DESC_FIRST.has(key) ? 'desc' : 'asc' };
 }

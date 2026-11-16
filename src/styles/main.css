@@ -465,8 +465,11 @@ main.content{
 .copy-btn.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
 .copy-btn.fail{color:var(--danger);border-color:var(--danger)}
 
-/* 三个复制动作（2026-11-15）：复制为文本 / 复制模式 / 复制为图片，横排挂在表标题右侧 */
-.copy-actions{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+/* 三个复制动作（2026-11-15）：复制模式 / 复制为文本 / 复制为图片（顺序见 CopyButton.vue，
+   2026-11-16 用户把「复制模式」挪到了最前），横排挂在表标题右侧。
+   ⚠️ `margin-left:auto` 写在容器上（原来写在各 `copy-btn` 上，第一个按钮吃 auto）——
+   用户微调时挪过来的，按钮顺序再变也不用跟着改。 */
+.copy-actions{display:inline-flex;margin-left: auto;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .copy-btn.active{color:#fff;background:var(--blue-700);border-color:var(--blue-700)}
 .copy-btn.active:hover{background:var(--blue-800,#1b4f9c);border-color:var(--blue-800,#1b4f9c)}
 

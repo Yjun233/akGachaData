@@ -2920,6 +2920,17 @@ try {
       /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
   }
 
+  /* 排序方向：用户 2026-11-16 ——「距今天数」第一次点就要从大到小（等得最久的排最前） */
+  {
+    const { nextStatSort } = await vite.ssrLoadModule('/src/lib/banners.js');
+    check('统计页排序：距今天数第一次点就是从大到小',
+      `${nextStatSort(undefined, 'upDays').dir}|${nextStatSort(undefined, 'shopDays').dir}`, 'desc|desc');
+    check('统计页排序：其它列仍默认升序，再点一次才反过来',
+      [nextStatSort(undefined, 'name').dir,
+        nextStatSort({ key: 'name', dir: 'asc' }, 'name').dir,
+        nextStatSort({ key: 'upDays', dir: 'desc' }, 'upDays').dir].join('|'), 'asc|desc|asc');
+  }
+
   /* ---------------- 自定义卡池：**加载时自动删除**被覆盖的自设 ----------------
      用户 2026-10-06 定：撞上已公布卡池的自设要**自动删掉**（别一直堆在「已忽略」里）。
      做法：给一个假的 `localStorage`，塞两条 —— 一条**必然撞车**（照抄某个真实已公布池的
