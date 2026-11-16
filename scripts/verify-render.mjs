@@ -2310,36 +2310,47 @@ try {
       check('跨服图表页：右栏仍是「筛选与日期范围」（与表格页共用 crossFilters）',
         /筛选与日期范围/.test(chartPage.html), true);
 
-      /* 「只显示仅国服存在的卡池」（2026-11-16 用户加）—— **表格版专用**，默认关。
-         图表画的是「外服 − 国服」差值，单服行没有差值，所以图表页既不显示这一项、
-         也不受它影响（走 store 的 crossRowsForChart）。 */
-      check('跨服表格页：右栏有「只显示仅国服存在的卡池」，且默认不勾',
-        /id="cs-only-sc"/.test(ch)
-        && !/<input[^>]*id="cs-only-sc"[^>]*\schecked/.test(ch), true);
-      check('跨服图表页：右栏没有这一项',
-        !/cs-only-sc/.test(chartPage.html), true);
-      const forcedSc = await renderRoute('/cross-server/chart', (s) => s.setCrossOnlySc(true));
-      check('跨服图表页：表格页勾了它也不影响图表数据（否则图会莫名变空白）',
-        forcedSc.store.crossRowsForChart.length > forcedSc.store.crossRows.length, true);
+      /* 「额外显示仅国服存在的卡池」（2026-11-16 用户加）—— **表格版专用**，默认关。
+         语义是**追加**：默认日期上界会把「只有国服有、且晚于上界」的那批切掉，勾上后补回来，
+         其余行一条不少（不是「只显示它们」）。图表侧走 store 的 crossRowsForChart 忽略这一项。 */
+      check('跨服表格页：右栏有「额外显示仅国服存在的卡池」，且默认不勾',
+        /id="cs-show-sc"/.test(ch)
+        && !/<input[^>]*id="cs-show-sc"[^>]*\schecked/.test(ch), true);
+      check('跨服图表页：右栏没有这一项', !/cs-show-sc/.test(chartPage.html), true);
 
-      /* 纯函数口径：onlySc 只认 `servers === ['sc']`；且开启时忽略 `to` 上界 */
+      const withExtra = await renderRoute('/cross-server', (s) => s.setCrossShowScOnly(true));
+      check('跨服表格页：勾上后行数变多（把仅国服那批补进来，不是筛掉别的）',
+        withExtra.store.crossRows.length > cross.store.crossRows.length, true);
+      check('跨服表格页：补进来的行都是「只有国服」的',
+        withExtra.store.crossRows.filter((r) => r.servers.length === 1)
+          .every((r) => r.servers[0] === 'sc'), true);
+
+      const forcedSc = await renderRoute('/cross-server/chart', (s) => s.setCrossShowScOnly(true));
+      check('跨服图表页：表格页勾了「额外显示」也不影响图表取数（crossRowsForChart 忽略它）',
+        forcedSc.store.crossRowsForChart.length === chartPage.store.crossRowsForChart.length, true);
+
+      /* 纯函数口径：追加的只有 `servers === ['sc']` 的行，且它们豁免 `to` 上界 */
       {
         const lib = await vite.ssrLoadModule('/src/lib/crossServer.js');
         const cfx = [
           { name: '甲', type: 'single', servers: ['sc'], scStart: '2024-01-01' },
           { name: '乙', type: 'single', servers: ['sc', 'en'], scStart: '2024-02-01' },
-          { name: '丙', type: 'single', servers: ['tc'], scStart: '2024-03-01' },
+          /* 丙：只有繁中、也晚于上界 —— **不该**被豁免（不是「仅国服」） */
+          { name: '丙', type: 'single', servers: ['tc'], scStart: '2026-10-01' },
           { name: '丁', type: 'single', servers: ['en', 'tc'], scStart: '2024-04-01' },
-          /* 戊 = 「国服上了、外服还没上」的典型：排在默认上界之后 */
+          /* 戊：「国服上了、外服还没上」的典型，排在默认上界之后 */
           { name: '戊', type: 'single', servers: ['sc'], scStart: '2026-11-15' },
         ];
         const names = (f) => lib.crossRows(cfx, f, {}).map((r) => r.name).join(',');
-        check('跨服筛选：onlySc 默认关', lib.emptyCrossFilters().onlySc, false);
-        check('跨服筛选：onlySc 只留「仅国服」的行（只有繁中 / 只有国际服的不算）',
-          names({ onlySc: true }), '戊,甲');
-        check('跨服筛选：onlySc 开启时忽略「开始日期 ≤」上界（否则勾了恒为 0 行）',
-          names({ onlySc: true, to: '2024-05-01' }), '戊,甲');
-        check('跨服筛选：不勾时上界照常生效', names({ to: '2024-05-01' }), '丁,丙,乙,甲');
+        check('跨服筛选：showScOnly 默认关', lib.emptyCrossFilters().showScOnly, false);
+        check('跨服筛选：不勾时上界照常切（晚于上界的全没了）',
+          names({ to: '2024-05-01' }), '丁,乙,甲');
+        check('跨服筛选：勾上后**追加**仅国服的行，原有行一条不少',
+          names({ to: '2024-05-01', showScOnly: true }), '戊,丁,乙,甲');
+        check('跨服筛选：只豁免「仅国服」—— 只有繁中且晚于上界的丙仍被切',
+          names({ to: '2024-05-01', showScOnly: true }).includes('丙'), false);
+        check('跨服筛选：丙本身没被删掉（放宽下界后仍在）',
+          names({ from: '2026-01-01', showScOnly: true }), '戊,丙');
       }
       /* 左栏二级菜单的顺序（用户 2026-11-15 指定：**表格版在上、图表版在下**，与首次UP相反） */
       const navSrc = fs.readFileSync(path.join(ROOT, 'src/components/NavDrawer.vue'), 'utf8');

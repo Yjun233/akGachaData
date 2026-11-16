@@ -46,8 +46,9 @@ const isUp = computed(() => route.name === 'upHistory');
    ⚠️ 2026-11-15 起拆成两条路由（表格 `crossServer` / 图表 `crossServerChart`），
       两页共用同一套 `crossFilters`，所以判断要覆盖两条。 */
 const isCross = computed(() => route.name === 'crossServer' || route.name === 'crossServerChart');
-/* 「只显示仅国服存在」这条**只在表格版**出现（2026-11-16 用户加）：
-   图表画的是「外服 − 国服」的差值，单服行没有差值可画，放上去只会让人以为图坏了。
+/* 「额外显示仅国服存在的卡池」这条**只在表格版**出现（2026-11-16 用户加）：
+   它是把默认被日期上界切掉的那批「只有国服有」的池**补进来**（追加，不是筛选）；
+   图表上这些点两个差值都是 null、只会把横轴拉长，所以不适用。
    store 侧对应 `crossRowsForChart`（忽略这一项），别在图表页用 `crossRows`。 */
 const isCrossTable = computed(() => route.name === 'crossServer');
 
@@ -535,14 +536,14 @@ function resetUp() {
           @update:model-value="site.setCrossOps"
         />
       </div>
-      <!-- 「只显示仅国服存在」：表格版专用（图表版没有差值可画，见 script 里的 isCrossTable） -->
+      <!-- 「额外显示仅国服存在的卡池」：表格版专用（图表版那些点没有差值，见 script 里的 isCrossTable） -->
       <label v-if="isCrossTable" class="chk">
         <input
-          id="cs-only-sc"
-          type="checkbox" :checked="site.crossFilters.onlySc"
-          @change="site.setCrossOnlySc($event.target.checked)"
+          id="cs-show-sc"
+          type="checkbox" :checked="site.crossFilters.showScOnly"
+          @change="site.setCrossShowScOnly($event.target.checked)"
         />
-        <span>只显示仅国服存在的卡池<small>勾选后只留「国服上了、国际服 / 繁中服都还没有」的那几期；<b>此时忽略上面的「开始日期 ≤」上限</b>（这批池必然排在最后一期之后）</small></span>
+        <span>额外显示仅国服存在的卡池<small>这批池只有国服有、日期又晚于上面的上界，平时被切掉了；勾选后<b>追加</b>列出（其余行不受影响）</small></span>
       </label>
       <button class="btn" type="button" @click="site.resetCrossFilters()">重置筛选</button>
       <div class="fresult">{{ crossResult }}</div>

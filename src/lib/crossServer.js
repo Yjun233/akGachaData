@@ -83,12 +83,14 @@ export const CROSS_ALLOWED_TYPES = Object.keys(TYPE_LABEL)
 /**
  * 空筛选条件（形状与 `lib/banners.js` 的 `emptyFilters` 一致，便于复用同一套交互）。
  *
- * `onlySc`（2026-11-16 用户加，**默认关**）：「只显示**仅国服存在**的卡池」——
- * 即该期只有国服有、国际服 / 繁中服都没有。用途是排查「国服上了、外服还没上」的那批。
- * ⚠️ 它是**表格版专用**：图表版画的是「外服 − 国服」的差值，单服行没有差值可画，
+ * `showScOnly`（2026-11-16 用户加，**默认关**）：「**额外**显示**仅国服存在**的卡池」——
+ * 即「国服上了、国际服 / 繁中服都还没有」的那几期。它们只有一服有数据，日期又必然晚于
+ * 默认上界（`crossBounds.max` = 最后一个**至少两服有数据**的池），所以平时被日期范围切掉。
+ * ⚠️ 是**追加**，不是筛选：勾上后原有的行**一条都不少**，只是把那批补进来。
+ * ⚠️ 它是**表格版专用**：图表的 x 轴上那些点两个差值都是 null（画不出线），
  *    所以图表侧走 `crossRowsForChart()`（忽略这一项），见 store。
  */
-export const emptyCrossFilters = () => ({ types: [], from: '', to: '', ops: [], onlySc: false });
+export const emptyCrossFilters = () => ({ types: [], from: '', to: '', ops: [], showScOnly: false });
 
 const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
 
@@ -225,15 +227,18 @@ function sortValue(row, key) {
  * - `types`：空 = 全部；非空时按白名单外的类型也会被自然过滤（行里根本没有那些类型）
  * - `from` / `to`：**以国服开始日期为准**（闭区间）。没有国服日期的行，只要设了任一端就不参与
  * - `ops`：**任意一服**的 UP 干员命中即保留（精确名 OR，与卡池列表同语义）
- * - `onlySc`（2026-11-16 加，默认关）：只要**仅国服存在**的行 —— `servers` 恰好是 `['sc']`。
- *   ⚠️ 别写成「`!banners.en` 或 `!banners.tc`」：那样会把「只有繁中」的行也放进来。
+ * - `showScOnly`（2026-11-16 加，默认关）：**额外**把**仅国服存在**的行也列出来 ——
+ *   即 `servers` 恰好是 `['sc']` 的行**不受 `to` 上界约束**（其余行照旧受约束）。
+ *   ⚠️ 是追加不是筛选：别的行一条都不少，所以这里**不能**写 `if (f.showScOnly && !isScOnly) return false`。
+ *   ⚠️ 判据必须写成「`servers` 恰好 `['sc']`」，不能写成「没有 en 或没有 tc」——
+ *   那样会把「只有繁中」的行也算进来（它们同样没有差值可比）。
  *
  * 排序口径：差值 / 日期按**数值**比（`-3` 排在 `-10` 前面，别用字符串比）；
  * 空值**恒排末尾**（与方向无关）；平局用 `scStart` 降序兜不住时按名字**码点序**
  * （不用 `localeCompare`：它在 Node 与浏览器里对中文的排序可能不同，会让「首行是谁」的断言偶发失败）。
  *
  * @param {Array} entries
- * @param {{types?:string[], from?:string, to?:string, ops?:string[], onlySc?:boolean}} filters
+ * @param {{types?:string[], from?:string, to?:string, ops?:string[], showScOnly?:boolean}} filters
  * @param {{key?:string, dir?:string}} sort
  * @returns {Array}
  */
@@ -242,15 +247,17 @@ export function crossRows(entries = [], filters = {}, sort = {}) {
   const typeSet = f.types && f.types.length ? new Set(f.types) : null;
   const opSet = f.ops && f.ops.length ? new Set(f.ops) : null;
 
+  /** 「仅国服存在」= 只有国服这一服有（不是「缺某一服」） */
+  const isScOnly = (r) => r.servers.length === 1 && r.servers[0] === 'sc';
+
   const rows = entries.filter((r) => {
     if (typeSet && !typeSet.has(r.type)) return false;
-    /* 仅国服存在：servers 恰好一个且是 sc（「只有繁中」「只有国际服」的不算） */
-    if (f.onlySc && !(r.servers.length === 1 && r.servers[0] === 'sc')) return false;
     if (f.from && (!r.scStart || r.scStart < f.from)) return false;
-    /* ⚠️ `to` 上界在 `onlySc` 开启时**不生效**：`crossBounds.max` 取的是「至少两服有数据」的最晚一期
-       （2026-05-15），而「仅国服存在」的那批恰恰全在它之后（实测 9 条，2026-06-26 ~ 2026-11-15）——
-       照默认范围筛的话勾了永远 0 行，看着像功能坏了。下界 `from` 仍然生效。 */
-    if (f.to && !f.onlySc && (!r.scStart || r.scStart > f.to)) return false;
+    /* 上界 `to`：`showScOnly` 开启时**仅国服**的行豁免 —— 默认上界是「至少两服有数据」的最晚一期
+       （2026-05-15），而那批池必然全在它之后（实测 11 条，2026-06-26 ~ 2026-11-15），
+       不豁免的话勾了等于没勾。其余行（≥2 服）仍按上界切。下界 `from` 对所有行都生效。 */
+    const scOnlyExempt = f.showScOnly && isScOnly(r);
+    if (f.to && !scOnlyExempt && (!r.scStart || r.scStart > f.to)) return false;
     if (opSet && !CROSS_SERVERS.some((s) => (r.banners[s]?.upOperators || [])
       .some((o) => opSet.has(o.scCharName)))) return false;
     return true;

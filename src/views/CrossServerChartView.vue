@@ -8,8 +8,8 @@
  * 图只画**跟国服相关的两个差值**（国际服 − 国服、繁中服 − 国服），横轴 = 国服开始日期；
  * 口径与 option 构造全在 `lib/crossChart.js` 的文件头，本页只负责取数。
  *
- * ⚠️ 取数用 `crossRowsForChart`（**忽略右栏的「只显示仅国服存在」**）—— 那批行 `servers` 只有国服，
- *    两个差值恒为 null，画不出点。见 store 里那个 getter 的说明。
+ * ⚠️ 取数用 `crossRowsForChart`（**忽略右栏的「额外显示仅国服存在的卡池」**）—— 那批行只有国服，
+ *    两个差值恒为 null，画不出点、只会把横轴拉长。见 store 里那个 getter 的说明。
  */
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';
