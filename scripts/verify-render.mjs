@@ -654,11 +654,35 @@ try {
     check('默认候选：默认顺序 = 标准在前，中坚在后',
       `${st.opSuggest.length}|${st.opSuggest.slice(0, 6).join() === g.std.join()}|`
       + `${st.opSuggest.slice(6).join() === g.mid.join()}`, '12|true|true');
-    /* 自定义卡池弹窗：卡池类型是中坚类时反过来 */
+    /* 按星级取（2026-11-17 补）：自定义卡池弹窗的六星 / 五星框**池子按星级切开**，
+       喂不分星级的 6+6 会在 `pool` 过滤后只剩两三位（中坚每期只有 2 六星 + 3 五星）。 */
+    const byR = st.opSuggestGroupsByRarity;
+    const rar = (n) => st.operators[n]?.rarity;
+    check('默认候选：按星级分组同样是各 6 位',
+      [byR[6].std, byR[6].mid, byR[5].std, byR[5].mid].map((a) => a.length).join('|'), '6|6|6|6');
+    check('默认候选：六星组里全是六星、五星组里全是五星',
+      [...byR[6].std, ...byR[6].mid].every((n) => rar(n) === 6)
+      && [...byR[5].std, ...byR[5].mid].every((n) => rar(n) === 5), true);
+    /* 六星标准组的第一位 = 六星标准行里天数最大的那位（同样用 lib 重算，验「只加了星级筛」） */
+    const topStd6 = st.statRows
+      .filter((r) => lib.isMidAt(r, refDate) === false && r.rarity === 6)
+      .map((r) => ({ n: r.name, v: lib.daysSortValue(lib.viewEndInfo(r, 'up', refDate, st.statMidOnly)) }))
+      .sort((a, b) => b.v - a.v)[0];
+    check('默认候选：六星组同样按天数降序（第一位 = 六星里天数最久的）',
+      `${byR[6].std[0]}|${topStd6.n}`, `${topStd6.n}|${topStd6.n}`);
+    check('默认候选：星级版两组互不重叠（一位干员不会同时进六星组与五星组）',
+      [...byR[6].std, ...byR[6].mid].some((n) => byR[5].std.includes(n) || byR[5].mid.includes(n)), false);
+    /* 自定义卡池弹窗：卡池类型是中坚类时三个框都反过来；六星 / 五星各用按星级版本 */
     const cbdSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
-    check('默认候选：弹窗里中坚类型 → 中坚在前（`BANNER_CATEGORIES[form.type] === \'中坚寻访\'`）',
-      /BANNER_CATEGORIES\[form\.type\] === '中坚寻访'[\s\S]{0,80}site\.opSuggestMidFirst/.test(cbdSrc)
-      && /const opSuggest = computed/.test(cbdSrc), true);
+    check('默认候选：弹窗里中坚类型 → 三个框都反过来（中坚在前）',
+      /const isMidType = computed\(\(\) => BANNER_CATEGORIES\[form\.type\] === '中坚寻访'\)/.test(cbdSrc)
+      && /opSuggestSix = computed[\s\S]{0,60}site\.opSuggestSixMidFirst/.test(cbdSrc)
+      && /opSuggestFive = computed[\s\S]{0,60}site\.opSuggestFiveMidFirst/.test(cbdSrc)
+      && /opSuggestShop = computed[\s\S]{0,60}site\.opSuggestMidFirst/.test(cbdSrc), true);
+    check('默认候选：弹窗六星框接 `opSuggestSix`、五星框接 `opSuggestFive`、进店框接不分星级的 `opSuggestShop`',
+      /:pool="sixPool"[^>]*:suggest="opSuggestSix"/.test(cbdSrc)
+      && /:pool="fivePool"[^>]*:suggest="opSuggestFive"/.test(cbdSrc)
+      && /:pool="shopPool"[^>]*:suggest="opSuggestShop"/.test(cbdSrc), true);
     /* 接线：每个 OpPicker 都把 suggest 传进去了（否则组件里那套默认候选永远是空的） */
     const fdSrc2 = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
     const countIn = (src) => (src.match(/<OpPicker/g) || []).length;

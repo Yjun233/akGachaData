@@ -49,6 +49,32 @@ import {
  */
 const endDefault = (min, today) => (min && today < min ? min : today);
 
+/**
+ * 干员选择框「默认候选」的分组核心 —— 下面几个 `opSuggest*` getter 共用这一份。
+ *
+ * 口径（2026-11-17 用户要求）：
+ * · 天数走 `viewEndInfo(row, 'up', refDate, midOnly)` + `daysSortValue()` —— 与统计表
+ *   「距今天数」那一列**完全同源**（进行中 = 0、无数据 = -1）；
+ * · 标准 / 中坚用 `isMidAt(row, refDate)` 分（**不是** `everMid`，见 lib/stats.js 的说明）；
+ * · 参考日期用当前 `refDate` —— 与表格里看到的一致，换了参考日候选也跟着变；
+ * · 每组取前 **6** 位，平局按名字码点序。
+ *
+ * @param {Array}   rows      统计行（`statRows`）
+ * @param {string}  refDate   参考日期
+ * @param {boolean} midOnly   右栏「中坚寻访只看中坚」开关（决定天数的口径）
+ * @param {number|null} rarity 只取该星级（`null` = 不分星级）
+ * @returns {{std: string[], mid: string[]}}
+ */
+function suggestGroups(rows, refDate, midOnly, rarity = null) {
+  const pick = (isMid) => rows
+    .filter((r) => isMidAt(r, refDate) === isMid && (rarity == null || r.rarity === rarity))
+    .map((r) => ({ name: r.name, v: daysSortValue(viewEndInfo(r, 'up', refDate, midOnly)) }))
+    .sort((a, b) => (b.v - a.v) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .slice(0, 6)
+    .map((x) => x.name);
+  return { std: pick(false), mid: pick(true) };
+}
+
 export const useSiteStore = defineStore('site', {
   state: () => ({
     // ---- 数据 ----
@@ -364,28 +390,26 @@ export const useSiteStore = defineStore('site', {
 
     /**
      * 干员选择框的**默认候选**：按「出率提升距今天数」从大到小，标准 6 位 + 中坚 6 位。
-     * 返回 `{ std, mid }` 两组（各组已按天数降序，平局按名字码点序）。
+     * 返回 `{ std, mid }` 两组（各组已按天数降序，平局按名字码点序）。口径见 `suggestGroups()`。
      *
-     * 口径（2026-11-17 用户要求）：
-     * · 天数走 `viewEndInfo(row, 'up', refDate, statMidOnly)` + `daysSortValue()` ——
-     *   与统计表「距今天数」那一列**完全同源**（进行中 = 0、无数据 = -1）；
-     * · 标准 / 中坚用 `isMidAt(row, refDate)` 分（**不是** `everMid`，见 lib/stats.js 的说明）；
-     * · 参考日期用当前 `refDate` —— 与表格里看到的一致，换了参考日候选也跟着变。
-     *
+     * ⚠️ 这一组**不分星级** —— 右栏那三个框（卡池列表 UP 干员 / 高亮 / 置灰）与跨服的池子
+     *    都是全干员，正好直接用。**按星级切池子的框**（自定义卡池弹窗的六星 / 五星）要用
+     *    下面 `opSuggestSix*` / `opSuggestFive*`，否则中坚那 6 位里只有 2~3 位是六星，
+     *    被 `pool` 一滤就只剩三个（2026-11-17 用户报的就是这个）。
      * ⚠️ 只在**没输入文本**时用（OpPicker 的 `suggest` prop），输入了照常走搜索。
      */
     opSuggestGroups(s) {
       const refDate = s.refDate || this.today;
-      const pick = (isMid) => this.statRows
-        .filter((r) => isMidAt(r, refDate) === isMid)
-        .map((r) => ({
-          name: r.name,
-          v: daysSortValue(viewEndInfo(r, 'up', refDate, s.statMidOnly)),
-        }))
-        .sort((a, b) => (b.v - a.v) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-        .slice(0, 6)
-        .map((x) => x.name);
-      return { std: pick(false), mid: pick(true) };
+      return suggestGroups(this.statRows, refDate, s.statMidOnly);
+    },
+
+    /** 默认候选 · **按星级分组**：`{ 6: { std, mid }, 5: { std, mid } }`（同上口径，只多一层星级筛） */
+    opSuggestGroupsByRarity(s) {
+      const refDate = s.refDate || this.today;
+      return {
+        6: suggestGroups(this.statRows, refDate, s.statMidOnly, 6),
+        5: suggestGroups(this.statRows, refDate, s.statMidOnly, 5),
+      };
     },
 
     /** 默认候选 · **标准在前**（统计页两个选择框、卡池列表 / 跨服的 UP 干员都用这个） */
@@ -397,6 +421,31 @@ export const useSiteStore = defineStore('site', {
     /** 默认候选 · **中坚在前**（自定义卡池弹窗里卡池类型选到中坚类时才用，用户 2026-11-17 指定） */
     opSuggestMidFirst(s) {
       const g = this.opSuggestGroups;
+      return [...g.mid, ...g.std];
+    },
+
+    /* 下面四个 = 上面两个的**按星级版**，专供自定义卡池弹窗的「六星」「五星」两个框。
+       ⚠️ 那两个框的 `pool` 只含本星级的干员，用不分星级的那组会被滤剩两三位（中坚每期
+          只有 2 六星 + 3 五星，所以中坚组前 6 位里六星本来就少）。 */
+
+    /** 弹窗「六星」框 · 标准在前 */
+    opSuggestSix(s) {
+      const g = this.opSuggestGroupsByRarity[6];
+      return [...g.std, ...g.mid];
+    },
+    /** 弹窗「六星」框 · 中坚在前 */
+    opSuggestSixMidFirst(s) {
+      const g = this.opSuggestGroupsByRarity[6];
+      return [...g.mid, ...g.std];
+    },
+    /** 弹窗「五星」框 · 标准在前 */
+    opSuggestFive(s) {
+      const g = this.opSuggestGroupsByRarity[5];
+      return [...g.std, ...g.mid];
+    },
+    /** 弹窗「五星」框 · 中坚在前 */
+    opSuggestFiveMidFirst(s) {
+      const g = this.opSuggestGroupsByRarity[5];
       return [...g.mid, ...g.std];
     },
 
