@@ -672,17 +672,24 @@ try {
       `${byR[6].std[0]}|${topStd6.n}`, `${topStd6.n}|${topStd6.n}`);
     check('默认候选：星级版两组互不重叠（一位干员不会同时进六星组与五星组）',
       [...byR[6].std, ...byR[6].mid].some((n) => byR[5].std.includes(n) || byR[5].mid.includes(n)), false);
-    /* 自定义卡池弹窗：卡池类型是中坚类时三个框都反过来；六星 / 五星各用按星级版本 */
+    /* 自定义卡池弹窗：卡池类型是中坚类时六星 / 五星两个框**反过来**（「进店」框不再按天数给建议） */
     const cbdSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
-    check('默认候选：弹窗里中坚类型 → 三个框都反过来（中坚在前）',
+    check('默认候选：弹窗里中坚类型 → 六星 / 五星两个框反过来（中坚在前）',
       /const isMidType = computed\(\(\) => BANNER_CATEGORIES\[form\.type\] === '中坚寻访'\)/.test(cbdSrc)
       && /opSuggestSix = computed[\s\S]{0,60}site\.opSuggestSixMidFirst/.test(cbdSrc)
-      && /opSuggestFive = computed[\s\S]{0,60}site\.opSuggestFiveMidFirst/.test(cbdSrc)
-      && /opSuggestShop = computed[\s\S]{0,60}site\.opSuggestMidFirst/.test(cbdSrc), true);
-    check('默认候选：弹窗六星框接 `opSuggestSix`、五星框接 `opSuggestFive`、进店框接不分星级的 `opSuggestShop`',
+      && /opSuggestFive = computed[\s\S]{0,60}site\.opSuggestFiveMidFirst/.test(cbdSrc), true);
+    check('默认候选：弹窗六星框接 `opSuggestSix`、五星框接 `opSuggestFive`',
       /:pool="sixPool"[^>]*:suggest="opSuggestSix"/.test(cbdSrc)
-      && /:pool="fivePool"[^>]*:suggest="opSuggestFive"/.test(cbdSrc)
-      && /:pool="shopPool"[^>]*:suggest="opSuggestShop"/.test(cbdSrc), true);
+      && /:pool="fivePool"[^>]*:suggest="opSuggestFive"/.test(cbdSrc), true);
+    /* 「进店」框（2026-11-17 用户改）：默认候选 = **上面已选的全部干员**，先六星后五星（`shopPool`），
+       不再按「出率提升距今天数」给 6+6 —— 进店只能从这两组里挑，全摆出来更省事。 */
+    check('默认候选：弹窗「进店」框给的是已选的全部干员（`:suggest="shopPool"`，先六星后五星）',
+      /:pool="shopPool" :suggest="shopPool"/.test(cbdSrc)
+      && /const shopPool = computed\(\(\) => \[\.\.\.form\.star6, \.\.\.form\.star5\]\)/.test(cbdSrc), true);
+    /* 候选个数不再由组件截断（进店框可能有几十位）—— 上限交给调用方给的 suggest */
+    const opSrc2 = fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8');
+    check('默认候选：`OpPicker` 不再把候选截到 12 个（进店框可能几十位，`.opsug` 自己滚）',
+      !/slice\(0, 12\)/.test(opSrc2), true);
     /* 接线：每个 OpPicker 都把 suggest 传进去了（否则组件里那套默认候选永远是空的） */
     const fdSrc2 = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
     const countIn = (src) => (src.match(/<OpPicker/g) || []).length;
@@ -2877,14 +2884,16 @@ try {
       store.customEntries.length === 1 && store.customEntries[0].uid === 1, true);
     /* ⚠️ 2026-11-03 用户把说明里那行「标 / 中」图例删掉了（精简文案），所以这里**不能再数
        `optag` 的个数**（那个图例是弹窗里唯一能 SSR 出来的标记 —— 候选要输入才出现）。
-       改成钉接线：标记本身还在，由 `OpPicker` 的 `tag-of` = `tagOf()`（`midTag()` 判现实今天）提供。 */
-    check('自定义卡池弹窗：「标 / 中」标记仍由 OpPicker 的 tagOf 提供（说明里的图例已精简掉）',
-      /:tag-of="tagOf"/.test(
+       ⚠️ 2026-11-17 起标记**收进 `OpPicker` 自己算**（`midTag` + 星级），调用方不再传 `tagOf`。 */
+    const opSrc3 = fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8');
+    check('自定义卡池弹窗：不再自己传「标 / 中」（标记已收进 OpPicker，全站统一）',
+      !/tag-of=/.test(
         fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
       )
-      && /midTag\(site\.classicDateOf\(op\), today\)/.test(
+      && !/function tagOf/.test(
         fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8'),
       )
+      && /midTag\(site\.classicDateOf\(op\), site\.today\)/.test(opSrc3)
       && count(html, /class="optag/g) === 0, true);
   }
 
@@ -2923,21 +2932,36 @@ try {
       /整体覆盖/.test(html), true);
   }
 
-  /* ---------------- 干员多选的「标 / 中」标记 ----------------
-     用户 2026-10-06 定：名字**前面**标一个字，表示该干员**此刻**属标准还是中坚寻访。
-     弹窗那遍渲不出 chip（表单初始为空）→ 这里把 OpPicker 单独渲一遍，钉死
-     「标记在名字**前面**」+「中 / 标 用不同类名」这两件事。 */
+  /* ---------------- 干员多选的「标 / 中」+ 星级标记 ----------------
+     用户 2026-10-06 定：名字**前面**标一个字，表示该干员**此刻**属标准还是中坚寻访；
+     2026-11-17 又要求**全站所有选择框**都加上星级（★6 / ★5），且顺序是「标/中 → ★星级 → 名字」。
+     ⚠️ 标记现在由 `OpPicker` 自己算（读 store），所以这里必须挂 pinia 并 `load()` 才有数据。 */
   {
     const { default: OpPicker } = await vite.ssrLoadModule('/src/components/OpPicker.vue');
+    const { midTag } = await vite.ssrLoadModule('/src/lib/customBanners.js');
     const app = createSSRApp(OpPicker, {
       modelValue: ['陈', '玛恩纳'],
       pool: ['陈', '玛恩纳'],
-      tagOf: (n) => (n === '陈' ? '中' : '标'),
     });
+    const pinia = createPinia();
+    app.use(pinia);
+    const stOp = useSiteStore(pinia);
+    await stOp.load();
     const html = await renderToString(app);
-    check('干员多选：标记画在名字**前面**（不是后面）',
-      /<em class="optag mid">中<\/em>陈/.test(html)
-      && /<em class="optag std">标<\/em>玛恩纳/.test(html), true);
+    /* 期望的标记串用 store 现算（不写死谁标谁中、谁几星 —— 那会随数据变） */
+    /* ⚠️ Vue 的 SSR 会把**动态** class 排在静态 class 前面（`class="mid optag"`），
+       所以别按固定顺序拼字符串 —— 用前瞻确认类名里含哪个词即可。 */
+    const marksRe = (n) => {
+      const op = stOp.operators[n];
+      const mid = midTag(stOp.classicDateOf(op), stOp.today);
+      const cls = mid === '中' ? 'mid' : 'std';
+      return new RegExp(`<em class="(?=[^"]*\\b${cls}\\b)[^"]*"[^>]*>${mid}</em>`
+        + `<em class="(?=[^"]*\\brar-${op.rarity}\\b)[^"]*"[^>]*>★${op.rarity}</em>${n}`);
+    };
+    check('干员多选：标记画在名字**前面**，且顺序是「标/中 → ★星级 → 名字」',
+      marksRe('陈').test(html) && marksRe('玛恩纳').test(html), true);
+    check('干员多选：星级标签就是「★ + 星级数字」（六星不写成 6★）',
+      /class="(?=[^"]*\brar-6\b)[^"]*">★6</.test(html), true);
     check('干员多选：输入框外面包了 `.opbox`（浮层的定位基准）',
       count(html, /class="opbox"/g), 1);
 

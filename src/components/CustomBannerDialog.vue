@@ -15,7 +15,7 @@ import { useSiteStore } from '../stores/site.js';
 import { BANNER_CATEGORIES, TYPE_LABEL } from '../lib/constants.js';
 import {
   CUSTOM_TYPES, NAME_PREFIX, RERUN_KINDS, autoStartDate, buildName, distributeOps, endDateOf,
-  entryToForm, formToEntry, hasAutoStart, hasSerial, hasShop, mergeOps, midTag, nextSerial,
+  entryToForm, formToEntry, hasAutoStart, hasSerial, hasShop, mergeOps, nextSerial,
   serialName, stripPrefix,
 } from '../lib/customBanners.js';
 import { localToday } from '../lib/date.js';
@@ -25,8 +25,9 @@ import CustomJsonDialog from './CustomJsonDialog.vue';
 const emit = defineEmits(['close']);
 const site = useSiteStore();
 
-/* **打开弹窗那一刻的现实今天** —— 既是「开始时间」的默认值，也是下面 `tagOf` 的判据时点
-   （用户 2026-10-06 定：标 / 中按**现实时间**算，不跟右栏那个可改的参考日期走）。 */
+/* **打开弹窗那一刻的现实今天** —— 「开始时间」的默认值。
+   ⚠️ 名字前面那个「标 / 中」标记 2026-11-17 起收进 `OpPicker` 自己算了（判据用 `site.today`），
+      这个 `today` 只留给下面的日期默认值，别再拿它当标记的判据时点。 */
 const today = localToday();
 
 /* ---------------- 自动序号 / 自动开始日（2026-11-03 用户定） ----------------
@@ -107,22 +108,13 @@ const shopPool = computed(() => [...form.star6, ...form.star5]);
  * ⚠️ **六星 / 五星两个框各用各的「按星级取」版本**（`opSuggestSix*` / `opSuggestFive*`）：
  *    这里的候选池是**按星级切开**的（`sixPool` / `fivePool`），若喂不分星级的 6+6，
  *    中坚那 6 位里只有 2~3 位是六星 → `pool` 一滤就只剩三个（2026-11-17 用户报的正是这个）。
- *    「进店」框的池子是「已选的六星 + 五星」、本就不分星级，仍用不分星级那组。
- * 数据都来自 store（按「出率提升距今天数」降序），见 `site.opSuggestGroups` 的注释。
+ *    数据都来自 store（按「出率提升距今天数」降序），见 `site.opSuggestGroups` 的注释。
+ * ⚠️ **「进店」框不按天数给建议**，直接给**上面已选的全部干员**（`shopPool`，先六星后五星，
+ *    用户 2026-11-17 定）—— 进店只能从这两组里挑，与其猜「谁最久没进店」，不如把可选的全摆出来。
  */
 const isMidType = computed(() => BANNER_CATEGORIES[form.type] === '中坚寻访');
 const opSuggestSix = computed(() => (isMidType.value ? site.opSuggestSixMidFirst : site.opSuggestSix));
 const opSuggestFive = computed(() => (isMidType.value ? site.opSuggestFiveMidFirst : site.opSuggestFive));
-const opSuggestShop = computed(() => (isMidType.value ? site.opSuggestMidFirst : site.opSuggest));
-
-/** 名字 → 「标 / 中」—— 该干员在**当前现实时间**属标准还是中坚寻访（`lib/customBanners.js`）。
-    ⚠️ 判据 = 本服「进入中坚寻访」的日期（`scClassicDate` / `en*` / `tc*`）≤ 今天，
-      与右栏「隐藏已属中坚的干员」同一口径，只是判据时点换成现实今天。
-    ⚠️ **只作提醒，不限制你选谁**（用户 2026-10-06 定：不强制与寻访类型相符）。 */
-function tagOf(name) {
-  const op = site.operators[name];
-  return op ? midTag(site.classicDateOf(op), today) : '';
-}
 
 /* 从六星 / 五星里移除某人时，进店里那个也要跟着掉 —— 否则会留下「进店的人不在上面两组里」 */
 watch(shopPool, (pool) => {
@@ -321,7 +313,7 @@ const showJson = ref(false);
           <span class="cbd-lhd">六星<span class="cbd-sub">共 {{ sixPool.length }} 位候选</span></span>
           <div class="cbd-oprow">
             <OpPicker
-              v-model="form.star6" :pool="sixPool" :tag-of="tagOf" :suggest="opSuggestSix"
+              v-model="form.star6" :pool="sixPool" :suggest="opSuggestSix"
               placeholder="搜索六星：名字 / 全拼 / 首字母"
             />
             <button
@@ -334,7 +326,7 @@ const showJson = ref(false);
           <span class="cbd-lhd">五星<span class="cbd-sub">共 {{ fivePool.length }} 位候选</span></span>
           <div class="cbd-oprow">
             <OpPicker
-              v-model="form.star5" :pool="fivePool" :tag-of="tagOf" :suggest="opSuggestFive"
+              v-model="form.star5" :pool="fivePool" :suggest="opSuggestFive"
               placeholder="搜索五星（复刻单六可留空）"
             />
             <button
@@ -346,7 +338,7 @@ const showJson = ref(false);
         <label class="cbd-wide">
           进店<span class="cbd-sub">{{ hasShop(form.type) ? '只能从上面已选的干员里挑' : '这类卡池没有进店，此处不可编辑' }}</span>
           <OpPicker
-            v-model="form.shop" :pool="shopPool" :tag-of="tagOf" :suggest="opSuggestShop" :disabled="!hasShop(form.type)"
+            v-model="form.shop" :pool="shopPool" :suggest="shopPool" :disabled="!hasShop(form.type)"
             :placeholder="hasShop(form.type) ? '搜索已选的六星 / 五星' : '这类卡池没有进店'"
             empty-hint="请先在上面两组里选人"
           />

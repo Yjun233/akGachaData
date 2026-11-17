@@ -290,15 +290,20 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .opsug-item > small{color:var(--muted);font-size:11px;font-weight:400}
 .opsug-empty{padding:7px 9px;font-size:12px;color:var(--muted)}
 
-/* 干员名前面那个「标 / 中」一字标记（只用在自定义卡池弹窗，右栏不传 `tagOf` 就不画）——
-   表示该干员**此刻**属标准还是中坚寻访。**只作提醒**，不限制你选谁。
-   取项目那对类型色（标准黄 / 中坚蓝）的「浅底 + 深字」版：小面积、不抢眼。 */
+/* 干员名前面那两个标记（**全站所有干员多选框都有**，收在 `OpPicker` 里）：
+   ① 「标 / 中」= 该干员**此刻**属标准还是中坚寻访。**只作提醒**，不限制你选谁。
+      取项目那对类型色（标准黄 / 中坚蓝）的「浅底 + 深字」版：小面积、不抢眼。
+   ② 「★6 / ★5」= 星级。**只上字、不上底色** —— 两个色块并排会糊成一块，
+      文字版既能一眼分出 6 / 5 星，也不会跟上面那对类型色抢（六星暖金、五星冷灰）。 */
 .optag{
   display:inline-block;margin-right:3px;padding:0 3px;border-radius:3px;
   font-size:10px;font-style:normal;font-weight:700;line-height:1.7;vertical-align:1px;
 }
 .optag.std{color:#6b5400;background:#fff3c4}
 .optag.mid{color:#00629b;background:#dceffb}
+.optag.rar{padding-right:0;color:#6b7280;background:none}
+.optag.rar-6{color:#a97400}
+.optag.rar-5{color:#54607a}
 /* chip 本身是 `inline-flex + gap`，再留 margin 会显得标记离名字太远 */
 .opchip .optag{margin-right:0}
 
