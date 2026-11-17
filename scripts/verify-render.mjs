@@ -633,6 +633,40 @@ try {
     `${mutexB.store.statHideOps.length}|${mutexB.store.statHighlightOps.join(',')}`,
     `0|${allNames[0]}`);
 
+  /* ---------------- 干员选择框的「默认候选」（2026-11-17 用户加） ----------------
+     没输入文本时，浮层里直接给「出率提升距今天数最久」的 6 标准 + 6 中坚；
+     顺序平时标准在前，自定义卡池里卡池类型选到中坚类时反过来（见下文弹窗那条）。 */
+  {
+    const g = stats.store.opSuggestGroups;
+    const lib = await vite.ssrLoadModule('/src/lib/stats.js');
+    const st = stats.store;
+    const refDate = st.refDate || st.today;
+    /* 用与 store 同一套 lib 重算「标准里天数最大的那位」，对撞第一名 */
+    const topStd = st.statRows
+      .filter((r) => lib.isMidAt(r, refDate) === false)
+      .map((r) => ({ n: r.name, v: lib.daysSortValue(lib.viewEndInfo(r, 'up', refDate, st.statMidOnly)) }))
+      .sort((a, b) => b.v - a.v)[0];
+    check('默认候选：标准 6 位 + 中坚 6 位', `${g.std.length}|${g.mid.length}`, '6|6');
+    check('默认候选：按「出率提升距今天数」降序（第一位 = 标准里天数最久的那位）',
+      `${g.std[0]}|${topStd.n}`, `${topStd.n}|${topStd.n}`);
+    check('默认候选：两组不重叠（一位干员只属于一个表）',
+      g.std.some((n) => g.mid.includes(n)), false);
+    check('默认候选：默认顺序 = 标准在前，中坚在后',
+      `${st.opSuggest.length}|${st.opSuggest.slice(0, 6).join() === g.std.join()}|`
+      + `${st.opSuggest.slice(6).join() === g.mid.join()}`, '12|true|true');
+    /* 自定义卡池弹窗：卡池类型是中坚类时反过来 */
+    const cbdSrc = fs.readFileSync(path.join(ROOT, 'src/components/CustomBannerDialog.vue'), 'utf8');
+    check('默认候选：弹窗里中坚类型 → 中坚在前（`BANNER_CATEGORIES[form.type] === \'中坚寻访\'`）',
+      /BANNER_CATEGORIES\[form\.type\] === '中坚寻访'[\s\S]{0,80}site\.opSuggestMidFirst/.test(cbdSrc)
+      && /const opSuggest = computed/.test(cbdSrc), true);
+    /* 接线：每个 OpPicker 都把 suggest 传进去了（否则组件里那套默认候选永远是空的） */
+    const fdSrc2 = fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8');
+    const countIn = (src) => (src.match(/<OpPicker/g) || []).length;
+    const suggestIn = (src) => (src.match(/:suggest=/g) || []).length;
+    check('默认候选：右栏 4 个 / 弹窗 3 个 OpPicker 全都接了 `:suggest`',
+      `${countIn(fdSrc2)}|${suggestIn(fdSrc2)}|${countIn(cbdSrc)}|${suggestIn(cbdSrc)}`, '4|4|3|3');
+  }
+
   /* 样式：置灰 = 复制模式**原来**那一档 (#eceff4)；复制模式后来加深到 #dde2ea 以便区分 */
   check('置灰干员：灰罩用 #eceff4（行底色 + 文字压暗，冻结列 follow inherit）',
     /table\.grid\.stat-tbl tbody tr\.mute\{background:#eceff4\}/.test(cssAll)
@@ -2889,9 +2923,12 @@ try {
     check('干员多选：候选列表是**绝对定位浮层**，且下方放不下时能向上弹',
       /\.opbox > \.opsug\{[^}]*position:absolute/.test(cssAll)
       && /\.opbox > \.opsug\.up\{[^}]*bottom:calc\(100% \+ 4px\)/.test(cssAll), true);
-    check('干员多选：弹窗与右栏筛选**两处**都改成了浮层',
+    /* 2026-11-17：右栏那处手写浮层**收编进 OpPicker** 了（原来两处各写一遍，~50 行重复），
+       所以现在只该有**一份**实现 —— 这里顺带守住「别再往 FilterDrawer 里塞第二份」。 */
+    check('干员多选：弹窗与右栏筛选两处共用同一个 OpPicker（右栏不再有手写浮层）',
       /class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/OpPicker.vue'), 'utf8'))
-      && /ref="opBoxEl" class="opbox"/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8')),
+      && /<OpPicker/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8'))
+      && !/ref="opBoxEl"/.test(fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8')),
       true);
   }
 

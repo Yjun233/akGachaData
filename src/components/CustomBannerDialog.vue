@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useSiteStore } from '../stores/site.js';
-import { TYPE_LABEL } from '../lib/constants.js';
+import { BANNER_CATEGORIES, TYPE_LABEL } from '../lib/constants.js';
 import {
   CUSTOM_TYPES, NAME_PREFIX, RERUN_KINDS, autoStartDate, buildName, distributeOps, endDateOf,
   entryToForm, formToEntry, hasAutoStart, hasSerial, hasShop, mergeOps, midTag, nextSerial,
@@ -98,6 +98,16 @@ function toEntry(f) {
 const sixPool = computed(() => Object.keys(site.operators).filter((n) => site.operators[n].rarity === 6));
 const fivePool = computed(() => Object.keys(site.operators).filter((n) => site.operators[n].rarity === 5));
 const shopPool = computed(() => [...form.star6, ...form.star5]);
+
+/**
+ * 干员选择框的**默认候选**（2026-11-17 用户要求）：平时标准在前，
+ * 但**卡池类型选到中坚类**（常驻中坚寻访 / 中坚甄选）时**反过来，中坚在前** ——
+ * 这会儿你在配一个中坚池，中坚干员才是先要看的。
+ * 数据来自 store（按「出率提升距今天数」降序，各取 6 位），见 `site.opSuggestGroups`。
+ */
+const opSuggest = computed(() => (BANNER_CATEGORIES[form.type] === '中坚寻访'
+  ? site.opSuggestMidFirst
+  : site.opSuggest));
 
 /** 名字 → 「标 / 中」—— 该干员在**当前现实时间**属标准还是中坚寻访（`lib/customBanners.js`）。
     ⚠️ 判据 = 本服「进入中坚寻访」的日期（`scClassicDate` / `en*` / `tc*`）≤ 今天，
@@ -305,7 +315,7 @@ const showJson = ref(false);
           <span class="cbd-lhd">六星<span class="cbd-sub">共 {{ sixPool.length }} 位候选</span></span>
           <div class="cbd-oprow">
             <OpPicker
-              v-model="form.star6" :pool="sixPool" :tag-of="tagOf"
+              v-model="form.star6" :pool="sixPool" :tag-of="tagOf" :suggest="opSuggest"
               placeholder="搜索六星：名字 / 全拼 / 首字母"
             />
             <button
@@ -318,7 +328,7 @@ const showJson = ref(false);
           <span class="cbd-lhd">五星<span class="cbd-sub">共 {{ fivePool.length }} 位候选</span></span>
           <div class="cbd-oprow">
             <OpPicker
-              v-model="form.star5" :pool="fivePool" :tag-of="tagOf"
+              v-model="form.star5" :pool="fivePool" :tag-of="tagOf" :suggest="opSuggest"
               placeholder="搜索五星（复刻单六可留空）"
             />
             <button
@@ -330,7 +340,7 @@ const showJson = ref(false);
         <label class="cbd-wide">
           进店<span class="cbd-sub">{{ hasShop(form.type) ? '只能从上面已选的干员里挑' : '这类卡池没有进店，此处不可编辑' }}</span>
           <OpPicker
-            v-model="form.shop" :pool="shopPool" :tag-of="tagOf" :disabled="!hasShop(form.type)"
+            v-model="form.shop" :pool="shopPool" :tag-of="tagOf" :suggest="opSuggest" :disabled="!hasShop(form.type)"
             :placeholder="hasShop(form.type) ? '搜索已选的六星 / 五星' : '这类卡池没有进店'"
             empty-hint="请先在上面两组里选人"
           />

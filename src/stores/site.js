@@ -24,7 +24,9 @@ import { BANNER_CATEGORIES } from '../lib/constants.js';
 import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
-import { computeStats, isMidAt, latestEndDate, sortStatRows } from '../lib/stats.js';
+import {
+  computeStats, daysSortValue, isMidAt, latestEndDate, sortStatRows, viewEndInfo,
+} from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
 import { computeUpHistory, typesWithoutShop } from '../lib/upHistory.js';
 import { bannerRows, emptyFilters, nextBannerSort, nextStatSort } from '../lib/banners.js';
@@ -358,6 +360,44 @@ export const useSiteStore = defineStore('site', {
     /** 统计行数组（含 everMid / releaseDate） */
     statRows(s) {
       return Object.values(this.statData.map);
+    },
+
+    /**
+     * 干员选择框的**默认候选**：按「出率提升距今天数」从大到小，标准 6 位 + 中坚 6 位。
+     * 返回 `{ std, mid }` 两组（各组已按天数降序，平局按名字码点序）。
+     *
+     * 口径（2026-11-17 用户要求）：
+     * · 天数走 `viewEndInfo(row, 'up', refDate, statMidOnly)` + `daysSortValue()` ——
+     *   与统计表「距今天数」那一列**完全同源**（进行中 = 0、无数据 = -1）；
+     * · 标准 / 中坚用 `isMidAt(row, refDate)` 分（**不是** `everMid`，见 lib/stats.js 的说明）；
+     * · 参考日期用当前 `refDate` —— 与表格里看到的一致，换了参考日候选也跟着变。
+     *
+     * ⚠️ 只在**没输入文本**时用（OpPicker 的 `suggest` prop），输入了照常走搜索。
+     */
+    opSuggestGroups(s) {
+      const refDate = s.refDate || this.today;
+      const pick = (isMid) => this.statRows
+        .filter((r) => isMidAt(r, refDate) === isMid)
+        .map((r) => ({
+          name: r.name,
+          v: daysSortValue(viewEndInfo(r, 'up', refDate, s.statMidOnly)),
+        }))
+        .sort((a, b) => (b.v - a.v) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+        .slice(0, 6)
+        .map((x) => x.name);
+      return { std: pick(false), mid: pick(true) };
+    },
+
+    /** 默认候选 · **标准在前**（统计页两个选择框、卡池列表 / 跨服的 UP 干员都用这个） */
+    opSuggest(s) {
+      const g = this.opSuggestGroups;
+      return [...g.std, ...g.mid];
+    },
+
+    /** 默认候选 · **中坚在前**（自定义卡池弹窗里卡池类型选到中坚类时才用，用户 2026-11-17 指定） */
+    opSuggestMidFirst(s) {
+      const g = this.opSuggestGroups;
+      return [...g.mid, ...g.std];
     },
 
     /**

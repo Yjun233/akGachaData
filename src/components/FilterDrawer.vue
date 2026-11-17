@@ -20,7 +20,7 @@
  * 「全部 / 重置」也回到它 —— 这两个标签因此都带一句「默认今天」。
  * ⚠️ **卡池列表**不在此列：结束日期仍取数据的最晚结束日（列表要照常列出预告池）。
  */
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { FIRST_UP_MODES, FIRST_UP_POOLS, UP_SORT_ROWS } from '../lib/constants.js';
 import { CROSS_ALLOWED_TYPES } from '../lib/crossServer.js';
@@ -30,7 +30,6 @@ import { useLayout } from '../composables/useLayout.js';
 import { useRangeDraft } from '../composables/useRangeDraft.js';
 import TypeButtons from './TypeButtons.vue';
 import OpPicker from './OpPicker.vue';
-import { ensurePinyin, searchOperators } from '../lib/opSearch.js';
 
 const site = useSiteStore();
 const route = useRoute();
@@ -185,52 +184,17 @@ const bannerTypesLabel = computed(() => (!site.filters.types.length
   ? '全部类型'
   : `已选 ${site.filters.types.length} 种`));
 
-/* ---------------- 卡池列表：UP 干员多选（名字 / 全拼 / 首字母，见 lib/opSearch.js） ----------------
-   搜索框里打的字**不入 store** —— 它只是「挑干员」的过程，不是筛选条件本身；
-   真正生效的是 `site.filters.ops`（精确干员名数组，命中任意一个即保留）。
-   候选由 searchOperators 算：三种写法都能匹配、已选的自动排除、按命中质量排序。 */
+/* ---------------- 卡池列表：UP 干员多选 ----------------
+   ⚠️ 2026-11-17 起**改用 `OpPicker.vue`**：原来这里是一份手写的内联实现（搜索框 + 浮层 + chip），
+   与弹窗 / 统计页那几处重复了 ~50 行。收编进组件后，新加的「未输入时给默认候选」自动也用上了。
+   `input-id="f-op"` 是为了保住 `<label for="f-op">` 的可点聚焦。
 
-/** 搜索框里正在打的字 */
-const opQuery = ref('');
+   ⚠️ 候选池 = **全部干员**（`Object.keys(site.operators)`，原来手写实现就是这么取的）——
+   别写成 `site.opPool`，store 里没有这个 getter（2026-11-17 迁移时踩过：池子是 undefined，
+   于是默认候选和搜索全都是空的，页面看不出报错）。 */
 
-/* 拼音字典（pinyin-pro，320KB）**懒加载**：输入框一获得焦点才开始拉，
-   免得每个页面的首屏都背上它（见 lib/opSearch.js）。到位后置真 → 候选重算一次。 */
-const pinyinReady = ref(false);
-let dictAsked = false;
-function askPinyin() {
-  if (dictAsked) return;
-  dictAsked = true;
-  ensurePinyin().then(() => { pinyinReady.value = true; });
-}
-
-/** 候选干员名（空关键词 → 空列表，不铺开 200 多个） */
-const opCandidates = computed(() => {
-  void pinyinReady.value; // 依赖它：字典到位后重算（在那之前只按名字匹配）
-  return searchOperators(Object.keys(site.operators), opQuery.value, { exclude: site.filters.ops });
-});
-
-/** 点候选 = 加入已选，并清掉搜索框，好接着挑下一个 */
-function pickOp(name) {
-  site.toggleBannerOp(name);
-  opQuery.value = '';
-}
-
-/* 候选列表是**浮层**（`.opbox` 里绝对定位）→ 出现 / 消失**不撑高抽屉**
-   （2026-10-06 用户要求，与自定义卡池弹窗同步改）。下方空间不够就改成向上弹。 */
-const opBoxEl = ref(null);
-const opDropUp = ref(false);
-const OP_SUG_MAX = 200; // ≈ `.opsug` 的 max-height + 一点余量
-
-function opFocusIn() {
-  askPinyin();
-  nextTick(() => {
-    const el = opBoxEl.value;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const below = window.innerHeight - r.bottom;
-    opDropUp.value = below < OP_SUG_MAX && r.top > OP_SUG_MAX;
-  });
-}
+/** 卡池列表「UP 干员」的候选池：全部干员名（筛选是筛**卡池**，不是筛干员） */
+const bannerOpPool = computed(() => Object.keys(site.operators));
 
 /* ---------------- UP 历史：卡池类型（同一个按钮组） ---------------- */
 
@@ -289,34 +253,13 @@ function resetUp() {
         <label for="f-op">
           UP 干员<span class="fcount">{{ site.filters.ops.length ? `已选 ${site.filters.ops.length} 位` : '可多选' }}</span>
         </label>
-        <!-- 打字 → 浮层里出候选；回车取第一个候选、Esc 清空（都得先选进来才算筛选条件） -->
-        <!-- ⚠️ 输入框与候选包在 `.opbox` 里：`.opsug` 绝对定位 → 候选出现不撑高抽屉 -->
-        <div ref="opBoxEl" class="opbox">
-          <input
-            id="f-op" v-model="opQuery" type="text" autocomplete="off"
-            placeholder="名字 / 全拼 / 首字母，如 银灰 / yinhui / yh"
-            @focus="opFocusIn"
-            @keyup.enter="opCandidates.length && pickOp(opCandidates[0])"
-            @keyup.esc="opQuery = ''"
-          />
-          <!-- 候选：点一下加入已选 -->
-          <div v-if="opQuery.trim()" class="opsug" :class="{ up: opDropUp }">
-            <div v-if="!opCandidates.length" class="opsug-empty">没有匹配的干员</div>
-            <button
-              v-for="n in opCandidates" :key="n" class="opsug-item" type="button"
-              @click="pickOp(n)"
-            >
-              {{ n }}
-            </button>
-          </div>
-        </div>
-        <!-- 已选：点一下移除 -->
-        <div v-if="site.filters.ops.length" class="opchips">
-          <button
-            v-for="n in site.filters.ops" :key="n" class="opchip" type="button"
-            :title="`移除 ${n}`" @click="site.toggleBannerOp(n)"
-          >{{ n }}<i>×</i></button>
-        </div>
+        <!-- 打字 → 浮层里出候选；**没打字时**给「距今天数最久」的 6 标准 + 6 中坚作为默认候选。
+             回车取第一个候选、Esc 清空（都得先选进来才算筛选条件） -->
+        <OpPicker
+          :model-value="site.filters.ops" :pool="bannerOpPool" :suggest="site.opSuggest"
+          input-id="f-op" @update:model-value="site.setBannerOps"
+          placeholder="名字 / 全拼 / 首字母，如 银灰 / yinhui / yh"
+        />
       </div>
       <button class="btn" type="button" @click="site.resetFilters()">重置筛选</button>
       <div class="fresult">{{ bannerResult }}</div>
@@ -388,7 +331,7 @@ function resetUp() {
         </label>
         <OpPicker
           :model-value="site.statHighlightOps"
-          :pool="hlPool"
+          :pool="hlPool" :suggest="site.opSuggest"
           @update:model-value="site.setStatHighlightOps"
         />
       </div>
@@ -401,7 +344,7 @@ function resetUp() {
         </label>
         <OpPicker
           :model-value="site.statHideOps"
-          :pool="hlPool"
+          :pool="hlPool" :suggest="site.opSuggest"
           @update:model-value="site.setStatHideOps"
         />
       </div>
@@ -544,7 +487,7 @@ function resetUp() {
           UP 干员<span class="fcount">{{ site.crossFilters.ops.length ? `已选 ${site.crossFilters.ops.length} 位` : '可多选' }}</span>
         </label>
         <OpPicker
-          :model-value="site.crossFilters.ops" :pool="site.crossOpPool"
+          :model-value="site.crossFilters.ops" :pool="site.crossOpPool" :suggest="site.opSuggest"
           placeholder="名字 / 全拼 / 首字母"
           @update:model-value="site.setCrossOps"
         />

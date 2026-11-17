@@ -13,6 +13,10 @@
  * ⚠️ **候选列表是浮层**（`.opbox` 里绝对定位）：它出现 / 消失**不会改变容器高度**
  *    （2026-10-06 用户要求 —— 以前打字时整个弹窗会被撑高、选完又缩回去，很晃）。
  *    下方空间不够时改成**向上弹**（`dropUp`），免得被父级的 `overflow` 裁掉。
+ * ⚠️ **默认候选**（2026-11-17 用户加）：**没输入文本**、且输入框**聚焦**时，下拉里直接给出
+ *    `suggest` 那一组名字（通常是「出率提升距今天数最高的 6 标准 + 6 中坚」，由 store 的
+ *    `opSuggest` / `opSuggestMidFirst` 给）。点一下就加入，不用先打字。
+ *    ⚠️ 会用 `pool` 过滤一遍 —— 弹窗里六星框只给六星、进店框只给已选的，建议了也点不上。
  * ⚠️ **`disabled`**（2026-10-24）：整块**灰掉、不可编辑** —— 自定义卡池里「该类没有进店」时用它。
  *    灰显而不是隐藏：位置固定不跳动，用户也能看出「这里本来有个框，只是这类卡池用不上」。
  */
@@ -29,6 +33,10 @@ const props = defineProps({
   emptyHint: { type: String, default: '' },
   /** 可选：`(name) => '标' | '中' | ''` —— 名字前面那个一字的标记（空串则不画） */
   tagOf: { type: Function, default: null },
+  /** 未输入文本时的**默认候选**（干员名数组；调用方给顺序，这里不重排） */
+  suggest: { type: Array, default: () => [] },
+  /** 输入框的 id（右栏那个 `<label for>` 要用；不传就不写 id） */
+  inputId: { type: String, default: '' },
   /** 禁用：灰掉、不可编辑（不加载拼音、不出候选、不能加 / 删） */
   disabled: { type: Boolean, default: false },
 });
@@ -36,6 +44,19 @@ const emit = defineEmits(['update:modelValue']);
 
 const q = ref('');
 const pinyinReady = ref(false);
+/** 输入框是否聚焦 —— 默认候选只在聚焦时露出来，否则满屏浮层（2026-11-17） */
+const focused = ref(false);
+/** 未输入时的默认候选：按 `pool` 与「已选」过滤，最多 12 个（6 标准 + 6 中坚） */
+const suggestList = computed(() => {
+  if (props.disabled) return [];
+  const chosen = new Set(props.modelValue);
+  const pool = new Set(props.pool);
+  return props.suggest.filter((n) => pool.has(n) && !chosen.has(n)).slice(0, 12);
+});
+/** 下拉里现在要画的那一串：有输入 → 搜索结果；没输入但聚焦 → 默认候选 */
+const shown = computed(() => (q.value.trim() ? candidates.value : (focused.value ? suggestList.value : [])));
+/** 空态提示只对「搜索没结果」有意义，默认候选为空时不要跳一句「没有匹配的干员」 */
+const showEmpty = computed(() => !!q.value.trim() && !candidates.value.length);
 /** 取标记（没传 `tagOf` 就恒空，右栏那种用法完全不受影响） */
 const tag = (n) => (props.tagOf ? props.tagOf(n) || '' : '');
 
@@ -47,6 +68,7 @@ const SUG_MAX = 200; // ≈ `.opsug` 的 max-height + 一点余量
 
 function focusIn() {
   if (props.disabled) return;
+  focused.value = true;
   askPinyin();
   nextTick(() => {
     const el = boxEl.value;
@@ -71,6 +93,12 @@ function pick(n) {
   if (props.disabled) return;
   if (!props.modelValue.includes(n)) emit('update:modelValue', [...props.modelValue, n]);
   q.value = '';
+  /* 默认候选点完继续留在聚焦态（还要接着选）；搜索态清空输入后仍然聚焦，浮层会切回默认候选 */
+}
+
+/** 失焦关掉默认候选。⚠️ 用 `mousedown.prevent` 挡住候选上的 mousedown，点击时就不会先失焦 */
+function focusOut() {
+  focused.value = false;
 }
 
 function drop(n) {
@@ -85,15 +113,20 @@ function drop(n) {
          候选出现 / 消失**不占流**、容器高度恒定（用户 2026-10-06 要求） -->
     <div ref="boxEl" class="opbox">
       <input
+        :id="inputId || undefined"
         v-model="q" type="text" autocomplete="off" :placeholder="placeholder" :disabled="disabled"
         @focus="focusIn"
+        @blur="focusOut"
         @keyup.enter="candidates.length && pick(candidates[0])"
         @keyup.esc="q = ''"
       />
-      <!-- 候选：点一下加入已选 -->
-      <div v-if="q.trim()" class="opsug" :class="{ up: dropUp }">
-        <div v-if="!candidates.length" class="opsug-empty">{{ emptyHint || '没有匹配的干员' }}</div>
-        <button v-for="n in candidates" :key="n" class="opsug-item" type="button" @click="pick(n)">
+      <!-- 候选：点一下加入已选。没输入文本时这里放的是**默认候选**（聚焦才出现） -->
+      <div v-if="shown.length || showEmpty" class="opsug" :class="{ up: dropUp }">
+        <div v-if="showEmpty" class="opsug-empty">{{ emptyHint || '没有匹配的干员' }}</div>
+        <button
+          v-for="n in shown" :key="n" class="opsug-item" type="button"
+          @mousedown.prevent @click="pick(n)"
+        >
           <em v-if="tag(n)" :class="tag(n) === '中' ? 'optag mid' : 'optag std'">{{ tag(n) }}</em>{{ n }}
         </button>
       </div>
