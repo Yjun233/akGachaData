@@ -109,6 +109,7 @@ export const useSiteStore = defineStore('site', {
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
     statMidNoStd: false,               // 统计页：中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关）
     statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
+    statHideOps: [],                   // 统计页：要**置灰**（盖灰罩）的干员名；与上面那个**互斥**
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
@@ -861,7 +862,30 @@ export const useSiteStore = defineStore('site', {
      *    也**不进复制内容**（复制的是数据，不是样式）。
      */
     setStatHighlightOps(list) {
-      this.statHighlightOps = Array.isArray(list) ? [...list] : [];
+      const arr = Array.isArray(list) ? [...list] : [];
+      this.statHighlightOps = arr;
+      this._excludeOps('statHideOps', arr);
+    },
+
+    /**
+     * 统计页「置灰干员」—— 选中后那一行**盖一层灰罩**（2026-11-17 用户加）。
+     *
+     * 与「高亮干员」**互斥**：同一个干员不能既高亮又置灰（两边都染色的话谁也看不出来）。
+     * 实现方式是「谁后选就归谁」—— 这里把已经选在另一边的同名条目摘掉，见 `_excludeOps`。
+     * 与高亮一样：纯渲染层，不筛行、不改次数、不进复制内容、切服不重置。
+     */
+    setStatHideOps(list) {
+      const arr = Array.isArray(list) ? [...list] : [];
+      this.statHideOps = arr;
+      this._excludeOps('statHighlightOps', arr);
+    },
+
+    /** 从 `field` 那个名单里摘掉 `names` 里已有的项（两处互斥共用；没有交集时不产生新数组） */
+    _excludeOps(field, names) {
+      if (!names.length || !this[field].length) return;
+      const set = new Set(names);
+      const kept = this[field].filter((n) => !set.has(n));
+      if (kept.length !== this[field].length) this[field] = kept;
     },
 
     /** 重置卡池筛选：日期范围回到本服完整跨度（不是空框，见 fullBannerRange） */

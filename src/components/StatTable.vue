@@ -10,7 +10,8 @@
  *     ⚠️ 藏列会改 colspan（组头 + 空行）与单元格个数，`verify-render` 有断言盯着。
  * - 列宽按内容自适应（table-layout:auto），列间竖线与 sticky 表头对齐由全局 CSS 处理
  * - 距今天数着色：≥180 天标黄、≥365 天标红；卡池进行中显示「进行中」
- * - 右栏「高亮干员」命中的行加**浅黄底**（`.hl`，见 main.css）—— 纯视觉标记，不筛行；
+ * - 右栏「高亮干员」命中的行加**浅黄底**（`.hl`），「置灰干员」命中的行盖**灰罩**（`.mute`）——
+ *   两者都是纯视觉标记、不筛行，且**互斥**（同一个干员不会既高亮又置灰）；
  *   前两列是 sticky 冻结列、走 `background:inherit`，所以只需给 `<tr>` 设底色即可跟着高亮
  * - ⚠️ 「结束时间 / 距今天数」两组列走 `lib/stats.js` 的 **`viewEndInfo()`**（不是直接用 `endInfo`）——
  *   右栏「中坚寻访只看中坚」勾上时，中坚干员改按**中坚记录**算；
@@ -58,6 +59,9 @@ const totalCols = computed(() => 2 + groupCols.value * 2);
 
 /** 右栏「高亮干员」—— 用 Set 查，避免每行都扫一遍数组（四张表合计几百行） */
 const hlOps = computed(() => new Set(site.statHighlightOps));
+/** 右栏「置灰干员」（2026-11-17 用户加）—— 同一套查法，行上盖灰罩（`.mute`，见 main.css）。
+ *  ⚠️ 与 `hlOps` **互斥**（store 的 setter 保证同一名字不会同时在两边），所以两个类不会同时命中 */
+const hideOps = computed(() => new Set(site.statHideOps));
 
 /** 预计算每行的「最后一次出率提升 / 商店兑换」信息，避免模板里反复遍历 */
 const viewRows = computed(() =>
@@ -155,7 +159,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
         <tr v-if="!viewRows.length">
           <td :colspan="totalCols"><div class="empty">暂无数据</div></td>
         </tr>
-        <tr v-for="r in viewRows" :key="r.name" :class="{ hl: hlOps.has(r.name) }">
+        <tr
+          v-for="r in viewRows" :key="r.name"
+          :class="{ hl: hlOps.has(r.name), mute: hideOps.has(r.name) }"
+        >
           <td class="num">
             <span v-if="!r.releaseDate" class="dash">—</span><template v-else>{{ r.releaseDate }}</template>
           </td>

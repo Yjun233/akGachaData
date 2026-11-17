@@ -5,7 +5,7 @@
  *    ⚠️ UP 干员是**多选**：搜索框支持 名字 / 全拼 / 首字母（lib/opSearch.js），
  *    点候选加进来、点 chip 移除；生效的是 store 里的 `filters.ops`（精确名数组）。
  *  - 统计页       → 参考日期 + 「中坚甄选计入出率提升」开关 + 「中坚寻访只看中坚」开关
- *                    + 「中坚寻访不看标准次数」开关 + 「高亮干员」多选
+ *                    + 「中坚寻访不看标准次数」开关 + 「高亮干员」/「置灰干员」多选（两者互斥）
  *                    （2026-10-16 加：中坚表藏掉总/标准次数两列；选中的干员在四张表里那一行加浅黄底）
  *  - 首次UP间隔   → **统计模式切换** + 横轴 / 纵轴口径 + 首次日期范围
  *    （**图表版 / 表格版共用** —— 同一份数据、同一套口径，见 NavDrawer 的二级菜单）
@@ -134,7 +134,7 @@ const statResult = computed(() => {
    ⚠️ 这段说明**只能放这儿** —— 写进 `<template>` 的话 Vue SSR 会**原样输出**注释，
       里面的「总次数 / 标准次数」会被 `verify-render` 的字面量断言数进去（2026-10-16 踩到）。 */
 
-/* 统计页「高亮干员」的候选池 —— 取当前统计口径下**真正会出现在四张表里**的干员。
+/* 统计页「高亮干员 / 置灰干员」的候选池 —— 取当前统计口径下**真正会出现在四张表里**的干员。
    ⚠️ 不铺全量干员表：不在池里的选了也永远高亮不到（该服还没实装 / 只在被排除的中坚甄选里
       露过面 …），白选一次还会让人以为功能坏了。名字都是国服名，与表格行上的 `r.name` 同源。 */
 const hlPool = computed(() => site.statRows.map((r) => r.name));
@@ -390,6 +390,19 @@ function resetUp() {
           :model-value="site.statHighlightOps"
           :pool="hlPool"
           @update:model-value="site.setStatHighlightOps"
+        />
+      </div>
+      <!-- 「置灰干员」（2026-11-17 用户加）：选中的干员那一行**盖灰罩**（与复制模式的遮罩同款，
+           只是复制模式后来加深了一档以便区分）。⚠️ 与「高亮干员」**互斥** —— 名额先给谁就是谁的，
+           后选的一边会把同名条目从另一边摘掉（store 的两个 setter 里做的，见 `_excludeOps`）。 -->
+      <div class="fgroup">
+        <label>
+          置灰干员<span class="fcount">{{ site.statHideOps.length ? `已选 ${site.statHideOps.length} 位` : '可多选' }}</span>
+        </label>
+        <OpPicker
+          :model-value="site.statHideOps"
+          :pool="hlPool"
+          @update:model-value="site.setStatHideOps"
         />
       </div>
       <div class="fresult">{{ statResult }}</div>

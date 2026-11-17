@@ -482,8 +482,10 @@ main.content{
 .tbl-scroll.copy-mode tbody tr{cursor:pointer}
 .tbl-scroll.copy-mode tbody tr:hover td{background:#f1f7ff}
 /* 范围外的行：冷灰底 + 压暗文字（只靠底色太淡，扫一眼分不清「哪些不会被复制」）。
-   彩色小标签（进行中 / 标红的逾期天数）保留自己的颜色，正好还能看清）。 */
-.tbl-scroll tbody tr.row-out td{background:#eceff4 !important;color:var(--muted)}
+   彩色小标签（进行中 / 标红的逾期天数）保留自己的颜色，正好还能看清）。
+   ⚠️ 2026-11-17 加深了一档（`#eceff4` → `#dde2ea`）：统计页新加了「置灰干员」也用灰罩，
+      两者必须能一眼分开 —— 置灰 = 浅灰（#eceff4），复制模式（临时操作态）= 深灰。 */
+.tbl-scroll tbody tr.row-out td{background:#dde2ea !important;color:var(--muted)}
 
 /* 截图期间（lib/tableShot.js）：sticky 会按当前滚动位置算，截出来可能错位/重叠 → 一律改回 static */
 .shot-capturing th,.shot-capturing td{position:static !important;left:auto !important;z-index:auto !important}
@@ -655,6 +657,17 @@ table.grid.stat-tbl tbody tr:hover{background:#f7fbff}
       会在下面那行规则里跟着行一起变色。 */
 table.grid.stat-tbl tbody tr.hl{background:#fff3c4}
 table.grid.stat-tbl tbody tr.hl:hover{background:#ffedaa}
+/* 统计表：右栏「置灰干员」命中的行盖**灰罩**（2026-11-17 用户加）。
+   底色取「复制模式遮罩之前那一档」`#eceff4` —— 用户要求两者样式一致，
+   而复制模式在那之后又加深到 `#dde2ea` 以便区分（复制模式是临时操作态，应该更重）。
+   ⚠️ 同样必须写在 `tr:hover` 之后（特异性 (0,3,4) 已高于 hover 的 (0,3,3)，但仍放在后面更稳）。
+   ⚠️ 与 `.hl` 互斥（store 的 setter 保证），不会同时命中；真撞上时这条在后面 → 灰罩胜出。 */
+table.grid.stat-tbl tbody tr.mute{background:#eceff4}
+table.grid.stat-tbl tbody tr.mute:hover{background:#e6eaf2}
+table.grid.stat-tbl tbody tr.mute td{color:var(--muted)}
+/* 彩色小标签（进行中胶囊 / 标红的逾期天数）保留自己的颜色，跟复制模式那边一致 */
+table.grid.stat-tbl tbody tr.mute td .tag,
+table.grid.stat-tbl tbody tr.mute td .neg{color:inherit}
 table.grid.stat-tbl tbody td:nth-child(-n+2){z-index:2;background:inherit}
 /* 表头两层都要盖住 tbody 的冻结列。
    ⚠️ 选择器必须写到 .floating 这一级：全局规则

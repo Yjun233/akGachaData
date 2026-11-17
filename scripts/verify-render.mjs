@@ -543,7 +543,7 @@ try {
      「只看中坚」两个统计开关同处理。 */
   check('高亮干员：默认不选 → store 里是空数组', JSON.stringify(stats.store.statHighlightOps), '[]');
   check('高亮干员：右栏有这个控件（label + OpPicker 都渲染出来了）',
-    sh.includes('高亮干员') && count(sh, /class="oppick"/g) === 1, true);
+    sh.includes('高亮干员') && count(sh, /class="oppick"/g) === 2, true);
 
   let hlPicked = [];
   const hlRendered = await renderRoute('/operators', (s) => {
@@ -593,6 +593,53 @@ try {
     /hlPool = computed\(\(\) => site\.statRows\.map\(\(r\) => r\.name\)\)/.test(fdSrc), true);
   check('高亮干员：store 有初值（空数组）+ setStatHighlightOps',
     /statHighlightOps: \[\]/.test(storeSrc) && /setStatHighlightOps\(list\) \{/.test(storeSrc), true);
+
+  /* ---------------- 出率提升记录：右栏「置灰干员」（2026-11-17 用户加） ----------------
+     与「高亮干员」同一套交互，但那一行**盖灰罩**（`.mute`，取复制模式遮罩原来的 #eceff4）。
+     ⚠️ 两边**互斥**：同一个干员不能既高亮又置灰（store 的 setter 里「谁后选归谁」）。 */
+  check('置灰干员：默认不选 → store 里是空数组', JSON.stringify(stats.store.statHideOps), '[]');
+  check('置灰干员：右栏有这个控件',
+    sh.includes('置灰干员') && count(sh, /class="oppick"/g) === 2, true);
+
+  const allNames = stats.store.statRows.map((r) => r.name);
+  const muteRendered = await renderRoute('/operators', (s) => {
+    s.statHideOps = [allNames[2], allNames[4]];
+  });
+  const muteHtml = muteRendered.html;
+  check('置灰干员：选中的两位各命中一行（四张表合计 2 行）',
+    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid']
+      .map((a) => rowsWithClass(muteHtml, a, 'mute')).reduce((a, b) => a + b, 0), 2);
+  check('置灰干员：灰罩只落在这两位身上',
+    [allNames[2], allNames[4]].every((n) => new RegExp(`<tr class="mute">[\\s\\S]{0,260}?>${n}</b>`).test(muteHtml)), true);
+  check('置灰干员：**不筛行**（四张表行数仍是 46 / 48 / 46 / 68）',
+    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(muteHtml, a)).join(','),
+    '46,48,46,68');
+
+  /* 互斥：后选的一边把同名条目从另一边摘掉（两个方向都验） */
+  const mutexA = await renderRoute('/operators', (s) => {
+    const n = s.statRows.map((r) => r.name);
+    s.setStatHighlightOps([n[0], n[1]]);
+    s.setStatHideOps([n[1]]);
+  });
+  check('置灰干员：与高亮互斥 —— 先高亮再置灰，高亮里那个会被摘掉',
+    `${mutexA.store.statHighlightOps.join(',')}|${mutexA.store.statHideOps.join(',')}`,
+    `${allNames[0]}|${allNames[1]}`);
+  const mutexB = await renderRoute('/operators', (s) => {
+    const n = s.statRows.map((r) => r.name);
+    s.setStatHideOps([n[0]]);
+    s.setStatHighlightOps([n[0]]);
+  });
+  check('置灰干员：反向同理 —— 先置灰再高亮，置灰里那个会被摘掉',
+    `${mutexB.store.statHideOps.length}|${mutexB.store.statHighlightOps.join(',')}`,
+    `0|${allNames[0]}`);
+
+  /* 样式：置灰 = 复制模式**原来**那一档 (#eceff4)；复制模式后来加深到 #dde2ea 以便区分 */
+  check('置灰干员：灰罩用 #eceff4（行底色 + 文字压暗，冻结列 follow inherit）',
+    /table\.grid\.stat-tbl tbody tr\.mute\{background:#eceff4\}/.test(cssAll)
+    && /table\.grid\.stat-tbl tbody tr\.mute td\{color:var\(--muted\)\}/.test(cssAll), true);
+  check('复制模式：遮罩加深到 #dde2ea（与置灰的 #eceff4 拉开）',
+    /\.tbl-scroll tbody tr\.row-out td\{background:#dde2ea !important/.test(cssAll)
+    && !/#eceff4 !important/.test(cssAll), true);
   /* 切服不重置（与两个统计开关同处理）—— 截 setServer 函数体那一小段来查 */
   const setServerAt = storeSrc.indexOf('setServer(id)');
   const setServerBody = storeSrc.slice(setServerAt, setServerAt + 1000);
