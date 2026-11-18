@@ -266,28 +266,61 @@ check('剧情线：诗怀雅 / 陈 = null（首发池与主线第五章同日，
 check('剧情线：开服常驻干员（临光 / 塞雷娅 / 能天使）都是 null',
   ['临光', '塞雷娅', '能天使'].every((n) => actOf(n).actLine === null), true);
 
-/* ---------------- 干员的「阵营」：group / subGroup（2026-10-07 加） ----------------
-   来自官方解包 `character_table.json` —— `group` = `nationId`（国家/地区）、
-   `subGroup` = `groupId` **或** `teamId`（组织/小队；⚠️ 两者**互斥**，实测全表 0 例同时有值）。
+/* ---------------- 干员的「阵营」：power 数组（2026-11-18 重构，取代 group / subGroup） ----------------
+   来自官方解包 `character_table.json`：`[mainPower, ...subPower]`，**mainPower 在最前**；
+   每项统一成 `{ nationId, groupId }`，解包的 `teamId` 有值时**并入 `groupId`**
+   （⚠️ 两者**互斥**，全表 0 例同时有值；命名空间也不重叠）。
    **都是原始内部 id**（`lungmen` / `penguin`），不是本地化名；**三服取值一致**。
-   由 `fetch-data.mjs` 写（`loadAffiliations`）。 */
-check('阵营：每位干员都有 group / subGroup 两个键',
-  rawOps.every((o) => 'group' in o && 'subGroup' in o), true);
-check('阵营：两个值都是字符串或 null',
-  rawOps.every((o) => (o.group === null || typeof o.group === 'string')
-    && (o.subGroup === null || typeof o.subGroup === 'string')), true);
+   由 `fetch-data.mjs` 写（`lib/gamedata.mjs` 的 `buildPower`）。 */
+check('阵营：每位干员都有 power 数组，且每项恰好 nationId / groupId 两个键',
+  rawOps.every((o) => Array.isArray(o.power)
+    && o.power.every((p) => Object.keys(p).join() === 'nationId,groupId')), true);
+check('阵营：旧字段 group / subGroup 已删除（别复活）',
+  rawOps.every((o) => !('group' in o) && !('subGroup' in o)), true);
+check('阵营：每项的两个值都是字符串或 null',
+  rawOps.every((o) => o.power.every((p) => (p.nationId === null || typeof p.nationId === 'string')
+    && (p.groupId === null || typeof p.groupId === 'string'))), true);
+check('阵营：不允许「两个都空」的空壳项（buildPower 会丢掉它们）',
+  rawOps.every((o) => o.power.every((p) => p.nationId || p.groupId)), true);
 /* ⭐ 守住「存的是**内部 id**，不是本地化名」—— id 一律小写字母/数字/下划线，
    一旦有人改成「龙门」「企鹅物流」这种中文名，这条立刻红。 */
 check('阵营：值是原始内部 id（只含小写字母·数字·下划线），不是中文名',
-  rawOps.every((o) => [o.group, o.subGroup].every(
-    (v) => v === null || /^[a-z0-9_]+$/.test(v))), true);
+  rawOps.every((o) => o.power.every((p) => [p.nationId, p.groupId].every(
+    (v) => v === null || /^[a-z0-9_]+$/.test(v)))), true);
+
+/* 上游表若改结构（`mainPower` 改名 / character_table 变空）会静默全空 → 用**下限**守住。
+   实测 235 位在册干员**全都有**非空 power，其中 56 位不止一项（`subPower` 非空）。 */
+const powerOwned = rawOps.filter((o) => o.power.length).length;
+const powerMulti = rawOps.filter((o) => o.power.length > 1).length;
+check('阵营：有 power 的干员数落在 150~总数（防上游表改结构 → 全空）',
+  powerOwned >= 150 && powerOwned <= rawOps.length, true);
+check('阵营：不止一项的干员数落在 30~90（`subPower` 若整体丢失，这条会红）',
+  powerMulti >= 30 && powerMulti <= 90, true);
+
+/* 黄金样例 —— 钉住四点：
+   · 陈：龙门 + 龙门近卫局（`nationId` 与 `groupId` 都有值的常规情况，**只有一项**）；
+   · 能天使：龙门 + 企鹅物流，外加 `subPower` 来的「拉特兰」一项 → 证明**是数组、main 在前**；
+   · W：**`nationId` 为 null 但 `groupId` = `babel`** —— 两字段**互相独立**，
+          上游确实存在「有组织、没国家」；
+   · 煌：三项（罗德岛 + 精英干员，再看 `subPower` 里两个国家）；
+   · 临光：`followers` 在解包里是 **`teamId`** —— 落盘后被**并入 `groupId`**（没有 teamId 键）。 */
+const pow = (name) => actOf(name).power
+  .map((p) => `${p.nationId ?? '-'}|${p.groupId ?? '-'}`).join(';');
+check('阵营：陈 = lungmen+lgd（仅一项）', pow('陈'), 'lungmen|lgd');
+check('阵营：能天使 = [lungmen+lgd 类] main 在前、subPower 在后', pow('能天使'),
+  'lungmen|penguin;laterano|-');
+check('阵营：W = 主项 babel（无国家）+ subPower 的 rhodes', pow('W'), '-|babel;rhodes|-');
+check('阵营：煌 = 三项（rhodes+elite / yan / victoria）', pow('煌'),
+  'rhodes|elite;yan|-;victoria|-');
+check('阵营：临光 = followers **原为 teamId**，已并入 groupId（没有 teamId 键）', pow('临光'),
+  '-|followers;kazimierz|-;rhodes|-');
 
 /* ---------------- 干员的「职业」：profession（2026-11-01 加） ----------------
    来自官方解包 `character_table.json` 的 `profession`（大写英文代号），
    由 `fetch-data.mjs` 经 `lib/gamedata.mjs` 的 `professionLabel()` **转成中文**再落盘
    （存中文而不是代号：与 `obtainMethod` 那类「给人看的枚举」一致，站点不用再维护映射表）。
-   ⚠️ 与 `group` / `subGroup` **反过来**：那两个存内部 id，这个存中文 —— 别按「一律存原始值」的
-      印象去改，否则 8 种职业的映射就散到站点侧去了。 */
+   ⚠️ 与 `power` 里的 `nationId` / `groupId` **反过来**：那两个存内部 id，这个存中文 —— 别按
+      「一律存原始值」的印象去改，否则 8 种职业的映射就散到站点侧去了。 */
 const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种'];
 {
   const owned = rawOps.filter((o) => o.profession);
@@ -304,29 +337,6 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     check('职业：覆盖面 = 干员总数', owned.length, rawOps.length);
   }
 }
-/* 上游表若改结构（nationId 改名 / character_table 变空）会静默全 null → 用**下限**守住。
-   实测 223 位有 group、74 位有 subGroup（空值是**正常**的，两字段互相独立）。 */
-const groupOwned = rawOps.filter((o) => o.group).length;
-const subOwned = rawOps.filter((o) => o.subGroup).length;
-check('阵营：有 group 的干员数落在 150~230（防上游表改结构 → 全 null）',
-  groupOwned >= 150 && groupOwned <= rawOps.length, true);
-check('阵营：有 subGroup 的干员数落在 30~130',
-  subOwned >= 30 && subOwned <= 130, true);
-/* 黄金样例 —— 钉住三点：
-   · 陈：龙门 + 龙门近卫局（`nationId` 与 `groupId` 都有值的常规情况）；
-   · 能天使：龙门 + 企鹅物流（同上）；
-   · W：**`group` 为 null 但 `subGroup` = `babel`** —— ⚠️ 这两个字段**互相独立**，
-          上游确实存在「有组织、没国家」（实测 7 位这样，另有 teamId 侧的 临光 → followers）；
-   · 煌：罗德岛 + 精英干员（`elite`）。 */
-check('阵营：陈 = lungmen / lgd',
-  [actOf('陈').group, actOf('陈').subGroup].join('|'), 'lungmen|lgd');
-check('阵营：能天使 = lungmen / penguin',
-  [actOf('能天使').group, actOf('能天使').subGroup].join('|'), 'lungmen|penguin');
-check('阵营：W = null / babel（两个字段互相独立，有组织也可以没国家）',
-  [actOf('W').group, actOf('W').subGroup].map(String).join('|'), 'null|babel');
-check('阵营：煌 = rhodes / elite',
-  [actOf('煌').group, actOf('煌').subGroup].join('|'), 'rhodes|elite');
-
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------
    自设数据只存在**浏览器本地** → 测试环境恒为空，**渲染层覆盖不到**
    （`verify-render` 那几条卡池数断言也因此不受影响）。所以这一段全部落在
