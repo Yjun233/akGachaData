@@ -130,6 +130,11 @@ const bulk = ref({
   firstShop: '2',      // 首次进店队列第 N 名起
 });
 const bulkMsg = ref('');
+/* 「高亮 / 置灰干员」的「清除全部」按钮放在**标签那一行、贴右**（2026-11-21 用户指定位置），
+   由 `.fhead` 那层 flex 包住；不用 `<div class="opclear">` 单独占一行。
+   ⚠️ 别在模板里给它写 HTML 注释：注释会被 SSR 原样输出，`verify-render` 里
+      `count(html, /清除全部/g) === 2` 那条会数成 4。 */
+
 /** 「置灰干员 · 清除全部」—— 连「一键置灰」的提示一起清掉（否则清完还挂着「已新增 N 位」） */
 function clearHideOps() {
   site.setStatHideOps([]);
@@ -355,39 +360,39 @@ function resetUp() {
            纯浏览辅助 —— 不筛行、不改次数、不进复制内容；切服不重置（见 store 的说明）。
            交互复用 OpPicker（与卡池列表右栏的「UP 干员」同一套：名字 / 全拼 / 首字母 + chip）。 -->
       <div class="fgroup">
-        <label>
-          高亮干员<span class="fcount">{{ site.statHighlightOps.length ? `已选 ${site.statHighlightOps.length} 位` : '可多选' }}</span>
-        </label>
-        <OpPicker
-          :model-value="site.statHighlightOps"
-          :pool="hlPool" :suggest="site.opSuggest"
-          @update:model-value="site.setStatHighlightOps"
-        />
-        <div class="opclear">
+        <div class="fhead">
+          <label>
+            高亮干员<span class="fcount">{{ site.statHighlightOps.length ? `已选 ${site.statHighlightOps.length} 位` : '可多选' }}</span>
+          </label>
           <button
             class="btn sm clear-all" type="button" :disabled="!site.statHighlightOps.length"
             @click="site.setStatHighlightOps([])"
           >清除全部</button>
         </div>
+        <OpPicker
+          :model-value="site.statHighlightOps"
+          :pool="hlPool" :suggest="site.opSuggest"
+          @update:model-value="site.setStatHighlightOps"
+        />
       </div>
       <!-- 「置灰干员」（2026-11-17 用户加）：选中的干员那一行**盖灰罩**（与复制模式的遮罩同款，
            只是复制模式后来加深了一档以便区分）。⚠️ 与「高亮干员」**互斥** —— 名额先给谁就是谁的，
            后选的一边会把同名条目从另一边摘掉（store 的两个 setter 里做的，见 `_excludeOps`）。 -->
       <div class="fgroup">
-        <label>
-          置灰干员<span class="fcount">{{ site.statHideOps.length ? `已选 ${site.statHideOps.length} 位` : '可多选' }}</span>
-        </label>
-        <OpPicker
-          :model-value="site.statHideOps"
-          :pool="hlPool" :suggest="site.opSuggest"
-          @update:model-value="site.setStatHideOps"
-        />
-        <div class="opclear">
+        <div class="fhead">
+          <label>
+            置灰干员<span class="fcount">{{ site.statHideOps.length ? `已选 ${site.statHideOps.length} 位` : '可多选' }}</span>
+          </label>
           <button
             class="btn sm clear-all" type="button" :disabled="!site.statHideOps.length"
             @click="clearHideOps()"
           >清除全部</button>
         </div>
+        <OpPicker
+          :model-value="site.statHideOps"
+          :pool="hlPool" :suggest="site.opSuggest"
+          @update:model-value="site.setStatHideOps"
+        />
       </div>
       <!-- 「一键置灰」（2026-11-21 用户加）：五条规则各一个输入框 + 确定，点确定就**并入**
            上面的置灰名单（追加，不覆盖）。规则口径见 lib/stats.js 的 `bulk*` 纯函数。
