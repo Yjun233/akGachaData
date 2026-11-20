@@ -249,6 +249,20 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 }
 .date-row{display:flex;align-items:center;gap:6px}
 .date-row input{flex:1 1 auto;min-width:0}
+/* 统计页「一键置灰」：五条规则各一行（复用 `.quick-row` / `.date-row` / `.btn.sm`）。
+   抽屉内容宽 ~221px，标签 + 数字 + 单位 + 确定 要挤进一行 → 数字框只给 6ch；
+   日期那一行把「标准实装＜」压成 nowrap，输入框自己吃剩余宽度。 */
+.bulk .quick-row .q-num{width:6ch}
+.bulk .q-txt{white-space:nowrap;font-size:12.5px}
+/* 日期那一条折两行：标签一行，输入框 + 确定 一行（一行放不下，日期会被截断） */
+.bulk-stack{display:flex;flex-direction:column;gap:4px}
+.bulk-stack .quick-row{gap:6px}
+.bulk .quick-row .q-date{
+  flex:1 1 auto;width:auto;min-width:0;text-align:left;padding:6px 6px;font-size:12.5px;
+}
+.bulk .quick-row .q-date::-webkit-calendar-picker-indicator{margin-left:0;padding:0}
+.bulk-msg{font-size:11.5px;color:var(--muted);line-height:1.6}
+
 /* 改了但还没点确认：把输入框描红提醒 */
 .fgroup input.dirty{border-color:var(--danger);background:#fff6f6}
 .fgroup input.dirty:focus{outline-color:#f0c8c2;border-color:var(--danger)}

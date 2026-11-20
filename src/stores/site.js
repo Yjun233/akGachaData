@@ -25,6 +25,7 @@ import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
 import {
+  bulkRecentDays, bulkShopWaitingTop, bulkSingleFrom, bulkStdBefore,
   computeStats, daysSortValue, isMidAt, latestEndDate, sortStatRows, viewEndInfo,
 } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
@@ -967,6 +968,57 @@ export const useSiteStore = defineStore('site', {
       const arr = Array.isArray(list) ? [...list] : [];
       this.statHideOps = arr;
       this._excludeOps('statHighlightOps', arr);
+    },
+
+    /* ---------------- 统计页「一键置灰」（2026-11-21 用户加） ----------------
+       右栏五个「批量置灰」按钮。**挑选规则全在 `lib/stats.js` 的 `bulk*` 纯函数里**
+       （那边用假数据就能测，见 verify-data），这里只做三件事：
+         ① 传当前参考日期 / 「只看中坚」开关进去（口径与表格同源）；
+         ② 把结果**并进** `statHideOps` —— 追加，不覆盖用户手动置灰的那些；
+         ③ 与「高亮干员」互斥（同 `setStatHideOps`，后选归谁）。
+       ⚠️ 与手动置灰完全同一份状态：**切服不重置、不持久化、不筛行**。
+       ⚠️ 返回值是**合并后的总数**（界面据此算「新增几位」并给提示）。 */
+
+    /** 批量置灰的内部收口：合并 + 摘掉高亮里的同名；返回合并后的总数 */
+    _addHideOps(names) {
+      if (!names || !names.length) return this.statHideOps.length;
+      const set = new Set(this.statHideOps);
+      for (const n of names) set.add(n);
+      this.statHideOps = [...set];
+      this._excludeOps('statHighlightOps', this.statHideOps);
+      return this.statHideOps.length;
+    },
+
+    /** ① 距今 ＜ `days` 天（`which` = `'up'` 出率提升 / `'shop'` 商店兑换） */
+    hideRecentDays(which, days) {
+      const refDate = this.refDate || this.today;
+      return this._addHideOps(
+        bulkRecentDays(this.statRows, refDate, this.statMidOnly, which, days),
+      );
+    },
+
+    /** ② 进店等待最久的 `k` 名（商店兑换距今天数最大的几名） */
+    hideShopWaitingTop(k) {
+      const refDate = this.refDate || this.today;
+      return this._addHideOps(
+        bulkShopWaitingTop(this.statRows, refDate, this.statMidOnly, k),
+      );
+    },
+
+    /** ③ 标准干员里实装时间 ＜ `before`（`YYYY-MM-DD`）的 */
+    hideStdBefore(before) {
+      const refDate = this.refDate || this.today;
+      return this._addHideOps(bulkStdBefore(this.statRows, refDate, before));
+    },
+
+    /** ④ 出率提升次数仅 1 次的，按实装时间升序从第 `from` 名起 */
+    hideSingleUpFrom(from) {
+      return this._addHideOps(bulkSingleFrom(this.statRows, 'up', from));
+    },
+
+    /** ⑤ 商店兑换次数仅 1 次的，按实装时间升序从第 `from` 名起 */
+    hideSingleShopFrom(from) {
+      return this._addHideOps(bulkSingleFrom(this.statRows, 'shop', from));
     },
 
     /** 从 `field` 那个名单里摘掉 `names` 里已有的项（两处互斥共用；没有交集时不产生新数组） */

@@ -274,3 +274,82 @@ export function sortStatRows(rows, sort, refDate, midOnly = false) {
     return va > vb ? mul : -mul;
   });
 }
+
+/* ---------------- 统计页「一键置灰」的挑选规则（2026-11-21 用户加） ----------------
+   五个按钮各一条规则，都做成**纯函数**（给统计行 → 返回该置灰的干员名），
+   store 只负责把结果并进 `statHideOps`，`verify-data` 直接用假数据钉规则。
+
+   口径统一：
+   · 「距今天数」走 `viewEndInfo()` + `daysSortValue()` —— 与表格那一列同源，
+     并且把「中坚寻访只看中坚」开关一路传进来；
+   · 「次数」走 `row.upAll` / `row.shopAll` —— 与表格的次数列同源（含「中坚甄选计入」开关）。
+   ⚠️ `daysSortValue` 三个值：进行中 **0**、无数据 **-1**、真实天数 **≥1**。 */
+
+/**
+ * ① 距今 ＜ `days` 天（`which` = `'up'` 出率提升 / `'shop'` 商店兑换）。
+ *
+ * ⚠️ **进行中（0）算命中** —— 它确实「距今很近」；
+ * ⚠️ **无数据（-1）不算** —— 那表示根本没有这类记录，不是「很近了」。
+ */
+export function bulkRecentDays(rows, refDate, midOnly, which, days) {
+  const n = Number(days);
+  if (!Number.isFinite(n) || n <= 0) return [];
+  return rows
+    .filter((r) => {
+      const v = daysSortValue(viewEndInfo(r, which, refDate, midOnly));
+      return v >= 0 && v < n;
+    })
+    .map((r) => r.name);
+}
+
+/**
+ * ② 进店等待最久的 `k` 名 —— 即「商店兑换距今天数最大」的几名。
+ *
+ * ⚠️ 只认**真实天数（≥1）**：进行中（0）不叫等待，无数据（-1）是没记录。
+ * 同天数按名字码点序（保证结果稳定，不随 `statRows` 的顺序变）。
+ */
+export function bulkShopWaitingTop(rows, refDate, midOnly, k) {
+  const n = Math.floor(Number(k));
+  if (!Number.isFinite(n) || n <= 0) return [];
+  return rows
+    .map((r) => ({ name: r.name, v: daysSortValue(viewEndInfo(r, 'shop', refDate, midOnly)) }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => (b.v - a.v) || a.name.localeCompare(b.name))
+    .slice(0, n)
+    .map((x) => x.name);
+}
+
+/**
+ * ③ **标准**干员里实装时间 ＜ `before`（`YYYY-MM-DD`）的。
+ *
+ * ⚠️ 「标准」用 `isMidAt(row, refDate)` 判（参考日期那一刻还没进中坚）——
+ *    与两张表的分组同一判据，别用 `everMid`。
+ * ⚠️ **严格小于**（用户写的是「＜」）：默认值 `2019-04-30` = 开服日 → 一位都不会命中。
+ * ⚠️ `releaseDate` 为 `null`（该服还没实装 / 查不到）不参与。
+ */
+export function bulkStdBefore(rows, refDate, before) {
+  const d = String(before || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
+  return rows
+    .filter((r) => !isMidAt(r, refDate) && r.releaseDate && r.releaseDate < d)
+    .map((r) => r.name);
+}
+
+/**
+ * ④⑤ **次数仅 1 次**的干员，按**实装时间升序**排，从第 `from` 名起（含该名）。
+ *
+ * @param {'up'|'shop'} which `'up'` = 出率提升次数（`upAll`）、`'shop'` = 商店兑换次数（`shopAll`）
+ * @param {number} from 从第几名开始（`2` = 不含最早的 1 名；`1` = 全部都算）
+ *
+ * ⚠️ 只挑**次数恰好 1** 的（次数 0 = 没记录、≥2 = 已经轮过好几次，都不是「只轮过一次」）；
+ * ⚠️ 实装日缺失的排**最后**（`defaultStatSort` 的 `9999`），不会白占「最早几名」的名额。
+ */
+export function bulkSingleFrom(rows, which, from) {
+  const n = Math.floor(Number(from));
+  if (!Number.isFinite(n) || n < 1) return [];
+  const list = rows
+    .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === 1)
+    .slice()
+    .sort(defaultStatSort);
+  return list.slice(n - 1).map((r) => r.name);
+}

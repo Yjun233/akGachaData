@@ -10,7 +10,10 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo } from '../src/lib/stats.js';
+import {
+  bulkRecentDays, bulkShopWaitingTop, bulkSingleFrom, bulkStdBefore,
+  computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo,
+} from '../src/lib/stats.js';
 import {
   computeFirstUp, inFirstUpPool, metricLabel, modeFirstLabel, modeWord, firstUpRangeLabel,
   axisLabel, metricShort,
@@ -337,6 +340,87 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     check('职业：覆盖面 = 干员总数', owned.length, rawOps.length);
   }
 }
+/* ---------------- 统计页「一键置灰」的五条规则（2026-11-21 用户加） ----------------
+   规则是 `lib/stats.js` 的四个 `bulk*` 纯函数；store 只负责并进 `statHideOps`。
+   这里用**假数据**钉口径（真实数据会随卡池变化，不适合当断言基准）。 */
+{
+  const R2 = '2026-11-21';
+  /** 「上次出现」在 v 天前的卡池项（v = 1 → 结束日当天，距今天数 1） */
+  const ago = (v) => ({ startDate: shiftDays(R2, -(v + 13)), endDate: shiftDays(R2, -(v - 1)) });
+  const LIVE = { startDate: shiftDays(R2, -3), endDate: shiftDays(R2, 10) };  // 进行中
+  const mkRow = (name, { up = [], shop = [], release = null, classic = null }) => ({
+    name, releaseDate: release, classicDate: classic, everMid: !!classic,
+    upAll: up, shopAll: shop, upMid: [], upStd: [], shopMid: [], shopStd: [],
+  });
+
+  /* ① 距今＜N 天：进行中（0）算命中；无数据（-1）不算；边界「正好 N 天」不算 */
+  const upRows = [
+    mkRow('进行中', { up: [LIVE] }),
+    mkRow('五天前', { up: [ago(5)] }),
+    mkRow('正好七十天', { up: [ago(70)] }),
+    mkRow('一百二十天', { up: [ago(120)] }),
+    mkRow('无记录', { up: [] }),
+  ];
+  check('一键置灰①：距今天数 ＜ 70（默认值）→ 进行中 + 5 天前（正好 70 与无数据都不算）',
+    bulkRecentDays(upRows, R2, false, 'up', 70).join(','), '进行中,五天前');
+  check('一键置灰①：门限改成 1 → 只剩进行中（真实天数最小是 1，不含 1）',
+    bulkRecentDays(upRows, R2, false, 'up', 1).join(','), '进行中');
+  check('一键置灰①：门限非法（0 / 空 / 负）→ 一个都不选',
+    ['0', '', '-5', 'abc'].map((v) => bulkRecentDays(upRows, R2, false, 'up', v).length).join('|'), '0|0|0|0');
+
+  /* ② 进店等待最久的 K 名：只认真实天数，进行中 / 无数据不算「在等」 */
+  const shopRows = [
+    mkRow('等三天', { shop: [ago(3)] }),
+    mkRow('等九天', { shop: [ago(9)] }),
+    mkRow('等二十天', { shop: [ago(20)] }),
+    mkRow('进店中', { shop: [LIVE] }),
+    mkRow('没进过店', { shop: [] }),
+  ];
+  check('一键置灰②：取商店兑换距今天数最大的 2 名（进行中 / 无数据不算）',
+    bulkShopWaitingTop(shopRows, R2, false, 2).join(','), '等二十天,等九天');
+  check('一键置灰②：K 超过实际人数就给全部（不报错、不补空）',
+    bulkShopWaitingTop(shopRows, R2, false, 99).join(','), '等二十天,等九天,等三天');
+
+  /* ③ 标准干员里实装 ＜ 某日：严格小于；中坚 / 缺实装日都不参与 */
+  const stdRows = [
+    mkRow('甲', { release: '2019-04-30' }),
+    mkRow('乙', { release: '2019-04-29' }),
+    mkRow('丙', { release: null }),
+    mkRow('丁', { release: '2019-01-01', classic: '2024-01-01' }),   // 参考日已属中坚
+  ];
+  check('一键置灰③：严格小于 → 只有 04-30 之前实装的（当天不算、中坚不算、缺日期不算）',
+    bulkStdBefore(stdRows, R2, '2019-05-01').join(','), '甲,乙');
+  check('一键置灰③：门限压到 2019-05-01 → 当天实装的那位不算（「＜」不是「≤」）',
+    bulkStdBefore(stdRows, R2, '2019-04-30').join(','), '乙');
+  check('一键置灰③：日期格式不对 → 空结果',
+    ['', '2019/04/30', 'abc'].map((d) => bulkStdBefore(stdRows, R2, d).length).join('|'), '0|0|0');
+
+  /* ④⑤ 次数仅 1 的，按实装时间升序从第 N 名起 */
+  const oneRows = [
+    mkRow('晚实装', { release: '2019-06-01', up: [ago(30)] }),
+    mkRow('早实装', { release: '2019-04-01', up: [ago(60)] }),
+    mkRow('中实装', { release: '2019-05-01', up: [ago(90)] }),
+    mkRow('轮过两次', { release: '2019-01-01', up: [ago(200), ago(300)] }),
+    mkRow('没记录', { release: '2019-02-01', up: [] }),
+    mkRow('缺实装日', { release: null, up: [ago(10)] }),
+  ];
+  check('一键置灰④：次数仅 1 的按实装升序，第 2 名起（最早的那名被放过；≥2 次 / 0 次 / 缺实装日都不参与）',
+    bulkSingleFrom(oneRows, 'up', 2).join(','), '中实装,晚实装,缺实装日');
+  check('一键置灰④：第 1 名起 = 全部都算（缺实装日的排最后）',
+    bulkSingleFrom(oneRows, 'up', 1).join(','), '早实装,中实装,晚实装,缺实装日');
+  check('一键置灰④：次数 ≥2 的那位永远不参与（每一档起点都不含他）',
+    [1, 2, 3, 4, 5].map((n) => bulkSingleFrom(oneRows, 'up', n).includes('轮过两次')).join('|'),
+    'false|false|false|false|false');
+  check('一键置灰⑤：换到「商店兑换次数」是同一套规则（同样只认恰好 1 次）',
+    bulkSingleFrom([
+      mkRow('甲', { release: '2019-04-01', shop: [ago(30)] }),
+      mkRow('乙', { release: '2019-05-01', shop: [ago(30), ago(60)] }),
+      mkRow('丙', { release: '2019-06-01', shop: [ago(30)] }),
+    ], 'shop', 2).join(','), '丙');
+  check('一键置灰④⑤：起点非法（0 / 负数）→ 空结果（不会把「第 0 名」当成全部）',
+    ['0', '-1', ''].map((n) => bulkSingleFrom(oneRows, 'up', n).length).join('|'), '0|0|0');
+}
+
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------
    自设数据只存在**浏览器本地** → 测试环境恒为空，**渲染层覆盖不到**
    （`verify-render` 那几条卡池数断言也因此不受影响）。所以这一段全部落在
@@ -1167,9 +1251,10 @@ const fupRot = computeFirstUp({ banners, operatorByName: operators, relDateOf, m
 
 check('默认统计模式 = 首次进店', fupShop.mode, 'shop');
 /* ⚠️ 这两个数**随新卡池增长**（每来一期带进店的常驻标准寻访就会 +2 位）。
-   2026-10-23 快照：常驻标准寻访196（10-22，进店 妮芙 / 波卜）→ 160/69/91 → 162/70/92。 */
-check('有首次进店记录的干员数', fupShop.rows.length, 162);
-check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '70/92');
+   2026-10-23 快照：常驻标准寻访196（10-22，进店 妮芙 / 波卜）→ 160/69/91 → 162/70/92；
+   2026-11-19 快照（新一期常驻标准寻访的进店位）→ 164/71/93。 */
+check('有首次进店记录的干员数', fupShop.rows.length, 164);
+check('其中六星 / 五星', `${fupShop.six.length}/${fupShop.five.length}`, '71/93');
 
 /* ---------------- 「卡池类型」切换（标准 / 中坚，2026-10-31 用户加） ----------------
    中坚模式只看**常驻中坚寻访**（`classic`），刻意不含中坚甄选 —— 甄选一次放 30+ 位，
@@ -1561,9 +1646,9 @@ const upStd = computeUpHistory({
 check('UP 历史：按类型筛选后只含该类型',
   upStd.all.every((r) => r.marks.every((m) => m.type === 'double')), true);
 /* 同上：随新卡池增长（2026-10-23 新增 常驻标准寻访196 → 187/975 → 188/980；
-   2026-11-13 新增一期 → 188/985） */
+   2026-11-13 新增一期 → 188/985；2026-11-19 快照 → 189/990） */
 check('UP 历史：只选 double 的干员 / 标记数',
-  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '188/985');
+  `${upStd.all.length}/${upStd.all.reduce((a, r) => a + r.count, 0)}`, '189/990');
 
 const upSort = computeUpHistory({
   banners, categories, operatorByName: operators, relDateOf, sort: 'lastUp-desc',

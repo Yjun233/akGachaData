@@ -633,6 +633,96 @@ try {
     `${mutexB.store.statHideOps.length}|${mutexB.store.statHighlightOps.join(',')}`,
     `0|${allNames[0]}`);
 
+  /* ---------------- 「一键置灰」五个批量按钮（2026-11-21 用户加） ----------------
+     规则的**口径**在 verify-data 用假数据钉（`bulk*` 纯函数）；这里验三件事：
+       ① 右栏确实有 5 条规则、默认值就是用户给的那五个；
+       ② 点一次 → 结果与「按同一口径重算」的一致（追加，不清掉已手动置灰的）；
+       ③ 与「高亮干员」互斥（批量置灰后，高亮里同名的不再生效）。 */
+  {
+    const libB = await vite.ssrLoadModule('/src/lib/stats.js');
+    check('一键置灰：右栏 5 条规则 + 默认值 70 / 6 / 2019-04-30 / 2 / 2',
+      `${count(sh, /class="btn sm"/g)}|${/value="70"/.test(sh)}|${/value="6"/.test(sh)}`
+      + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}`,
+      '5|true|true|true|2');
+
+    /* ① 距今＜84 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
+    const bulkA = await renderRoute('/operators', (s) => {
+      const n = s.statRows.map((r) => r.name);
+      s.setStatHighlightOps(n);
+      s.setStatHideOps([n[0]]);
+      s.hideRecentDays('up', 70);
+    });
+    const stA = bulkA.store;
+    const refA = stA.refDate || stA.today;
+    const wantRecent = stA.statRows
+      .filter((r) => {
+        const v = libB.daysSortValue(libB.viewEndInfo(r, 'up', refA, stA.statMidOnly));
+        return v >= 0 && v < 70;
+      })
+      .map((r) => r.name);
+    const hidA = new Set(stA.statHideOps);
+    check('一键置灰①：命中 = 出率提升距今 ＜ 70 天的全部（一处不漏、一处不多）',
+      `${wantRecent.every((n) => hidA.has(n))}|${stA.statHideOps.filter((n) => !wantRecent.includes(n)).length}`,
+      `true|1`);
+    check('一键置灰：**追加**语义 —— 已手动置灰的那位还在',
+      hidA.has(stA.statRows[0].name), true);
+    check('一键置灰：与高亮互斥 —— 批量置灰的人全部从高亮里摘掉',
+      stA.statHighlightOps.filter((n) => hidA.has(n)).length, 0);
+
+    /* ② 进店等待前 6 名：结果 = 商店兑换距今天数最大的 6 位（只认真实天数） */
+    const bulkB = await renderRoute('/operators', (s) => { s.hideShopWaitingTop(6); });
+    const stB = bulkB.store;
+    const refB = stB.refDate || stB.today;
+    const wantTopShop = stB.statRows
+      .map((r) => ({ n: r.name, v: libB.daysSortValue(libB.viewEndInfo(r, 'shop', refB, stB.statMidOnly)) }))
+      .filter((x) => x.v > 0)
+      .sort((a, b) => (b.v - a.v) || a.n.localeCompare(b.n))
+      .slice(0, 6).map((x) => x.n);
+    check('一键置灰②：结果 = 商店兑换距今天数最大的 6 位',
+      `${stB.statHideOps.length}|${wantTopShop.every((n) => stB.statHideOps.includes(n))}`,
+      `6|true`);
+
+    /* ③ 标准干员实装 ＜ 2019-05-01：只可能是标准侧、且严格早于该日 */
+    const bulkC = await renderRoute('/operators', (s) => { s.hideStdBefore('2019-05-01'); });
+    const stC = bulkC.store;
+    const refC = stC.refDate || stC.today;
+    const byNameC = new Map(stC.statRows.map((r) => [r.name, r]));
+    check('一键置灰③：命中的都是标准侧（当时还没进中坚）且实装日 ＜ 2019-05-01',
+      stC.statHideOps.every((n) => {
+        const r = byNameC.get(n);
+        return r && libB.isMidAt(r, refC) === false && r.releaseDate && r.releaseDate < '2019-05-01';
+      }), true);
+    check('一键置灰③：默认值 2019-04-30 在**真实数据**上一位都不命中（开服日之前没有干员）',
+      (await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); })).store.statHideOps.length, 0);
+
+    /* ④⑤ 次数仅 1 次的，从第 2 名起：最早的**那一位**不会被置灰，其余单次干员都在 */
+    const bulkD = await renderRoute('/operators', (s) => { s.hideSingleUpFrom(2); });
+    const stD = bulkD.store;
+    const singlesUp = stD.statRows.filter((r) => r.upAll.length === 1)
+      .sort(libB.defaultStatSort).map((r) => r.name);
+    check('一键置灰④：次数仅 1 的从第 2 名起 —— 最早那位不在，其余都在',
+      `${stD.statHideOps.includes(singlesUp[0])}|`
+      + `${singlesUp.slice(1).every((n) => stD.statHideOps.includes(n))}|${stD.statHideOps.length}`,
+      `false|true|${singlesUp.length - 1}`);
+    check('一键置灰④：次数 0 / ≥2 的干员一位都不在结果里',
+      stD.statHideOps.filter((n) => {
+        const r = stD.statRows.find((x) => x.name === n);
+        return r && r.upAll.length !== 1;
+      }).length, 0);
+    const bulkE = await renderRoute('/operators', (s) => { s.hideSingleShopFrom(2); });
+    const stE = bulkE.store;
+    const singlesShop = stE.statRows.filter((r) => r.shopAll.length === 1)
+      .sort(libB.defaultStatSort).map((r) => r.name);
+    check('一键置灰⑤：换到「商店兑换次数」同一套规则（最早那位被放过）',
+      `${stE.statHideOps.includes(singlesShop[0])}|`
+      + `${singlesShop.slice(1).every((n) => stE.statHideOps.includes(n))}|${stE.statHideOps.length}`,
+      `false|true|${singlesShop.length - 1}`);
+
+    /* 切服不重置 / 不持久化：与手动置灰同一份 state，这里只钉「没写进 localStorage」 */
+    check('一键置灰：不持久化（写本地存储的只有自设卡池）',
+      !/statHideOps/.test(fs.readFileSync(path.join(ROOT, 'src/lib/customBanners.js'), 'utf8')), true);
+  }
+
   /* ---------------- 干员选择框的「默认候选」（2026-11-17 用户加） ----------------
      没输入文本时，浮层里直接给「出率提升距今天数最久」的 6 标准 + 6 中坚；
      顺序平时标准在前，自定义卡池里卡池类型选到中坚类时反过来（见下文弹窗那条）。 */

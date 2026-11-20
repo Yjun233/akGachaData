@@ -117,6 +117,29 @@ const statResult = computed(() => {
   return `参考日期 ${site.refDate} · 可见卡池 ${visible.length} 个 · 参与统计干员 ${Object.keys(map).length} 位`;
 });
 
+/* ---------------- 「一键置灰」五个批量按钮（2026-11-21 用户加） ----------------
+   输入框是**本地状态**（切服 / 刷新回到默认值，不持久化）；点「确定」调 store 的
+   `hideXxx` 动作，规则本身在 `lib/stats.js` 的 `bulk*` 纯函数里。
+   ⚠️ 置灰是**追加**（不覆盖已手动置灰的）；点完给一句「新增 N 位」——
+      否则默认值点下去可能 0 命中（如「标准实装 ＜ 开服日」），看着像坏了。 */
+const bulk = ref({
+  upDays: '70',        // 距今＜N 天（用户 2026-11-21 定 70，原定 84）
+  shopTop: '6',        // 进店等待前 N 名
+  stdBefore: '2019-04-30', // 标准内实装 ＜ 日期
+  firstUp: '2',        // 首次UP队列第 N 名起
+  firstShop: '2',      // 首次进店队列第 N 名起
+});
+const bulkMsg = ref('');
+/** 执行一条批量置灰：`fn` 返回**合并后**的总数；提示里给出「新增几位」 */
+function runBulk(fn) {
+  const before = site.statHideOps.length;
+  const total = fn();
+  const added = total - before;
+  bulkMsg.value = added
+    ? `已新增置灰 ${added} 位（共 ${total} 位）`
+    : `没有新增（共 ${total} 位）—— 条件里没有符合条件的干员`;
+}
+
 /* 「今天 / 标准最晚 / 中坚最晚」三个快捷参考日（后两个 2026-10-29 用户加）：
    · 标准最晚 = **标准寻访 + 限定寻访**里最晚的卡池结束日；
    · 中坚最晚 = **中坚寻访**大类里最晚的卡池结束日。
@@ -347,6 +370,45 @@ function resetUp() {
           :pool="hlPool" :suggest="site.opSuggest"
           @update:model-value="site.setStatHideOps"
         />
+      </div>
+      <!-- 「一键置灰」（2026-11-21 用户加）：五条规则各一个输入框 + 确定，点确定就**并入**
+           上面的置灰名单（追加，不覆盖）。规则口径见 lib/stats.js 的 `bulk*` 纯函数。
+           布局复用右栏既有的紧凑行（`.quick-row` / `.btn.sm`）—— 抽屉内容宽只有 ~221px，
+           四条**一行一条**、日期那条**折两行**（一行放不下，日期会被截断），解释文字放 `title`。 -->
+      <div class="fgroup bulk">
+        <label>一键置灰<span class="fcount">并入上面的置灰名单</span></label>
+        <div class="quick-row" title="出率提升距今天数 ＜ N 天的干员全部置灰（进行中算 0 天；显示「—」的无数据不算）">
+          <span class="q-txt">距今＜</span>
+          <input v-model="bulk.upDays" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="距今小于多少天" />
+          <span class="q-txt">天</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideRecentDays('up', bulk.upDays))">确定</button>
+        </div>
+        <div class="quick-row" title="商店兑换距今天数最大的 N 名置灰（进行中 / 无数据的都不算「在等」）">
+          <span class="q-txt">进店等待前</span>
+          <input v-model="bulk.shopTop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="进店等待前几名" />
+          <span class="q-txt">名</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideShopWaitingTop(bulk.shopTop))">确定</button>
+        </div>
+        <div class="bulk-stack" title="只针对标准寻访的干员：实装时间 ＜ 该日期的全部置灰（严格小于；默认开服日 = 一位都不命中）">
+          <span class="q-txt">标准实装＜</span>
+          <div class="quick-row">
+            <input v-model="bulk.stdBefore" class="q-date" type="date" aria-label="标准干员实装早于哪一天" />
+            <button class="btn sm" type="button" @click="runBulk(() => site.hideStdBefore(bulk.stdBefore))">确定</button>
+          </div>
+        </div>
+        <div class="quick-row" title="出率提升次数只有 1 次的干员，按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 放过最早的那 1 名）">
+          <span class="q-txt">首次UP第</span>
+          <input v-model="bulk.firstUp" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列从第几名起" />
+          <span class="q-txt">名起</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideSingleUpFrom(bulk.firstUp))">确定</button>
+        </div>
+        <div class="quick-row" title="商店兑换次数只有 1 次的干员，按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 放过最早的那 1 名）">
+          <span class="q-txt">首次进店第</span>
+          <input v-model="bulk.firstShop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列从第几名起" />
+          <span class="q-txt">名起</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideSingleShopFrom(bulk.firstShop))">确定</button>
+        </div>
+        <div v-if="bulkMsg" class="bulk-msg">{{ bulkMsg }}</div>
       </div>
       <div class="fresult">{{ statResult }}</div>
     </div>
