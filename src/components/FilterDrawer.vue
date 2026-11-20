@@ -130,6 +130,12 @@ const bulk = ref({
   firstShop: '2',      // 首次进店队列第 N 名起
 });
 const bulkMsg = ref('');
+/** 「置灰干员 · 清除全部」—— 连「一键置灰」的提示一起清掉（否则清完还挂着「已新增 N 位」） */
+function clearHideOps() {
+  site.setStatHideOps([]);
+  bulkMsg.value = '';
+}
+
 /** 执行一条批量置灰：`fn` 返回**合并后**的总数；提示里给出「新增几位」 */
 function runBulk(fn) {
   const before = site.statHideOps.length;
@@ -357,6 +363,12 @@ function resetUp() {
           :pool="hlPool" :suggest="site.opSuggest"
           @update:model-value="site.setStatHighlightOps"
         />
+        <div class="opclear">
+          <button
+            class="btn sm clear-all" type="button" :disabled="!site.statHighlightOps.length"
+            @click="site.setStatHighlightOps([])"
+          >清除全部</button>
+        </div>
       </div>
       <!-- 「置灰干员」（2026-11-17 用户加）：选中的干员那一行**盖灰罩**（与复制模式的遮罩同款，
            只是复制模式后来加深了一档以便区分）。⚠️ 与「高亮干员」**互斥** —— 名额先给谁就是谁的，
@@ -370,6 +382,12 @@ function resetUp() {
           :pool="hlPool" :suggest="site.opSuggest"
           @update:model-value="site.setStatHideOps"
         />
+        <div class="opclear">
+          <button
+            class="btn sm clear-all" type="button" :disabled="!site.statHideOps.length"
+            @click="clearHideOps()"
+          >清除全部</button>
+        </div>
       </div>
       <!-- 「一键置灰」（2026-11-21 用户加）：五条规则各一个输入框 + 确定，点确定就**并入**
            上面的置灰名单（追加，不覆盖）。规则口径见 lib/stats.js 的 `bulk*` 纯函数。

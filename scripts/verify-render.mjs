@@ -718,6 +718,29 @@ try {
       + `${singlesShop.slice(1).every((n) => stE.statHideOps.includes(n))}|${stE.statHideOps.length}`,
       `false|true|${singlesShop.length - 1}`);
 
+    /* 「清除全部」（2026-11-21 用户加）：高亮 / 置灰各一个，空名单时禁用；
+       置灰那个还要顺手清掉「一键置灰」的提示（`clearHideOps()`）。 */
+    check('高亮 / 置灰干员：各有一个「清除全部」，默认（空名单）两个都禁用',
+      `${count(sh, /清除全部/g)}|${count(sh, /class="btn sm clear-all"/g)}`
+      + `|${count(sh, /class="btn sm clear-all" type="button" disabled/g)}`,
+      '2|2|2');
+    check('高亮 / 置灰干员：清除全部接的是各自 setter（置灰那个额外清提示，走 `clearHideOps()`）',
+      /@click="site\.setStatHighlightOps\(\[\]\)"/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8'),
+      )
+      && /function clearHideOps\(\) \{[\s\S]{0,120}setStatHideOps\(\[\]\)[\s\S]{0,60}bulkMsg\.value = ''/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8'),
+      ), true);
+    const cleared = await renderRoute('/operators', (s) => {
+      const n = s.statRows.map((r) => r.name);
+      s.setStatHighlightOps(n.slice(0, 3));
+      s.setStatHideOps(n.slice(3, 5));
+      s.setStatHighlightOps([]);   // = 点「清除全部」
+      s.setStatHideOps([]);
+    });
+    check('高亮 / 置灰干员：清除后两个名单都空（不互相影响）',
+      `${cleared.store.statHighlightOps.length}|${cleared.store.statHideOps.length}`, '0|0');
+
     /* 切服不重置 / 不持久化：与手动置灰同一份 state，这里只钉「没写进 localStorage」 */
     check('一键置灰：不持久化（写本地存储的只有自设卡池）',
       !/statHideOps/.test(fs.readFileSync(path.join(ROOT, 'src/lib/customBanners.js'), 'utf8')), true);

@@ -249,6 +249,10 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 }
 .date-row{display:flex;align-items:center;gap:6px}
 .date-row input{flex:1 1 auto;min-width:0}
+/* 「高亮 / 置灰干员」下面那个「清除全部」：右对齐的小按钮（空名单时 `.btn:disabled` 自己会压暗） */
+.opclear{display:flex;justify-content:flex-end}
+.opclear .clear-all{padding:4px 10px;font-size:12px;color:var(--ink-2)}
+
 /* 统计页「一键置灰」：五条规则各一行（复用 `.quick-row` / `.date-row` / `.btn.sm`）。
    抽屉内容宽 ~221px，标签 + 数字 + 单位 + 确定 要挤进一行 → 数字框只给 6ch；
    日期那一行把「标准实装＜」压成 nowrap，输入框自己吃剩余宽度。 */
