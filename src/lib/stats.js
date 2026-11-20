@@ -302,8 +302,33 @@ export function bulkRecentDays(rows, refDate, midOnly, which, days) {
     .map((r) => r.name);
 }
 
+/* ---------------- 「按名次」的三条规则要**分表**算（2026-11-21 用户追加） ----------------
+   统计页是**四张表**（6★标准 / 6★中坚 / 5★标准 / 5★中坚），彼此独立成表。
+   ②④⑤ 都是「取第几名」，名次必须在**各自的表内**排 —— 否则 6★ 的人会把 5★ 的名额吃掉，
+   一张表里点「前 6 名」可能一个都轮不到。所以下面三个函数都先按表切、再各自取。 */
+
+/** 四张统计表的 id（顺序即结果顺序：6★标准 → 6★中坚 → 5★标准 → 5★中坚） */
+export const STAT_TABLES = ['6-std', '6-mid', '5-std', '5-mid'];
+
+/** 该统计行属于哪张表（判据 = 星级 + `isMidAt(row, refDate)`，与表格分组同一套） */
+export function statTableOf(row, refDate) {
+  return `${row.rarity === 5 ? 5 : 6}-${isMidAt(row, refDate) ? 'mid' : 'std'}`;
+}
+
+/** 按四张表切开（保持表的固定顺序；空表跳过；万一出现别的星级也照样成组，排在后面） */
+function splitByTable(rows, refDate) {
+  const buckets = new Map(STAT_TABLES.map((k) => [k, []]));
+  for (const r of rows) {
+    const k = statTableOf(r, refDate);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(r);
+  }
+  return [...buckets.values()].filter((list) => list.length);
+}
+
 /**
- * ② 进店等待最久的 `k` 名 —— 即「商店兑换距今天数最大」的几名。
+ * ② 进店等待最久的 `k` 名 —— 即「商店兑换距今天数最大」的几名，**每张表各取 k 名**
+ * （四张表合计最多 4k 位；某张表不够 k 位就有多少取多少）。
  *
  * ⚠️ 只认**真实天数（≥1）**：进行中（0）不叫等待，无数据（-1）是没记录。
  * 同天数按名字码点序（保证结果稳定，不随 `statRows` 的顺序变）。
@@ -311,12 +336,16 @@ export function bulkRecentDays(rows, refDate, midOnly, which, days) {
 export function bulkShopWaitingTop(rows, refDate, midOnly, k) {
   const n = Math.floor(Number(k));
   if (!Number.isFinite(n) || n <= 0) return [];
-  return rows
-    .map((r) => ({ name: r.name, v: daysSortValue(viewEndInfo(r, 'shop', refDate, midOnly)) }))
-    .filter((x) => x.v > 0)
-    .sort((a, b) => (b.v - a.v) || a.name.localeCompare(b.name))
-    .slice(0, n)
-    .map((x) => x.name);
+  const out = [];
+  for (const bucket of splitByTable(rows, refDate)) {
+    out.push(...bucket
+      .map((r) => ({ name: r.name, v: daysSortValue(viewEndInfo(r, 'shop', refDate, midOnly)) }))
+      .filter((x) => x.v > 0)
+      .sort((a, b) => (b.v - a.v) || a.name.localeCompare(b.name))
+      .slice(0, n)
+      .map((x) => x.name));
+  }
+  return out;
 }
 
 /**
@@ -337,19 +366,25 @@ export function bulkStdBefore(rows, refDate, before) {
 
 /**
  * ④⑤ **次数仅 1 次**的干员，按**实装时间升序**排，从第 `from` 名起（含该名）。
+ * **每张表各排各的**（四张表各有一份「第 N 名起」的名额）。
  *
  * @param {'up'|'shop'} which `'up'` = 出率提升次数（`upAll`）、`'shop'` = 商店兑换次数（`shopAll`）
+ * @param {string} refDate 参考日期（要它才能分表：`isMidAt` 的判据时点）
  * @param {number} from 从第几名开始（`2` = 不含最早的 1 名；`1` = 全部都算）
  *
  * ⚠️ 只挑**次数恰好 1** 的（次数 0 = 没记录、≥2 = 已经轮过好几次，都不是「只轮过一次」）；
  * ⚠️ 实装日缺失的排**最后**（`defaultStatSort` 的 `9999`），不会白占「最早几名」的名额。
  */
-export function bulkSingleFrom(rows, which, from) {
+export function bulkSingleFrom(rows, which, refDate, from) {
   const n = Math.floor(Number(from));
   if (!Number.isFinite(n) || n < 1) return [];
-  const list = rows
-    .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === 1)
-    .slice()
-    .sort(defaultStatSort);
-  return list.slice(n - 1).map((r) => r.name);
+  const out = [];
+  for (const bucket of splitByTable(rows, refDate)) {
+    out.push(...bucket
+      .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === 1)
+      .sort(defaultStatSort)
+      .slice(n - 1)
+      .map((r) => r.name));
+  }
+  return out;
 }

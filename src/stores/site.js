@@ -1011,14 +1011,16 @@ export const useSiteStore = defineStore('site', {
       return this._addHideOps(bulkStdBefore(this.statRows, refDate, before));
     },
 
-    /** ④ 出率提升次数仅 1 次的，按实装时间升序从第 `from` 名起 */
+    /** ④ 出率提升次数仅 1 次的，**每张表**按实装时间升序从第 `from` 名起 */
     hideSingleUpFrom(from) {
-      return this._addHideOps(bulkSingleFrom(this.statRows, 'up', from));
+      const refDate = this.refDate || this.today;
+      return this._addHideOps(bulkSingleFrom(this.statRows, 'up', refDate, from));
     },
 
-    /** ⑤ 商店兑换次数仅 1 次的，按实装时间升序从第 `from` 名起 */
+    /** ⑤ 商店兑换次数仅 1 次的，**每张表**按实装时间升序从第 `from` 名起 */
     hideSingleShopFrom(from) {
-      return this._addHideOps(bulkSingleFrom(this.statRows, 'shop', from));
+      const refDate = this.refDate || this.today;
+      return this._addHideOps(bulkSingleFrom(this.statRows, 'shop', refDate, from));
     },
 
     /** 从 `field` 那个名单里摘掉 `names` 里已有的项（两处互斥共用；没有交集时不产生新数组） */

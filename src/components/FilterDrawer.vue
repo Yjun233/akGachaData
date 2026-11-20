@@ -406,7 +406,7 @@ function resetUp() {
           <span class="q-txt">天</span>
           <button class="btn sm" type="button" @click="runBulk(() => site.hideRecentDays('up', bulk.upDays))">确定</button>
         </div>
-        <div class="quick-row" title="商店兑换距今天数最大的 N 名置灰（进行中 / 无数据的都不算「在等」）">
+        <div class="quick-row" title="每张表（6/5 星 × 标准/中坚）各取商店兑换距今天数最大的 N 名置灰（进行中 / 无数据的都不算「在等」）">
           <span class="q-txt">进店等待前</span>
           <input v-model="bulk.shopTop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="进店等待前几名" />
           <span class="q-txt">名</span>
@@ -419,13 +419,13 @@ function resetUp() {
             <button class="btn sm" type="button" @click="runBulk(() => site.hideStdBefore(bulk.stdBefore))">确定</button>
           </div>
         </div>
-        <div class="quick-row" title="出率提升次数只有 1 次的干员，按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 放过最早的那 1 名）">
+        <div class="quick-row" title="每张表各排：出率提升次数只有 1 次的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
           <span class="q-txt">首次UP第</span>
           <input v-model="bulk.firstUp" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列从第几名起" />
           <span class="q-txt">名起</span>
           <button class="btn sm" type="button" @click="runBulk(() => site.hideSingleUpFrom(bulk.firstUp))">确定</button>
         </div>
-        <div class="quick-row" title="商店兑换次数只有 1 次的干员，按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 放过最早的那 1 名）">
+        <div class="quick-row" title="每张表各排：商店兑换次数只有 1 次的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
           <span class="q-txt">首次进店第</span>
           <input v-model="bulk.firstShop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列从第几名起" />
           <span class="q-txt">名起</span>

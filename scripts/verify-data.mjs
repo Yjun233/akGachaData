@@ -348,8 +348,8 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
   /** 「上次出现」在 v 天前的卡池项（v = 1 → 结束日当天，距今天数 1） */
   const ago = (v) => ({ startDate: shiftDays(R2, -(v + 13)), endDate: shiftDays(R2, -(v - 1)) });
   const LIVE = { startDate: shiftDays(R2, -3), endDate: shiftDays(R2, 10) };  // 进行中
-  const mkRow = (name, { up = [], shop = [], release = null, classic = null }) => ({
-    name, releaseDate: release, classicDate: classic, everMid: !!classic,
+  const mkRow = (name, { up = [], shop = [], release = null, classic = null, rarity = 6 }) => ({
+    name, rarity, releaseDate: release, classicDate: classic, everMid: !!classic,
     upAll: up, shopAll: shop, upMid: [], upStd: [], shopMid: [], shopStd: [],
   });
 
@@ -380,6 +380,18 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     bulkShopWaitingTop(shopRows, R2, false, 2).join(','), '等二十天,等九天');
   check('一键置灰②：K 超过实际人数就给全部（不报错、不补空）',
     bulkShopWaitingTop(shopRows, R2, false, 99).join(','), '等二十天,等九天,等三天');
+  /* ⭐ 2026-11-21 用户追加：名次**四张表分别算** —— 5★ 等得再久也不会挤掉 6★ 的名额 */
+  const shopTablesRows = [
+    mkRow('六星久等', { shop: [ago(9)] }),
+    mkRow('六星次久', { shop: [ago(5)] }),
+    mkRow('六星很短', { shop: [ago(1)] }),
+    mkRow('五星很久', { rarity: 5, shop: [ago(200)] }),
+    mkRow('五星次久', { rarity: 5, shop: [ago(100)] }),
+    mkRow('五星很短', { rarity: 5, shop: [ago(2)] }),
+  ];
+  check('一键置灰②：每张表各取 K 名（6★ 取 9/5、5★ 取 200/100，互不挤占）',
+    bulkShopWaitingTop(shopTablesRows, R2, false, 2).join(','),
+    '六星久等,六星次久,五星很久,五星次久');
 
   /* ③ 标准干员里实装 ＜ 某日：严格小于；中坚 / 缺实装日都不参与 */
   const stdRows = [
@@ -395,7 +407,7 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
   check('一键置灰③：日期格式不对 → 空结果',
     ['', '2019/04/30', 'abc'].map((d) => bulkStdBefore(stdRows, R2, d).length).join('|'), '0|0|0');
 
-  /* ④⑤ 次数仅 1 的，按实装时间升序从第 N 名起 */
+  /* ④⑤ 次数仅 1 的，按实装时间升序从第 N 名起 —— **每张表各排各的** */
   const oneRows = [
     mkRow('晚实装', { release: '2019-06-01', up: [ago(30)] }),
     mkRow('早实装', { release: '2019-04-01', up: [ago(60)] }),
@@ -403,22 +415,26 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     mkRow('轮过两次', { release: '2019-01-01', up: [ago(200), ago(300)] }),
     mkRow('没记录', { release: '2019-02-01', up: [] }),
     mkRow('缺实装日', { release: null, up: [ago(10)] }),
+    mkRow('五星唯一', { rarity: 5, release: '2019-03-01', up: [ago(20)] }),
   ];
   check('一键置灰④：次数仅 1 的按实装升序，第 2 名起（最早的那名被放过；≥2 次 / 0 次 / 缺实装日都不参与）',
-    bulkSingleFrom(oneRows, 'up', 2).join(','), '中实装,晚实装,缺实装日');
-  check('一键置灰④：第 1 名起 = 全部都算（缺实装日的排最后）',
-    bulkSingleFrom(oneRows, 'up', 1).join(','), '早实装,中实装,晚实装,缺实装日');
+    bulkSingleFrom(oneRows, 'up', R2, 2).join(','), '中实装,晚实装,缺实装日');
+  check('一键置灰④：第 1 名起 = 全部都算（缺实装日的排最后、5★ 表在后面）',
+    bulkSingleFrom(oneRows, 'up', R2, 1).join(','), '早实装,中实装,晚实装,缺实装日,五星唯一');
   check('一键置灰④：次数 ≥2 的那位永远不参与（每一档起点都不含他）',
-    [1, 2, 3, 4, 5].map((n) => bulkSingleFrom(oneRows, 'up', n).includes('轮过两次')).join('|'),
+    [1, 2, 3, 4, 5].map((n) => bulkSingleFrom(oneRows, 'up', R2, n).includes('轮过两次')).join('|'),
     'false|false|false|false|false');
+  /* ⭐ 分表：5★ 表里只有 1 位「仅 1 次」的 → 第 2 名起就轮不到他（6★ 表的名次不影响 5★ 表） */
+  check('一键置灰④：名次四张表分别算（5★ 表只有 1 位 → 第 2 名起就放过他）',
+    bulkSingleFrom(oneRows, 'up', R2, 2).includes('五星唯一'), false);
   check('一键置灰⑤：换到「商店兑换次数」是同一套规则（同样只认恰好 1 次）',
     bulkSingleFrom([
       mkRow('甲', { release: '2019-04-01', shop: [ago(30)] }),
       mkRow('乙', { release: '2019-05-01', shop: [ago(30), ago(60)] }),
       mkRow('丙', { release: '2019-06-01', shop: [ago(30)] }),
-    ], 'shop', 2).join(','), '丙');
+    ], 'shop', R2, 2).join(','), '丙');
   check('一键置灰④⑤：起点非法（0 / 负数）→ 空结果（不会把「第 0 名」当成全部）',
-    ['0', '-1', ''].map((n) => bulkSingleFrom(oneRows, 'up', n).length).join('|'), '0|0|0');
+    ['0', '-1', ''].map((n) => bulkSingleFrom(oneRows, 'up', R2, n).length).join('|'), '0|0|0');
 }
 
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------

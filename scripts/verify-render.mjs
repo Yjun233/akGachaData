@@ -669,18 +669,31 @@ try {
     check('一键置灰：与高亮互斥 —— 批量置灰的人全部从高亮里摘掉',
       stA.statHighlightOps.filter((n) => hidA.has(n)).length, 0);
 
-    /* ② 进店等待前 6 名：结果 = 商店兑换距今天数最大的 6 位（只认真实天数） */
+    /* 名次类规则要**四张表分别算**（2026-11-21 用户追加）—— 测试侧自己按
+       星级 × 是否中坚 切一遍，别直接调被测函数，否则等于自证。 */
+    const splitRows = (rows, ref) => {
+      const order = ['6-std', '6-mid', '5-std', '5-mid'];
+      const m = new Map(order.map((k) => [k, []]));
+      for (const r of rows) {
+        const k = `${r.rarity === 5 ? 5 : 6}-${libB.isMidAt(r, ref) ? 'mid' : 'std'}`;
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(r);
+      }
+      return order.map((k) => m.get(k) || []);
+    };
+
+    /* ② 进店等待前 6 名：**每张表**各取商店兑换距今天数最大的 6 位（只认真实天数） */
     const bulkB = await renderRoute('/operators', (s) => { s.hideShopWaitingTop(6); });
     const stB = bulkB.store;
     const refB = stB.refDate || stB.today;
-    const wantTopShop = stB.statRows
+    const wantTopShop = splitRows(stB.statRows, refB).flatMap((bucket) => bucket
       .map((r) => ({ n: r.name, v: libB.daysSortValue(libB.viewEndInfo(r, 'shop', refB, stB.statMidOnly)) }))
       .filter((x) => x.v > 0)
       .sort((a, b) => (b.v - a.v) || a.n.localeCompare(b.n))
-      .slice(0, 6).map((x) => x.n);
-    check('一键置灰②：结果 = 商店兑换距今天数最大的 6 位',
-      `${stB.statHideOps.length}|${wantTopShop.every((n) => stB.statHideOps.includes(n))}`,
-      `6|true`);
+      .slice(0, 6).map((x) => x.n));
+    check('一键置灰②：每张表各取「商店兑换距今最大的 6 位」（四张表合计相加，不是全局前 6）',
+      `${stB.statHideOps.length}|${stB.statHideOps.join(',') === wantTopShop.join(',')}`,
+      `${wantTopShop.length}|true`);
 
     /* ③ 标准干员实装 ＜ 2019-05-01：只可能是标准侧、且严格早于该日 */
     const bulkC = await renderRoute('/operators', (s) => { s.hideStdBefore('2019-05-01'); });
@@ -698,12 +711,12 @@ try {
     /* ④⑤ 次数仅 1 次的，从第 2 名起：最早的**那一位**不会被置灰，其余单次干员都在 */
     const bulkD = await renderRoute('/operators', (s) => { s.hideSingleUpFrom(2); });
     const stD = bulkD.store;
-    const singlesUp = stD.statRows.filter((r) => r.upAll.length === 1)
-      .sort(libB.defaultStatSort).map((r) => r.name);
-    check('一键置灰④：次数仅 1 的从第 2 名起 —— 最早那位不在，其余都在',
-      `${stD.statHideOps.includes(singlesUp[0])}|`
-      + `${singlesUp.slice(1).every((n) => stD.statHideOps.includes(n))}|${stD.statHideOps.length}`,
-      `false|true|${singlesUp.length - 1}`);
+    /* 每张表各排各的「仅 1 次」队列，各放过最早的那一位 */
+    const wantSingleUp = splitRows(stD.statRows, stD.refDate || stD.today).flatMap((bucket) => bucket
+      .filter((r) => r.upAll.length === 1).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
+    check('一键置灰④：每张表各自放过「最早的那一位」，其余单次干员都在',
+      `${stD.statHideOps.length}|${stD.statHideOps.join(',') === wantSingleUp.join(',')}`,
+      `${wantSingleUp.length}|true`);
     check('一键置灰④：次数 0 / ≥2 的干员一位都不在结果里',
       stD.statHideOps.filter((n) => {
         const r = stD.statRows.find((x) => x.name === n);
@@ -711,12 +724,11 @@ try {
       }).length, 0);
     const bulkE = await renderRoute('/operators', (s) => { s.hideSingleShopFrom(2); });
     const stE = bulkE.store;
-    const singlesShop = stE.statRows.filter((r) => r.shopAll.length === 1)
-      .sort(libB.defaultStatSort).map((r) => r.name);
-    check('一键置灰⑤：换到「商店兑换次数」同一套规则（最早那位被放过）',
-      `${stE.statHideOps.includes(singlesShop[0])}|`
-      + `${singlesShop.slice(1).every((n) => stE.statHideOps.includes(n))}|${stE.statHideOps.length}`,
-      `false|true|${singlesShop.length - 1}`);
+    const wantSingleShop = splitRows(stE.statRows, stE.refDate || stE.today).flatMap((bucket) => bucket
+      .filter((r) => r.shopAll.length === 1).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
+    check('一键置灰⑤：商店兑换同一套规则（每张表各放过最早那位）',
+      `${stE.statHideOps.length}|${stE.statHideOps.join(',') === wantSingleShop.join(',')}`,
+      `${wantSingleShop.length}|true`);
 
     /* 「清除全部」（2026-11-21 用户加）：高亮 / 置灰各一个，空名单时禁用；
        置灰那个还要顺手清掉「一键置灰」的提示（`clearHideOps()`）。 */
