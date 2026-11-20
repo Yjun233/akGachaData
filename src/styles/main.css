@@ -260,6 +260,13 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
   border-radius:6px;color:var(--ink-2);
 }
 
+/* 统计页「编辑模式」（2026-11-21 用户加）：行可点，给个手型 + hover 淡蓝罩
+   （否则看不出这行为什么能点）。⚠️ 只挂在 `.tbl-scroll.edit-mode` 下 ——
+   平时行不响应点击，光标也不该是手型。 */
+.tbl-scroll.edit-mode tbody tr{cursor:pointer}
+.tbl-scroll.edit-mode tbody tr:hover{box-shadow:inset 0 0 0 2px var(--blue-200)}
+.tbl-scroll.edit-mode tbody tr:hover > td{background-image:linear-gradient(rgba(0,98,155,.05),rgba(0,98,155,.05))}
+
 /* 统计页「一键置灰」：五条规则各一行（复用 `.quick-row` / `.date-row` / `.btn.sm`）。
    抽屉内容宽 ~221px，标签 + 数字 + 单位 + 确定 要挤进一行 → 数字框只给 6ch；
    日期那一行把「标准实装＜」压成 nowrap，输入框自己吃剩余宽度。 */

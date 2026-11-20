@@ -139,6 +139,9 @@ export const useSiteStore = defineStore('site', {
     statMidNoStd: false,               // 统计页：中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关）
     statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
     statHideOps: [],                   // 统计页：要**置灰**（盖灰罩）的干员名；与上面那个**互斥**
+    /* 统计页「编辑模式」（2026-11-21 用户加）：开着的时候**点某一行**就循环它的状态
+       普通 → 置灰 → 高亮 → 普通。纯界面状态：不筛行、不改数据、切服不重置、不持久化。 */
+    statEditMode: false,
     customInStats: false,              // 自定义卡池：是否**计入统计与图表**（默认关 = 只显示在卡池列表）
   }),
 
@@ -1021,6 +1024,31 @@ export const useSiteStore = defineStore('site', {
     hideShopNoneFrom(from) {
       const refDate = this.refDate || this.today;
       return this._addHideOps(bulkCountFrom(this.statRows, 'shop', refDate, 0, from));
+    },
+
+    /** 统计页「编辑模式」开关（开着时点行循环状态，见 `cycleStatOp`） */
+    setStatEditMode(on) {
+      this.statEditMode = !!on;
+    },
+
+    /**
+     * 编辑模式下点一行：**普通 → 置灰 → 高亮 → 普通** 循环（2026-11-21 用户定）。
+     *
+     * 三个状态正好对应用户概念里的三档；而置灰 / 高亮在 store 里本来就是**互斥**的两个名单
+     * （`setStatHideOps` / `setStatHighlightOps` 会互相摘除同名），所以这里顺序改名单即可，
+     * 不用额外维护第三份状态。
+     * ⚠️ 顺序是「先置灰后高亮」：置灰是「不想看」，通常比高亮常用。
+     */
+    cycleStatOp(name) {
+      if (!name) return;
+      if (this.statHideOps.includes(name)) {
+        this.setStatHideOps(this.statHideOps.filter((n) => n !== name));
+        this.setStatHighlightOps([...this.statHighlightOps, name]);
+      } else if (this.statHighlightOps.includes(name)) {
+        this.setStatHighlightOps(this.statHighlightOps.filter((n) => n !== name));
+      } else {
+        this.setStatHideOps([...this.statHideOps, name]);
+      }
     },
 
     /** 从 `field` 那个名单里摘掉 `names` 里已有的项（两处互斥共用；没有交集时不产生新数组） */

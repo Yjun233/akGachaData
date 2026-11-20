@@ -62,6 +62,15 @@ const hlOps = computed(() => new Set(site.statHighlightOps));
 /** 右栏「置灰干员」（2026-11-17 用户加）—— 同一套查法，行上盖灰罩（`.mute`，见 main.css）。
  *  ⚠️ 与 `hlOps` **互斥**（store 的 setter 保证同一名字不会同时在两边），所以两个类不会同时命中 */
 const hideOps = computed(() => new Set(site.statHideOps));
+/**
+ * 右栏「编辑模式」开着时，**点一行**循环它的状态：普通 → 置灰 → 高亮 → 普通
+ * （2026-11-21 用户加，规则收在 store 的 `cycleStatOp`）。
+ * ⚠️ 只有这一处绑 `@click`：表的其余交互都在 `<th>`（排序）上，不冲突。
+ */
+const editMode = computed(() => site.statEditMode);
+const onRowClick = (name) => {
+  if (editMode.value) site.cycleStatOp(name);
+};
 
 /** 预计算每行的「最后一次出率提升 / 商店兑换」信息，避免模板里反复遍历 */
 const viewRows = computed(() =>
@@ -82,7 +91,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
 </script>
 
 <template>
-  <div class="tbl-scroll plain" :id="`tbl-${tableId}`">
+  <div class="tbl-scroll plain" :id="`tbl-${tableId}`" :class="{ 'edit-mode': editMode }">
     <!-- img-mode：图片模式的样式钩子（长方形蒙版头像 + 干员格的占位行框，见 main.css） -->
     <table class="grid floating stat-tbl" :class="{ 'img-mode': isImage }">
       <!-- 只给前两列定宽：它们要 sticky 冻结，第 2 列的 left 偏移必须等于第 1 列的实际宽度，
@@ -162,6 +171,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
         <tr
           v-for="r in viewRows" :key="r.name"
           :class="{ hl: hlOps.has(r.name), mute: hideOps.has(r.name) }"
+          @click="onRowClick(r.name)"
         >
           <td class="num">
             <span v-if="!r.releaseDate" class="dash">—</span><template v-else>{{ r.releaseDate }}</template>

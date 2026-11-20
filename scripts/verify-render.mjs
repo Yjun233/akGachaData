@@ -394,10 +394,19 @@ try {
     count(sh, /class="sec-title c-std"/g) === 2 && count(sh, /class="sec-title c-mid"/g) === 2, true);
   /* 「复制」按钮（2026-10-11）：四张表各一个，挂在**表格标题行**（`.sec-title`）里。
      ⚠️ 复制内容在 HTML 里看不到（点击时才算）→ 另见文件末尾「剪贴板」那一组的行为断言。 */
-  /* 2026-11-15：每张表的复制动作由 1 个变 3 个（复制为文本 / 复制模式 / 复制为图片） */
-  check('统计页：每张表三个复制动作（4 张表 × 3 = 12）',
-    count(sh, /class="copy-btn"/g) === 12
-    && ['text', 'mode', 'image'].every((k) => count(sh, new RegExp(`data-act="${k}"`, 'g')) === 4), true);
+  /* 2026-11-15：每张表的复制动作由 1 个变 3 个；2026-11-21 统计页又多一个「编辑模式」
+     （`editable` 只给统计页）→ 4 张表 × 4 = 16 个按钮，四种 data-act 各 4 个。 */
+  check('统计页：每张表四个动作（编辑模式 / 屏蔽模式 / 复制 / 截图 = 4 张表 × 4 = 16）',
+    count(sh, /class="copy-btn"/g) === 16
+    && ['edit', 'mode', 'text', 'image']
+      .every((k) => count(sh, new RegExp(`data-act="${k}"`, 'g')) === 4), true);
+  /* ⚠️ 按**文本节点**数（`>编辑模式<`）：`title` 里也有「进入编辑模式…」，直接数整串会翻倍。 */
+  check('统计页：按钮文案已改短（编辑模式 / 屏蔽模式 / 复制 / 截图）',
+    count(sh, />编辑模式</g) === 4 && count(sh, />屏蔽模式</g) === 4
+    && count(sh, />复制</g) === 4 && count(sh, />截图</g) === 4
+    && !/复制为文本/.test(sh) && !/复制为图片/.test(sh) && !/>复制模式</.test(sh), true);
+  check('统计页：「编辑模式」在「屏蔽模式」**左侧**（用户指定顺序）',
+    count(sh, /data-act="edit"[\s\S]{0,900}?data-act="mode"/g) === 4, true);
   check('统计页：复制按钮组挂在**标题行**里（不是表格上方的工具条）',
     count(sh, /class="sec-title[^"]*"[^>]*>[\s\S]{0,140}?class="copy-actions"/g) === 4
     && count(sh, /class="tbl-tools"/g) === 0, true);
@@ -632,6 +641,36 @@ try {
   check('置灰干员：反向同理 —— 先置灰再高亮，置灰里那个会被摘掉',
     `${mutexB.store.statHideOps.length}|${mutexB.store.statHighlightOps.join(',')}`,
     `0|${allNames[0]}`);
+
+  /* ---------------- 统计页「编辑模式」（2026-11-21 用户加） ----------------
+     标题行最左那个按钮开着时，点某一行循环「普通 → 置灰 → 高亮 → 普通」。
+     三个状态就是 store 里已有的两个互斥名单，所以 cycle 只改名单、不引入第三份状态。 */
+  {
+    const first = stats.store.statRows[0].name;
+    check('编辑模式：默认关（`statEditMode = false`，行不响应点击）',
+      `${stats.store.statEditMode}|${count(sh, /class="tbl-scroll plain edit-mode"/g)}`, 'false|0');
+    const once = await renderRoute('/operators', (s) => { s.cycleStatOp(first); });
+    check('编辑模式：第 1 次点击 → 置灰',
+      `${once.store.statHideOps.join()}|${once.store.statHighlightOps.length}`, `${first}|0`);
+    const twice = await renderRoute('/operators', (s) => {
+      s.cycleStatOp(first); s.cycleStatOp(first);
+    });
+    check('编辑模式：第 2 次点击 → 高亮（从置灰名单里摘掉）',
+      `${twice.store.statHideOps.length}|${twice.store.statHighlightOps.join()}`, `0|${first}`);
+    const thrice = await renderRoute('/operators', (s) => {
+      s.cycleStatOp(first); s.cycleStatOp(first); s.cycleStatOp(first);
+    });
+    check('编辑模式：第 3 次点击 → 回到普通（两个名单都空）',
+      `${thrice.store.statHideOps.length}|${thrice.store.statHighlightOps.length}`, '0|0');
+    const on = await renderRoute('/operators', (s) => { s.setStatEditMode(true); });
+    check('编辑模式：开着时四张表格都挂上 `.edit-mode`（行可点 + 手型光标）',
+      `${count(on.html, /class="tbl-scroll plain edit-mode"/g)}`
+      + `|${/\.tbl-scroll\.edit-mode tbody tr\{cursor:pointer\}/.test(cssAll)}`, '4|true');
+    const tblSrc = fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8');
+    check('编辑模式：行点击只在开模式时生效（`onRowClick` 里挡了一道）',
+      /@click="onRowClick\(r\.name\)"/.test(tblSrc)
+      && /if \(editMode\.value\) site\.cycleStatOp\(name\)/.test(tblSrc), true);
+  }
 
   /* ---------------- 「一键置灰」五个批量按钮（2026-11-21 用户加） ----------------
      规则的**口径**在 verify-data 用假数据钉（`bulk*` 纯函数）；这里验三件事：

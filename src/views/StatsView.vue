@@ -11,6 +11,8 @@
  * 所以复制的数据在这里算好（`lib/tableCopy.js`）再传下去，而不是让 `StatTable` 自己算：
  * 标题与按钮同属视图层，数据也得在同一层，否则要跨组件回流。
  * ⚠️ 四个分节的 id 是顶栏定位按钮的锚点（`s-6-std` 等），别删。
+ * ⭐ 「编辑模式」（2026-11-21 用户加）：标题行那个按钮**只在这四张表上出现**（`editable`），
+ *    开着时点某一行 = 循环「普通 → 置灰 → 高亮」（规则在 store 的 `cycleStatOp`）。
  */
 import { computed } from 'vue';
 import { useSiteStore } from '../stores/site.js';
@@ -45,14 +47,20 @@ const copyRows = computed(() => {
       <div class="pair-col">
         <div id="s-6-std" class="sec-title c-std">
           <span>六星干员·标准寻访</span>
-          <CopyButton :rows="copyRows['6-std']" table-id="tbl-6-std" range="above" />
+          <CopyButton
+            :rows="copyRows['6-std']" table-id="tbl-6-std" range="above" editable
+            :edit-active="site.statEditMode" @toggle-edit="site.setStatEditMode(!site.statEditMode)"
+          />
         </div>
         <StatTable table-id="6-std" :rows="groups['6-std']" />
       </div>
       <div class="pair-col">
         <div id="s-6-mid" class="sec-title c-mid">
           <span>六星干员·中坚寻访</span>
-          <CopyButton :rows="copyRows['6-mid']" table-id="tbl-6-mid" range="above" />
+          <CopyButton
+            :rows="copyRows['6-mid']" table-id="tbl-6-mid" range="above" editable
+            :edit-active="site.statEditMode" @toggle-edit="site.setStatEditMode(!site.statEditMode)"
+          />
         </div>
         <StatTable table-id="6-mid" :rows="groups['6-mid']" split />
       </div>
@@ -63,14 +71,20 @@ const copyRows = computed(() => {
       <div class="pair-col">
         <div id="s-5-std" class="sec-title c-std">
           <span>五星干员·标准寻访</span>
-          <CopyButton :rows="copyRows['5-std']" table-id="tbl-5-std" range="above" />
+          <CopyButton
+            :rows="copyRows['5-std']" table-id="tbl-5-std" range="above" editable
+            :edit-active="site.statEditMode" @toggle-edit="site.setStatEditMode(!site.statEditMode)"
+          />
         </div>
         <StatTable table-id="5-std" :rows="groups['5-std']" />
       </div>
       <div class="pair-col">
         <div id="s-5-mid" class="sec-title c-mid">
           <span>五星干员·中坚寻访</span>
-          <CopyButton :rows="copyRows['5-mid']" table-id="tbl-5-mid" range="above" />
+          <CopyButton
+            :rows="copyRows['5-mid']" table-id="tbl-5-mid" range="above" editable
+            :edit-active="site.statEditMode" @toggle-edit="site.setStatEditMode(!site.statEditMode)"
+          />
         </div>
         <StatTable table-id="5-mid" :rows="groups['5-mid']" split />
       </div>
