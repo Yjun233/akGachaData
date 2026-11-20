@@ -63,7 +63,7 @@ function isDiff(s, name) {
   return diffSet.value.has(name);
 }
 
-/* ---- 复制为图片（2026-11-15 用户加）----
+/* ---- 截图（2026-11-15 用户加；2026-11-21 与表格按钮统一文案，原名「复制为图片」）----
    截**整个弹窗主体**（标题 + 三栏），`.shot-capturing` 期间会把关闭按钮藏掉、放开滚动限制。
    与表格那三个复制动作共用 `lib/tableShot.js`（同一套「写剪贴板失败 → 下载 PNG」兜底）。 */
 const boxEl = ref(null);
@@ -107,7 +107,7 @@ function onClose() {
         >{{ shotState === 'working' ? '生成中…'
           : shotState === 'ok' ? '已复制图片'
             : shotState === 'download' ? '已下载图片'
-              : shotState === 'fail' ? '生成失败' : '复制为图片' }}</button>
+              : shotState === 'fail' ? '生成失败' : '截图' }}</button>
         <button class="drawer-close" type="button" title="关闭" @click="onClose">✕</button>
       </div>
       <div class="xup-diffbar">

@@ -2714,6 +2714,8 @@ try {
       };
       const dlg = createSSRApp(UpDlg, { row: fakeRow });
       const dh = await renderToString(dlg);
+      check('跨服弹窗：标题栏那个按钮也叫「截图」（与表格统一文案）',
+        /class="xup-shot"[^>]*>截图</.test(dh) && !/复制为图片/.test(dh), true);
       check('跨服弹窗：三栏并列（国服 / 国际服 / 繁中服）',
         count(dh, /class="xup-col"/g) === 3
         && ['sc', 'en', 'tc'].every((x) => dh.includes(`data-srv="${x}"`)), true);

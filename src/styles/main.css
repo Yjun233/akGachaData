@@ -502,7 +502,8 @@ main.content{
 .copy-btn.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
 .copy-btn.fail{color:var(--danger);border-color:var(--danger)}
 
-/* 三个复制动作（2026-11-15）：复制模式 / 复制为文本 / 复制为图片（顺序见 CopyButton.vue，
+/* 表格标题行的动作按钮（2026-11-15；2026-11-21 统计页多一个编辑模式、文案改短）：
+   编辑模式 / 屏蔽模式 / 复制 / 截图（顺序见 CopyButton.vue，
    2026-11-16 用户把「复制模式」挪到了最前），横排挂在表标题右侧。
    ⚠️ `margin-left:auto` 写在容器上（原来写在各 `copy-btn` 上，第一个按钮吃 auto）——
    用户微调时挪过来的，按钮顺序再变也不用跟着改。 */
@@ -512,7 +513,7 @@ main.content{
 
 /* 复制模式（2026-11-15）：整表可点；选中一行后只把「**不会被复制**的行」涂暗
    （范围外 = 灰底 + 压暗文字），复制范围与选中行本身都保持原样 ——
-   用户明确要求「别给选中行染色」，因为染色会被带进「复制为图片」的截图里。
+   用户明确要求「别给选中行染色」，因为染色会被带进「截图」里。
    ⚠️ 范围由 `lib/tableCopy.js` 的 `copyRangeIndexes()` 算 —— 与复制文本、截图共用同一份算法。
    ⚠️ 表头永远在范围内，所以表头不染色。
    ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压。 */
@@ -531,7 +532,7 @@ main.content{
 /* ⚠️ 表格容器平时是 `width:fit-content;max-width:100%` —— 宽表会横向滚动，
    截图时若不放开宽度，右侧整片列会被裁掉 */
 .tbl-scroll.shot-capturing{width:max-content !important;max-width:none !important}
-/* 截图期间把「操作按钮」自己藏掉 —— 否则截出来的图里带着 ✕ 和「复制为图片」，
+/* 截图期间把「操作按钮」自己藏掉 —— 否则截出来的图里带着 ✕ 和「截图」按钮自己，
    用户 2026-11-15 反馈跨服「出率提升」弹窗就中过这一枪。 */
 .shot-capturing .drawer-close,
 .shot-capturing .xup-shot{display:none !important}
@@ -1309,7 +1310,7 @@ table.grid.stat-tbl thead th.shopcol{color:var(--shop-700)}
 .xup.diff:hover{background:#fdf0d8;border-color:var(--warn)}
 /* 弹窗：比自定义卡池那个宽一点（三栏），窄屏竖排 */
 .xup-box{width:min(880px,100%)}
-/* 弹窗标题栏右侧的「复制为图片」（2026-11-15） */
+/* 弹窗标题栏右侧的「截图」（2026-11-15 加，2026-11-21 由「复制为图片」改名） */
 .xup-shot{
   margin-left:auto;margin-right:8px;font-family:inherit;font-size:12px;font-weight:600;
   color:var(--blue-700);background:#fff;border:1px solid var(--blue-200);border-radius:7px;
