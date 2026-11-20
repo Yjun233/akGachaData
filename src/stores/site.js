@@ -137,6 +137,10 @@ export const useSiteStore = defineStore('site', {
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
     statMidNoStd: false,               // 统计页：中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关）
+    /* 统计页「隐藏被置灰的干员」（2026-11-21 用户加）：勾上后 `statHideOps` 里的人**整行不渲染**。
+       ⚠️ 与「编辑模式」**互斥**：编辑模式靠点行循环状态，行被藏掉就点不到了 ——
+          两个 setter 互相踢（进编辑模式自动取消隐藏，反之亦然）。默认关。 */
+    statGrayedHidden: false,
     statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
     statHideOps: [],                   // 统计页：要**置灰**（盖灰罩）的干员名；与上面那个**互斥**
     /* 统计页「编辑模式」（2026-11-21 用户加）：开着的时候**点某一行**就循环它的状态
@@ -537,11 +541,17 @@ export const useSiteStore = defineStore('site', {
           refDate,
           s.statMidOnly,
         );
+      /* 「隐藏被置灰的干员」：在**这里**过滤（不在 `StatTable` 里）——
+         因为表格、复制（`statCopyRows` 吃的是同一个 `statGroups`）、截图三处必须一致，
+         只在组件里滤会导致「屏幕 3 行、复制出来 5 行」。
+         ⚠️ 只影响**显示**：`statRows` / 一键置灰的规则仍然按全量算（隐藏不是删除）。 */
+      const dropGrayed = s.statGrayedHidden ? new Set(s.statHideOps) : null;
+      const keep = (rows) => (dropGrayed ? rows.filter((r) => !dropGrayed.has(r.name)) : rows);
       return {
-        '6-std': pick(6, false),
-        '6-mid': pick(6, true),
-        '5-std': pick(5, false),
-        '5-mid': pick(5, true),
+        '6-std': keep(pick(6, false)),
+        '6-mid': keep(pick(6, true)),
+        '5-std': keep(pick(5, false)),
+        '5-mid': keep(pick(5, true)),
       };
     },
   },
@@ -1026,9 +1036,20 @@ export const useSiteStore = defineStore('site', {
       return this._addHideOps(bulkCountFrom(this.statRows, 'shop', refDate, 0, from));
     },
 
-    /** 统计页「编辑模式」开关（开着时点行循环状态，见 `cycleStatOp`） */
+    /**
+     * 统计页「编辑模式」开关（开着时点行循环状态，见 `cycleStatOp`）。
+     * ⚠️ 进编辑模式会**自动取消「隐藏被置灰的干员」**（用户 2026-11-21 明确要求）——
+     *    行被藏掉了就点不到，也就没法把它从置灰改回普通。
+     */
     setStatEditMode(on) {
       this.statEditMode = !!on;
+      if (this.statEditMode) this.statGrayedHidden = false;
+    },
+
+    /** 统计页「隐藏被置灰的干员」—— 勾上后置灰的那批**整行不渲染**（与编辑模式互斥，见上） */
+    setStatGrayedHidden(on) {
+      this.statGrayedHidden = !!on;
+      if (this.statGrayedHidden) this.statEditMode = false;
     },
 
     /**

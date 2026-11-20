@@ -642,6 +642,49 @@ try {
     `${mutexB.store.statHideOps.length}|${mutexB.store.statHighlightOps.join(',')}`,
     `0|${allNames[0]}`);
 
+  /* ---------------- 「隐藏被置灰的干员」（2026-11-21 用户加） ----------------
+     勾上后 `statHideOps` 里的人**整行不渲染**（表格 / 复制 / 截图同源：都在 `statGroups` 里滤）。
+     与「编辑模式」互斥：进编辑模式自动取消隐藏，反之亦然。 */
+  {
+    check('隐藏置灰：右栏有这个复选框（紧跟在「中坚寻访不看标准次数」下面）',
+      /中坚寻访不看标准次数[\s\S]{0,400}?隐藏被置灰的干员/.test(sh)
+      && count(sh, />隐藏被置灰的干员</g) === 1, true);
+    check('隐藏置灰：默认关（表格行数不变）',
+      `${stats.store.statGrayedHidden}|${tableRows(sh, 's-6-std')}`, `false|46`);
+
+    const libC = await vite.ssrLoadModule('/src/lib/stats.js');
+    const hidden = await renderRoute('/operators', (s) => {
+      const ref = s.refDate || s.today;
+      const sixStd = s.statRows.filter((r) => r.rarity === 6 && !libC.isMidAt(r, ref)).map((r) => r.name);
+      s.setStatHideOps(sixStd.slice(0, 3));
+      s.setStatGrayedHidden(true);
+    });
+    check('隐藏置灰：那 3 位所在的表少 3 行，其余表不受影响',
+      `${tableRows(hidden.html, 's-6-std')}|${tableRows(hidden.html, 's-6-mid')}|`
+      + `${tableRows(hidden.html, 's-5-std')}|${tableRows(hidden.html, 's-5-mid')}`,
+      '43|48|46|68');
+    check('隐藏置灰：被藏的行**根本没渲染**（不是染色），且表格里一个 mute 都不剩',
+      count(hidden.html, /<tr class="mute"/g), 0);
+    check('隐藏置灰：复制数据同源 —— `statGroups` 也跟着少 3 位',
+      hidden.store.statGroups['6-std'].length, 43);
+    check('隐藏置灰：只影响显示 —— `statRows`（统计口径 / 一键置灰规则用的全量）一行没少',
+      `${hidden.store.statRows.length}|${stats.store.statRows.length}`,
+      `${stats.store.statRows.length}|${stats.store.statRows.length}`);
+
+    const mutexHidden = await renderRoute('/operators', (s) => {
+      s.setStatEditMode(true);
+      s.setStatGrayedHidden(true);
+    });
+    check('隐藏置灰：勾上隐藏会自动退出「编辑模式」',
+      `${mutexHidden.store.statGrayedHidden}|${mutexHidden.store.statEditMode}`, 'true|false');
+    const mutexEdit = await renderRoute('/operators', (s) => {
+      s.setStatGrayedHidden(true);
+      s.setStatEditMode(true);
+    });
+    check('隐藏置灰：进「编辑模式」会自动取消隐藏（否则藏起来的行点不到、改不回来）',
+      `${mutexEdit.store.statEditMode}|${mutexEdit.store.statGrayedHidden}`, 'true|false');
+  }
+
   /* ---------------- 统计页「编辑模式」（2026-11-21 用户加） ----------------
      标题行最左那个按钮开着时，点某一行循环「普通 → 置灰 → 高亮 → 普通」。
      三个状态就是 store 里已有的两个互斥名单，所以 cycle 只改名单、不引入第三份状态。 */

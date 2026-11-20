@@ -117,6 +117,12 @@ const statResult = computed(() => {
   return `参考日期 ${site.refDate} · 可见卡池 ${visible.length} 个 · 参与统计干员 ${Object.keys(map).length} 位`;
 });
 
+/* 右栏「隐藏被置灰的干员」（2026-11-21 用户加）：勾上后 `statHideOps` 里那批**整行不渲染**。
+   过滤在 store 的 `statGroups` 里做（表格 / 复制 / 截图三处共用同一份数据）；
+   与「编辑模式」互斥 —— 行藏了就点不到，两个 setter 互相踢（见 store）。
+   ⚠️ 别在模板里给这个复选框写含「隐藏被置灰的干员」字样的 HTML 注释：
+      SSR 会原样输出，按文案数元素的断言会翻倍。 */
+
 /* ---------------- 「一键置灰」五个批量按钮（2026-11-21 用户加） ----------------
    输入框是**本地状态**（切服 / 刷新回到默认值，不持久化）；点「确定」调 store 的
    `hideXxx` 动作，规则本身在 `lib/stats.js` 的 `bulk*` 纯函数里。
@@ -355,6 +361,13 @@ function resetUp() {
           @change="site.setStatMidNoStd($event.target.checked)"
         />
         <span>中坚寻访不看标准次数<small>勾选后中坚寻访表只显示中坚次数</small></span>
+      </label>
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.statGrayedHidden"
+          @change="site.setStatGrayedHidden($event.target.checked)"
+        />
+        <span>隐藏被置灰的干员<small>勾选后置灰的那些行整行不显示（进「编辑模式」会自动取消）</small></span>
       </label>
       <!-- 「高亮干员」（2026-10-16 用户加）：选中的干员在下面四张表里那一行加**浅黄底**。
            纯浏览辅助 —— 不筛行、不改次数、不进复制内容；切服不重置（见 store 的说明）。
