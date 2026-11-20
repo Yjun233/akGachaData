@@ -20,7 +20,7 @@
  * 「全部 / 重置」也回到它 —— 这两个标签因此都带一句「默认今天」。
  * ⚠️ **卡池列表**不在此列：结束日期仍取数据的最晚结束日（列表要照常列出预告池）。
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { FIRST_UP_MODES, FIRST_UP_POOLS, UP_SORT_ROWS } from '../lib/constants.js';
 import { CROSS_ALLOWED_TYPES } from '../lib/crossServer.js';
@@ -136,6 +136,9 @@ const bulk = ref({
   firstShop: '2',      // 首次进店队列第 N 名起
 });
 const bulkMsg = ref('');
+/* 切服会**清空**高亮 / 置灰名单（见 store 的 `setServer`）→ 那句「已新增置灰 N 位」也跟着清掉，
+   否则名单已经空了还挂着提示，看着矛盾（同 `clearHideOps()` 的处理）。 */
+watch(() => site.server, () => { bulkMsg.value = ''; });
 /* 「高亮 / 置灰干员」的「清除全部」按钮放在**标签那一行、贴右**（2026-11-21 用户指定位置），
    由 `.fhead` 那层 flex 包住；不用 `<div class="opclear">` 单独占一行。
    ⚠️ 别在模板里给它写 HTML 注释：注释会被 SSR 原样输出，`verify-render` 里

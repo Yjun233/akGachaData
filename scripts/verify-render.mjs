@@ -918,11 +918,36 @@ try {
   check('复制模式：遮罩加深到 #dde2ea（与置灰的 #eceff4 拉开）',
     /\.tbl-scroll tbody tr\.row-out td\{background:#dde2ea !important/.test(cssAll)
     && !/#eceff4 !important/.test(cssAll), true);
-  /* 切服不重置（与两个统计开关同处理）—— 截 setServer 函数体那一小段来查 */
+  /* 切服**清空**高亮 / 置灰名单（2026-11-21 用户要求改：原来是不重置）——
+     名字是分服的，换服后旧名字在新服多半不存在。 */
   const setServerAt = storeSrc.indexOf('setServer(id)');
-  const setServerBody = storeSrc.slice(setServerAt, setServerAt + 1000);
-  check('高亮干员：切服**不重置**（setServer 里没动它）',
-    setServerBody.length > 200 && !setServerBody.includes('statHighlightOps'), true);
+  const setServerBody = storeSrc.slice(setServerAt, setServerAt + 1600);
+  check('高亮 / 置灰：切服**清空两个名单**（名字分服，换服后旧名多半不存在）',
+    `${setServerBody.length > 200}|${setServerBody.includes('this.statHighlightOps = []')}`
+    + `|${setServerBody.includes('this.statHideOps = []')}`, 'true|true|true');
+  check('高亮 / 置灰：切服**不动**「编辑模式」与「隐藏被置灰」两个开关（它们描述「怎么看」）',
+    `|${/this\.statEditMode = /.test(setServerBody)}|${/this\.statGrayedHidden = /.test(setServerBody)}`,
+    '|false|false');
+  /* 真跑一遍：两个名单里有名字、切到另一服 → 都空；两个开关保持原样 */
+  {
+    const before2 = stats.store;
+    const names2 = before2.statRows.map((r) => r.name);
+    const sw = await renderRoute('/operators', (s) => {
+      s.setStatHighlightOps(names2.slice(0, 2));
+      s.setStatHideOps(names2.slice(2, 5));
+      s.setStatEditMode(true);
+      s.setServer('en');
+    });
+    check('高亮 / 置灰：切服后两个名单都空（各服干员名不同，留着会指向别人 / 指向没人）',
+      `${sw.store.statHighlightOps.length}|${sw.store.statHideOps.length}`, '0|0');
+    check('高亮 / 置灰：切服后「编辑模式」开关仍是开着的（只清名单，不关模式）',
+      `${sw.store.server}|${sw.store.statEditMode}`, 'en|true');
+    /* 名单被清空了，「一键置灰」那句「已新增 N 位」也得跟着消失（右栏 watch 切服） */
+    check('高亮 / 置灰：切服时右栏的「已新增置灰 N 位」提示一起清掉',
+      /watch\(\(\) => site\.server, \(\) => \{ bulkMsg\.value = ''; \}\)/.test(
+        fs.readFileSync(path.join(ROOT, 'src/components/FilterDrawer.vue'), 'utf8'),
+      ), true);
+  }
   check('高亮干员：不进复制内容（tableCopy 不读高亮状态）',
     !/highlight/i.test(fs.readFileSync(path.join(ROOT, 'src/lib/tableCopy.js'), 'utf8')), true);
 

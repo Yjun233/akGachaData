@@ -141,6 +141,8 @@ export const useSiteStore = defineStore('site', {
        ⚠️ 与「编辑模式」**互斥**：编辑模式靠点行循环状态，行被藏掉就点不到了 ——
           两个 setter 互相踢（进编辑模式自动取消隐藏，反之亦然）。默认关。 */
     statGrayedHidden: false,
+    /* ⚠️ 这两个名单按**干员名**存，而名字是**分服**的（`scName` / 三服各一套）→
+       **切服务器一律清空**（2026-11-21 用户要求，见 `setServer`）。其余情况（刷新、切页）不动。 */
     statHighlightOps: [],              // 统计页：要**高亮**的干员名（空 = 不高亮；纯浏览辅助，不筛行）
     statHideOps: [],                   // 统计页：要**置灰**（盖灰罩）的干员名；与上面那个**互斥**
     /* 统计页「编辑模式」（2026-11-21 用户加）：开着的时候**点某一行**就循环它的状态
@@ -746,6 +748,13 @@ export const useSiteStore = defineStore('site', {
       this.upShowGaps = false;
       this.statSort = {};
       this.bannerSort = { key: 'startDate', dir: 'desc' };
+      /* 高亮 / 置灰名单**按干员名**存，而名字分服（`scName` 三服各一套）——
+         换服后旧名字在新服多半**根本不存在**（或指向另一位干员）→ 一律清空（2026-11-21 用户要求）。
+         ⚠️ 只清名单，**不动** `statEditMode` / `statGrayedHidden` 两个开关：
+            它们描述的是「怎么看」，与哪个服无关（已开的编辑模式切完服还能接着点）。
+         ⚠️ 与 `upHideMid`（隐藏已属中坚的干员）不同 —— 那个是口径判断，切服保留。 */
+      this.statHighlightOps = [];
+      this.statHideOps = [];
       /* ⚠️ `crossFilters` / `crossSort` **刻意不在这里重置** ——
          跨服卡池对比页三服并列、与 `server` 无关（2026-11-04 用户定），切服不该动它的筛选。 */
     },
