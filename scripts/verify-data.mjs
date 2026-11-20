@@ -11,7 +11,7 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  bulkRecentDays, bulkShopWaitingTop, bulkSingleFrom, bulkStdBefore,
+  bulkCountFrom, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
   computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo,
 } from '../src/lib/stats.js';
 import {
@@ -407,7 +407,7 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
   check('一键置灰③：日期格式不对 → 空结果',
     ['', '2019/04/30', 'abc'].map((d) => bulkStdBefore(stdRows, R2, d).length).join('|'), '0|0|0');
 
-  /* ④⑤ 次数仅 1 的，按实装时间升序从第 N 名起 —— **每张表各排各的** */
+  /* ④ 出率提升次数**恰好 1 次**的，按实装时间升序从第 N 名起 —— **每张表各排各的** */
   const oneRows = [
     mkRow('晚实装', { release: '2019-06-01', up: [ago(30)] }),
     mkRow('早实装', { release: '2019-04-01', up: [ago(60)] }),
@@ -418,23 +418,35 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     mkRow('五星唯一', { rarity: 5, release: '2019-03-01', up: [ago(20)] }),
   ];
   check('一键置灰④：次数仅 1 的按实装升序，第 2 名起（最早的那名被放过；≥2 次 / 0 次 / 缺实装日都不参与）',
-    bulkSingleFrom(oneRows, 'up', R2, 2).join(','), '中实装,晚实装,缺实装日');
+    bulkCountFrom(oneRows, 'up', R2, 1, 2).join(','), '中实装,晚实装,缺实装日');
   check('一键置灰④：第 1 名起 = 全部都算（缺实装日的排最后、5★ 表在后面）',
-    bulkSingleFrom(oneRows, 'up', R2, 1).join(','), '早实装,中实装,晚实装,缺实装日,五星唯一');
+    bulkCountFrom(oneRows, 'up', R2, 1, 1).join(','), '早实装,中实装,晚实装,缺实装日,五星唯一');
   check('一键置灰④：次数 ≥2 的那位永远不参与（每一档起点都不含他）',
-    [1, 2, 3, 4, 5].map((n) => bulkSingleFrom(oneRows, 'up', R2, n).includes('轮过两次')).join('|'),
+    [1, 2, 3, 4, 5].map((n) => bulkCountFrom(oneRows, 'up', R2, 1, n).includes('轮过两次')).join('|'),
     'false|false|false|false|false');
-  /* ⭐ 分表：5★ 表里只有 1 位「仅 1 次」的 → 第 2 名起就轮不到他（6★ 表的名次不影响 5★ 表） */
   check('一键置灰④：名次四张表分别算（5★ 表只有 1 位 → 第 2 名起就放过他）',
-    bulkSingleFrom(oneRows, 'up', R2, 2).includes('五星唯一'), false);
-  check('一键置灰⑤：换到「商店兑换次数」是同一套规则（同样只认恰好 1 次）',
-    bulkSingleFrom([
-      mkRow('甲', { release: '2019-04-01', shop: [ago(30)] }),
-      mkRow('乙', { release: '2019-05-01', shop: [ago(30), ago(60)] }),
-      mkRow('丙', { release: '2019-06-01', shop: [ago(30)] }),
-    ], 'shop', R2, 2).join(','), '丙');
-  check('一键置灰④⑤：起点非法（0 / 负数）→ 空结果（不会把「第 0 名」当成全部）',
-    ['0', '-1', ''].map((n) => bulkSingleFrom(oneRows, 'up', R2, n).length).join('|'), '0|0|0');
+    bulkCountFrom(oneRows, 'up', R2, 1, 2).includes('五星唯一'), false);
+
+  /* ⑤ 商店兑换次数**恰好 0 次**（一次都没进过店）—— 2026-11-21 用户更正（原先误写成「仅 1 次」） */
+  const noneRows = [
+    mkRow('没进过A', { release: '2019-04-01', shop: [] }),
+    mkRow('没进过B', { release: '2019-05-01', shop: [] }),
+    mkRow('没进过C', { release: null, shop: [] }),
+    mkRow('进过1次', { release: '2019-02-01', shop: [ago(30)] }),
+    mkRow('进过2次', { release: '2019-03-01', shop: [ago(30), ago(60)] }),
+    mkRow('五星没进过', { rarity: 5, release: '2019-06-01', shop: [] }),
+  ];
+  check('一键置灰⑤：只挑「商店兑换次数 = 0」的，按实装升序第 2 名起（缺实装日排最后；进过店的都不参与）',
+    bulkCountFrom(noneRows, 'shop', R2, 0, 2).join(','), '没进过B,没进过C');
+  check('一键置灰⑤：第 1 名起 = 每张表的全部「没进过店」干员（5★ 表在后面）',
+    bulkCountFrom(noneRows, 'shop', R2, 0, 1).join(','), '没进过A,没进过B,没进过C,五星没进过');
+  check('一键置灰⑤：进过 1 次 / 2 次的无论第几名起都不参与（这与「仅 1 次」的④是相反的选择）',
+    [1, 2, 3, 4, 5].map((n) => bulkCountFrom(noneRows, 'shop', R2, 0, n)
+      .filter((x) => x === '进过1次' || x === '进过2次').length).join('|'), '0|0|0|0|0');
+  check('一键置灰④⑤：起点非法（0 / 负数 / 空）→ 空结果（不会把「第 0 名」当成全部）',
+    ['0', '-1', ''].map((n) => bulkCountFrom(oneRows, 'up', R2, 1, n).length).join('|'), '0|0|0');
+  check('一键置灰④⑤：次数参数非法（负数 / 空）→ 空结果',
+    ['-1', ''].map((c) => bulkCountFrom(oneRows, 'up', R2, c, 1).length).join('|'), '0|0');
 }
 
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------

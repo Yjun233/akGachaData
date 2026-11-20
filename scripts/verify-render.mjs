@@ -709,7 +709,7 @@ try {
       (await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); })).store.statHideOps.length, 0);
 
     /* ④⑤ 次数仅 1 次的，从第 2 名起：最早的**那一位**不会被置灰，其余单次干员都在 */
-    const bulkD = await renderRoute('/operators', (s) => { s.hideSingleUpFrom(2); });
+    const bulkD = await renderRoute('/operators', (s) => { s.hideUpOnceFrom(2); });
     const stD = bulkD.store;
     /* 每张表各排各的「仅 1 次」队列，各放过最早的那一位 */
     const wantSingleUp = splitRows(stD.statRows, stD.refDate || stD.today).flatMap((bucket) => bucket
@@ -722,13 +722,19 @@ try {
         const r = stD.statRows.find((x) => x.name === n);
         return r && r.upAll.length !== 1;
       }).length, 0);
-    const bulkE = await renderRoute('/operators', (s) => { s.hideSingleShopFrom(2); });
+    const bulkE = await renderRoute('/operators', (s) => { s.hideShopNoneFrom(2); });
     const stE = bulkE.store;
-    const wantSingleShop = splitRows(stE.statRows, stE.refDate || stE.today).flatMap((bucket) => bucket
-      .filter((r) => r.shopAll.length === 1).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
-    check('一键置灰⑤：商店兑换同一套规则（每张表各放过最早那位）',
-      `${stE.statHideOps.length}|${stE.statHideOps.join(',') === wantSingleShop.join(',')}`,
-      `${wantSingleShop.length}|true`);
+    /* ⑤ 与④相反：挑的是**一次都没进过店（次数 = 0）**的那批 */
+    const wantShopNone = splitRows(stE.statRows, stE.refDate || stE.today).flatMap((bucket) => bucket
+      .filter((r) => r.shopAll.length === 0).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
+    check('一键置灰⑤：只挑「商店兑换次数 = 0」的那批（每张表各放过最早那位）',
+      `${stE.statHideOps.length}|${stE.statHideOps.join(',') === wantShopNone.join(',')}`,
+      `${wantShopNone.length}|true`);
+    check('一键置灰⑤：进过店的（次数 ≥1）一位都不在结果里',
+      stE.statHideOps.filter((n) => {
+        const r = stE.statRows.find((x) => x.name === n);
+        return r && r.shopAll.length !== 0;
+      }).length, 0);
 
     /* 「清除全部」（2026-11-21 用户加）：高亮 / 置灰各一个，空名单时禁用；
        置灰那个还要顺手清掉「一键置灰」的提示（`clearHideOps()`）。 */

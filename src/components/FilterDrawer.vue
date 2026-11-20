@@ -423,13 +423,13 @@ function resetUp() {
           <span class="q-txt">首次UP第</span>
           <input v-model="bulk.firstUp" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列从第几名起" />
           <span class="q-txt">名起</span>
-          <button class="btn sm" type="button" @click="runBulk(() => site.hideSingleUpFrom(bulk.firstUp))">确定</button>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideUpOnceFrom(bulk.firstUp))">确定</button>
         </div>
-        <div class="quick-row" title="每张表各排：商店兑换次数只有 1 次的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
+        <div class="quick-row" title="每张表各排：商店兑换次数为 0（一次都没进过店）的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
           <span class="q-txt">首次进店第</span>
           <input v-model="bulk.firstShop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列从第几名起" />
           <span class="q-txt">名起</span>
-          <button class="btn sm" type="button" @click="runBulk(() => site.hideSingleShopFrom(bulk.firstShop))">确定</button>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideShopNoneFrom(bulk.firstShop))">确定</button>
         </div>
         <div v-if="bulkMsg" class="bulk-msg">{{ bulkMsg }}</div>
       </div>

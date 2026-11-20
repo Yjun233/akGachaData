@@ -365,23 +365,30 @@ export function bulkStdBefore(rows, refDate, before) {
 }
 
 /**
- * ④⑤ **次数仅 1 次**的干员，按**实装时间升序**排，从第 `from` 名起（含该名）。
+ * ④⑤ **次数恰好 `count` 次**的干员，按**实装时间升序**排，从第 `from` 名起（含该名）。
  * **每张表各排各的**（四张表各有一份「第 N 名起」的名额）。
+ *
+ * 两条规则只差一个 `count`：
+ *   · ④ 「首次UP 队列」= 出率提升次数 **1 次**（只轮过一次的那批）；
+ *   · ⑤ 「首次进店队列」= 商店兑换次数 **0 次**（一次都没进过店的那批）。
  *
  * @param {'up'|'shop'} which `'up'` = 出率提升次数（`upAll`）、`'shop'` = 商店兑换次数（`shopAll`）
  * @param {string} refDate 参考日期（要它才能分表：`isMidAt` 的判据时点）
+ * @param {number} count 次数**恰好等于**它才入选（`0` / `1`）
  * @param {number} from 从第几名开始（`2` = 不含最早的 1 名；`1` = 全部都算）
  *
- * ⚠️ 只挑**次数恰好 1** 的（次数 0 = 没记录、≥2 = 已经轮过好几次，都不是「只轮过一次」）；
  * ⚠️ 实装日缺失的排**最后**（`defaultStatSort` 的 `9999`），不会白占「最早几名」的名额。
  */
-export function bulkSingleFrom(rows, which, refDate, from) {
+export function bulkCountFrom(rows, which, refDate, count, from) {
   const n = Math.floor(Number(from));
-  if (!Number.isFinite(n) || n < 1) return [];
+  /* ⚠️ 空串不当作 0：`Number('')` 是 0，会静默变成「次数 0 次」那一档 */
+  if (!String(count ?? '').trim()) return [];
+  const want = Math.floor(Number(count));
+  if (!Number.isFinite(n) || n < 1 || !Number.isFinite(want) || want < 0) return [];
   const out = [];
   for (const bucket of splitByTable(rows, refDate)) {
     out.push(...bucket
-      .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === 1)
+      .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === want)
       .sort(defaultStatSort)
       .slice(n - 1)
       .map((r) => r.name));
