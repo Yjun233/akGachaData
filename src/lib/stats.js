@@ -286,8 +286,9 @@ export function sortStatRows(rows, sort, refDate, midOnly = false) {
    ⚠️ `daysSortValue` 三个值：进行中 **0**、无数据 **-1**、真实天数 **≥1**。 */
 
 /**
- * ① 距今 ＜ `days` 天（`which` = `'up'` 出率提升 / `'shop'` 商店兑换）。
+ * ① 距今 **≤** `days` 天（`which` = `'up'` 出率提升 / `'shop'` 商店兑换）。
  *
+ * ⚠️ **含等号**（2026-11-22 用户由「＜」改成「≤」）：正好 `days` 天的那批也算命中。
  * ⚠️ **进行中（0）算命中** —— 它确实「距今很近」；
  * ⚠️ **无数据（-1）不算** —— 那表示根本没有这类记录，不是「很近了」。
  */
@@ -297,7 +298,7 @@ export function bulkRecentDays(rows, refDate, midOnly, which, days) {
   return rows
     .filter((r) => {
       const v = daysSortValue(viewEndInfo(r, which, refDate, midOnly));
-      return v >= 0 && v < n;
+      return v >= 0 && v <= n;
     })
     .map((r) => r.name);
 }
@@ -349,18 +350,20 @@ export function bulkShopWaitingTop(rows, refDate, midOnly, k) {
 }
 
 /**
- * ③ **标准**干员里实装时间 ＜ `before`（`YYYY-MM-DD`）的。
+ * ③ **标准**干员里实装时间 **≤** `before`（`YYYY-MM-DD`）的。
  *
  * ⚠️ 「标准」用 `isMidAt(row, refDate)` 判（参考日期那一刻还没进中坚）——
  *    与两张表的分组同一判据，别用 `everMid`。
- * ⚠️ **严格小于**（用户写的是「＜」）：默认值 `2019-04-30` = 开服日 → 一位都不会命中。
+ * ⚠️ **含等号**（2026-11-22 用户由「＜」改成「≤」）：当天实装的那批也算命中。
+ *    默认值 `2019-04-30` = 开服日 —— 那天实装的 35 位**全都已进中坚**，
+ *    所以在默认值下这条仍然 **0 命中**（等于「没设置」）。
  * ⚠️ `releaseDate` 为 `null`（该服还没实装 / 查不到）不参与。
  */
 export function bulkStdBefore(rows, refDate, before) {
   const d = String(before || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
   return rows
-    .filter((r) => !isMidAt(r, refDate) && r.releaseDate && r.releaseDate < d)
+    .filter((r) => !isMidAt(r, refDate) && r.releaseDate && r.releaseDate <= d)
     .map((r) => r.name);
 }
 

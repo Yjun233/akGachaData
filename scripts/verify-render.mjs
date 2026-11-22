@@ -726,8 +726,12 @@ try {
       `${count(sh, /class="btn sm"/g)}|${/value="70"/.test(sh)}|${/value="6"/.test(sh)}`
       + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}`,
       '5|true|true|true|2');
+    /* 两个门限写「≤」不是「＜」（2026-11-22 用户改）—— 标签文案一起钉住，别只改比较符 */
+    check('一键置灰：两个门限的标签写「≤」（距今≤N 天 / 标准实装≤日期）',
+      `${count(sh, /距今≤/g)}|${count(sh, /标准实装≤/g)}|${count(sh, /距今＜/g)}|${count(sh, /标准实装＜/g)}`,
+      '1|1|0|0');
 
-    /* ① 距今＜84 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
+    /* ① 距今≤70 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
     const bulkA = await renderRoute('/operators', (s) => {
       const n = s.statRows.map((r) => r.name);
       s.setStatHighlightOps(n);
@@ -739,11 +743,11 @@ try {
     const wantRecent = stA.statRows
       .filter((r) => {
         const v = libB.daysSortValue(libB.viewEndInfo(r, 'up', refA, stA.statMidOnly));
-        return v >= 0 && v < 70;
+        return v >= 0 && v <= 70;
       })
       .map((r) => r.name);
     const hidA = new Set(stA.statHideOps);
-    check('一键置灰①：命中 = 出率提升距今 ＜ 70 天的全部（一处不漏、一处不多）',
+    check('一键置灰①：命中 = 出率提升距今 **≤ 70 天**的全部（含正好 70 天，一处不漏、一处不多）',
       `${wantRecent.every((n) => hidA.has(n))}|${stA.statHideOps.filter((n) => !wantRecent.includes(n)).length}`,
       `true|1`);
     check('一键置灰：**追加**语义 —— 已手动置灰的那位还在',
@@ -777,17 +781,19 @@ try {
       `${stB.statHideOps.length}|${stB.statHideOps.join(',') === wantTopShop.join(',')}`,
       `${wantTopShop.length}|true`);
 
-    /* ③ 标准干员实装 ＜ 2019-05-01：只可能是标准侧、且严格早于该日 */
-    const bulkC = await renderRoute('/operators', (s) => { s.hideStdBefore('2019-05-01'); });
+    /* ③ 标准干员实装 **≤ 2019-04-30**：只可能是标准侧、且实装日不晚于该日 */
+    const bulkC = await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); });
     const stC = bulkC.store;
     const refC = stC.refDate || stC.today;
     const byNameC = new Map(stC.statRows.map((r) => [r.name, r]));
-    check('一键置灰③：命中的都是标准侧（当时还没进中坚）且实装日 ＜ 2019-05-01',
+    check('一键置灰③：命中的都是标准侧（当时还没进中坚）且实装日 ≤ 2019-04-30（含当天）',
       stC.statHideOps.every((n) => {
         const r = byNameC.get(n);
-        return r && libB.isMidAt(r, refC) === false && r.releaseDate && r.releaseDate < '2019-05-01';
+        return r && libB.isMidAt(r, refC) === false && r.releaseDate && r.releaseDate <= '2019-04-30';
       }), true);
-    check('一键置灰③：默认值 2019-04-30 在**真实数据**上一位都不命中（开服日之前没有干员）',
+    /* 默认值 = 开服日，含等号后「当天实装的 35 位」在条件上会命中 —— 但那批**已全部迁入中坚**，
+       按标准侧过滤后仍是 0。这条同时守住「含等号」与「isMidAt 判标准」两件事。 */
+    check('一键置灰③：默认值 2019-04-30 在**真实数据**上仍一位都不命中（开服那批已全进中坚）',
       (await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); })).store.statHideOps.length, 0);
 
     /* ④⑤ 次数仅 1 次的，从第 2 名起：最早的**那一位**不会被置灰，其余单次干员都在 */

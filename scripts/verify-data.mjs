@@ -353,18 +353,20 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     upAll: up, shopAll: shop, upMid: [], upStd: [], shopMid: [], shopStd: [],
   });
 
-  /* ① 距今＜N 天：进行中（0）算命中；无数据（-1）不算；边界「正好 N 天」不算 */
+  /* ① 距今**≤**N 天：进行中（0）算命中；无数据（-1）不算；边界「正好 N 天」**算**
+     （2026-11-22 用户把「＜」改成「≤」） */
   const upRows = [
     mkRow('进行中', { up: [LIVE] }),
+    mkRow('一天前', { up: [ago(1)] }),
     mkRow('五天前', { up: [ago(5)] }),
     mkRow('正好七十天', { up: [ago(70)] }),
     mkRow('一百二十天', { up: [ago(120)] }),
     mkRow('无记录', { up: [] }),
   ];
-  check('一键置灰①：距今天数 ＜ 70（默认值）→ 进行中 + 5 天前（正好 70 与无数据都不算）',
-    bulkRecentDays(upRows, R2, false, 'up', 70).join(','), '进行中,五天前');
-  check('一键置灰①：门限改成 1 → 只剩进行中（真实天数最小是 1，不含 1）',
-    bulkRecentDays(upRows, R2, false, 'up', 1).join(','), '进行中');
+  check('一键置灰①：距今天数 ≤ 70（默认值）→ 进行中 + 1 / 5 / **正好 70** 天（无数据不算）',
+    bulkRecentDays(upRows, R2, false, 'up', 70).join(','), '进行中,一天前,五天前,正好七十天');
+  check('一键置灰①：门限改成 1 → 进行中 + 正好 1 天那档（**含等号**）',
+    bulkRecentDays(upRows, R2, false, 'up', 1).join(','), '进行中,一天前');
   check('一键置灰①：门限非法（0 / 空 / 负）→ 一个都不选',
     ['0', '', '-5', 'abc'].map((v) => bulkRecentDays(upRows, R2, false, 'up', v).length).join('|'), '0|0|0|0');
 
@@ -393,17 +395,18 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     bulkShopWaitingTop(shopTablesRows, R2, false, 2).join(','),
     '六星久等,六星次久,五星很久,五星次久');
 
-  /* ③ 标准干员里实装 ＜ 某日：严格小于；中坚 / 缺实装日都不参与 */
+  /* ③ 标准干员里实装 **≤** 某日（2026-11-22 由「＜」改成「≤」，当天实装的也算）；
+     中坚 / 缺实装日都不参与 */
   const stdRows = [
     mkRow('甲', { release: '2019-04-30' }),
     mkRow('乙', { release: '2019-04-29' }),
     mkRow('丙', { release: null }),
     mkRow('丁', { release: '2019-01-01', classic: '2024-01-01' }),   // 参考日已属中坚
   ];
-  check('一键置灰③：严格小于 → 只有 04-30 之前实装的（当天不算、中坚不算、缺日期不算）',
-    bulkStdBefore(stdRows, R2, '2019-05-01').join(','), '甲,乙');
-  check('一键置灰③：门限压到 2019-05-01 → 当天实装的那位不算（「＜」不是「≤」）',
-    bulkStdBefore(stdRows, R2, '2019-04-30').join(','), '乙');
+  check('一键置灰③：含等号 → 04-30 当天与之前实装的都算（中坚不算、缺日期不算）',
+    bulkStdBefore(stdRows, R2, '2019-04-30').join(','), '甲,乙');
+  check('一键置灰③：门限往回压一天到 04-29 → 当天（04-30）那位被排除在外',
+    bulkStdBefore(stdRows, R2, '2019-04-29').join(','), '乙');
   check('一键置灰③：日期格式不对 → 空结果',
     ['', '2019/04/30', 'abc'].map((d) => bulkStdBefore(stdRows, R2, d).length).join('|'), '0|0|0');
 
