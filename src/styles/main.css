@@ -968,6 +968,15 @@ table.grid.fup-tbl tbody td:nth-child(-n+2){position:sticky;z-index:2;background
 .warn{color:var(--warn);font-weight:600}   /* 距今天数 ≥180 天：标黄 */
 .hot{color:var(--danger);font-weight:700}  /* 距今天数 ≥365 天：标红 */
 
+/* 统计页「合并中坚寻访三个次数」（2026-11-22 用户加）：一格里写 `总/中坚/标准`（如 8/1/9）。
+   中坚那段**蓝**、标准那段**黄** —— 用的就是全站那对大类的色（中坚 #0098DC / 标准 #FFD524），
+   但标准黄在浅底上太淡，取「标准深墨」#a97400（与 `.optag.rar-6`、`CAT_DEEP['标准寻访']` 同族），
+   小面积上仍读得出是黄。斜杠本身压暗、不吃色，免得一眼看去像一串彩色。 */
+.cnt-merge{white-space:nowrap;font-variant-numeric:tabular-nums}
+.cnt-merge .cnt-sep{color:#b6c2d1;margin:0 1px}
+.cnt-merge .cnt-mid{color:#0098DC;font-weight:700}
+.cnt-merge .cnt-std{color:#a97400;font-weight:700}
+
 /* ---------------- 卡池名称 = 可点击复制（用户 2026-10-19） ----------------
    两个视图共用：宽屏表格的「卡池名称」格、窄屏卡片的标题行。
    外观仍是普通粗体名字（**不**加图标/下划线，免得列表变花），只 hover 时给一条虚下划线暗示；

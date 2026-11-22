@@ -180,6 +180,12 @@ function runBulk(fn) {
    ⚠️ 这段说明**只能放这儿** —— 写进 `<template>` 的话 Vue SSR 会**原样输出**注释，
       里面的「总次数 / 标准次数」会被 `verify-render` 的字面量断言数进去（2026-10-16 踩到）。 */
 
+/* 「合并中坚寻访三个次数」（用户 2026-11-22 加）：中坚表把上面那三列并成**一列「次数」**，
+   值写成 `总/中坚/标准`（如 `8/1/9`），中坚那段标蓝、标准那段标黄；排序**以中坚次数为准**。
+   与上一个开关**互斥**（两个都在改列结构，store 的两个 setter 互相踢、后点的赢）。
+   纯展示层：不改数据、不动标准寻访表；复制内容跟着合并成一列文本。
+   ⚠️ 同样别把这段写进 `<template>`（SSR 原样输出会污染按字面量数的断言）。 */
+
 /* 统计页「高亮干员 / 置灰干员」的候选池 —— 取当前统计口径下**真正会出现在四张表里**的干员。
    ⚠️ 不铺全量干员表：不在池里的选了也永远高亮不到（该服还没实装 / 只在被排除的中坚甄选里
       露过面 …），白选一次还会让人以为功能坏了。名字都是国服名，与表格行上的 `r.name` 同源。 */
@@ -368,6 +374,13 @@ function resetUp() {
           @change="site.setStatMidNoStd($event.target.checked)"
         />
         <span>中坚寻访不看标准次数<small>勾选后中坚寻访表只显示中坚次数</small></span>
+      </label>
+      <label class="chk">
+        <input
+          type="checkbox" :checked="site.statMidMergeCounts"
+          @change="site.setStatMidMergeCounts($event.target.checked)"
+        />
+        <span>合并中坚寻访三个次数<small>三列并成一列，写成「总/中坚/标准」（如 8/1/9，中坚蓝、标准黄），排序按中坚次数</small></span>
       </label>
       <label class="chk">
         <input

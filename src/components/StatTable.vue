@@ -6,6 +6,10 @@
  * - 中坚寻访表（split=true） ：每组 5 列 → 结束时间 / 距今天数 / 总次数 / 中坚次数 / 标准次数
  *   ⚠️ 右栏「中坚寻访不看标准次数」勾上时，中坚表藏掉**总次数 / 标准次数**两块，每组收成 3 列
  *     （`noStd` / `groupCols` / `totalCols` 三个 computed 一起管这件事，别只改一处）。
+ *   ⚠️ 右栏「合并中坚寻访三个次数」勾上时（`merge`，2026-11-22）：三个次数并成**一列**，
+ *     值写成 `总/中坚/标准`（如 `8/1/9`，中坚蓝 `#0098DC`、标准黄 `#a97400`），
+ *     表头叫「次数」、排序 key 挂 `upMid` / `shopMid`（= **以中坚次数为准**）。
+ *     与上面那个开关**互斥**（store 的两个 setter 互相踢）。
  *     ⚠️ 标准寻访表**不受影响** —— 它那一列叫「次数」、本来就没有「标准次数」的概念。
  *     ⚠️ 藏列会改 colspan（组头 + 空行）与单元格个数，`verify-render` 有断言盯着。
  * - 列宽按内容自适应（table-layout:auto），列间竖线与 sticky 表头对齐由全局 CSS 处理
@@ -52,8 +56,16 @@ const midOnly = computed(() => site.statMidOnly);
  * ⚠️ 解释写在这里、**别写进 `<template>`**：Vue SSR 会把模板里的 HTML 注释**原样输出**，
  *    注释里的「总次数 / 标准次数」会被断言数进去（2026-10-16 又踩了一次）。 */
 const noStd = computed(() => site.statMidNoStd);
-/** 每组实际显示的列数：标准表恒为 3；中坚表默认 5，勾了上面那个开关收成 3（驱动组头 colspan） */
-const groupCols = computed(() => (props.split && !noStd.value ? 5 : 3));
+/**
+ * 右栏「合并中坚寻访三个次数」（2026-11-22 用户加）—— 同样只对中坚表生效：
+ * 把「总次数 / 中坚次数 / 标准次数」三列收成**一列「次数」**，值写成 `总/中坚/标准`（如 `8/1/9`），
+ * 中坚那一段标蓝、标准那一段标黄；排序挂的中坚 key（`upMid` / `shopMid`），即**以中坚次数为准**。
+ * ⚠️ 与 `noStd` **互斥**（store 的两个 setter 互相踢）→ 这里不会再出现「既合并又藏标准」的组合。
+ * ⚠️ 说明写在这里、别写进 `<template>`：SSR 会把模板注释原样输出，断言会多数一串字。
+ */
+const merge = computed(() => props.split && site.statMidMergeCounts);
+/** 每组实际显示的列数：标准表恒为 3；中坚表默认 5，勾了上面两个开关之一都收成 3（驱动组头 colspan） */
+const groupCols = computed(() => (props.split && !noStd.value && !merge.value ? 5 : 3));
 /** 整行「暂无数据」要跨的列数 = 2（实装时间 / 干员）+ 两组 */
 const totalCols = computed(() => 2 + groupCols.value * 2);
 
@@ -131,17 +143,23 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             距今天数<span class="arw">▲</span>
           </th>
           <th
-            v-if="!split || !noStd" class="num" data-sort="upTotal"
-            :class="sortClass('upTotal')" @click="onSort('upTotal')"
-          >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
-          <template v-if="split">
-            <th class="num" data-sort="upMid" :class="sortClass('upMid')" @click="onSort('upMid')">
-              中坚次数<span class="arw">▲</span>
-            </th>
+            v-if="merge" class="num" data-sort="upMid"
+            :class="sortClass('upMid')" @click="onSort('upMid')"
+          >次数<span class="arw">▲</span></th>
+          <template v-else>
             <th
-              v-if="!noStd" class="num" data-sort="upStd"
-              :class="sortClass('upStd')" @click="onSort('upStd')"
-            >标准次数<span class="arw">▲</span></th>
+              v-if="!split || !noStd" class="num" data-sort="upTotal"
+              :class="sortClass('upTotal')" @click="onSort('upTotal')"
+            >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
+            <template v-if="split">
+              <th class="num" data-sort="upMid" :class="sortClass('upMid')" @click="onSort('upMid')">
+                中坚次数<span class="arw">▲</span>
+              </th>
+              <th
+                v-if="!noStd" class="num" data-sort="upStd"
+                :class="sortClass('upStd')" @click="onSort('upStd')"
+              >标准次数<span class="arw">▲</span></th>
+            </template>
           </template>
           <th class="num shopcol" data-sort="shopEnd" :class="sortClass('shopEnd')" @click="onSort('shopEnd')">
             结束时间<span class="arw">▲</span>
@@ -150,17 +168,23 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             距今天数<span class="arw">▲</span>
           </th>
           <th
-            v-if="!split || !noStd" class="num shopcol" data-sort="shopTotal"
-            :class="sortClass('shopTotal')" @click="onSort('shopTotal')"
-          >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
-          <template v-if="split">
-            <th class="num shopcol" data-sort="shopMid" :class="sortClass('shopMid')" @click="onSort('shopMid')">
-              中坚次数<span class="arw">▲</span>
-            </th>
+            v-if="merge" class="num shopcol" data-sort="shopMid"
+            :class="sortClass('shopMid')" @click="onSort('shopMid')"
+          >次数<span class="arw">▲</span></th>
+          <template v-else>
             <th
-              v-if="!noStd" class="num shopcol" data-sort="shopStd"
-              :class="sortClass('shopStd')" @click="onSort('shopStd')"
-            >标准次数<span class="arw">▲</span></th>
+              v-if="!split || !noStd" class="num shopcol" data-sort="shopTotal"
+              :class="sortClass('shopTotal')" @click="onSort('shopTotal')"
+            >{{ split ? '总次数' : '次数' }}<span class="arw">▲</span></th>
+            <template v-if="split">
+              <th class="num shopcol" data-sort="shopMid" :class="sortClass('shopMid')" @click="onSort('shopMid')">
+                中坚次数<span class="arw">▲</span>
+              </th>
+              <th
+                v-if="!noStd" class="num shopcol" data-sort="shopStd"
+                :class="sortClass('shopStd')" @click="onSort('shopStd')"
+              >标准次数<span class="arw">▲</span></th>
+            </template>
           </template>
         </tr>
       </thead>
@@ -191,10 +215,15 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-else-if="r.up.days >= WARN_DAYS" class="warn">{{ r.up.days }}</span>
             <template v-else>{{ r.up.days }}</template>
           </td>
-          <td v-if="!split || !noStd" class="num">{{ r.upAll.length }}</td>
-          <template v-if="split">
-            <td class="num">{{ r.upMid.length }}</td>
-            <td v-if="!noStd" class="num">{{ r.upStd.length }}</td>
+          <template v-if="merge">
+            <td class="num cnt-merge">{{ r.upAll.length }}<span class="cnt-sep">/</span><span class="cnt-mid">{{ r.upMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.upStd.length }}</span></td>
+          </template>
+          <template v-else>
+            <td v-if="!split || !noStd" class="num">{{ r.upAll.length }}</td>
+            <template v-if="split">
+              <td class="num">{{ r.upMid.length }}</td>
+              <td v-if="!noStd" class="num">{{ r.upStd.length }}</td>
+            </template>
           </template>
           <!-- 商店兑换 -->
           <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
@@ -207,10 +236,15 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <span v-else-if="r.shop.days >= WARN_DAYS" class="warn">{{ r.shop.days }}</span>
             <template v-else>{{ r.shop.days }}</template>
           </td>
-          <td v-if="!split || !noStd" class="num">{{ r.shopAll.length }}</td>
-          <template v-if="split">
-            <td class="num">{{ r.shopMid.length }}</td>
-            <td v-if="!noStd" class="num">{{ r.shopStd.length }}</td>
+          <template v-if="merge">
+            <td class="num cnt-merge">{{ r.shopAll.length }}<span class="cnt-sep">/</span><span class="cnt-mid">{{ r.shopMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.shopStd.length }}</span></td>
+          </template>
+          <template v-else>
+            <td v-if="!split || !noStd" class="num">{{ r.shopAll.length }}</td>
+            <template v-if="split">
+              <td class="num">{{ r.shopMid.length }}</td>
+              <td v-if="!noStd" class="num">{{ r.shopStd.length }}</td>
+            </template>
           </template>
         </tr>
       </tbody>

@@ -137,6 +137,10 @@ export const useSiteStore = defineStore('site', {
     statIncludeClafesUp: false,        // 统计页：中坚甄选（clafes）是否计入**出率提升**（默认关 = 排除）
     statMidOnly: false,                // 统计页：中坚寻访是否**只看中坚**（默认关，见 lib/stats.js）
     statMidNoStd: false,               // 统计页：中坚寻访表是否**藏掉「总次数 / 标准次数」两列**（默认关）
+    /* 统计页「合并中坚寻访三个次数」（2026-11-22 用户加）：中坚表把「总次数 / 中坚次数 / 标准次数」
+       并成**一列「次数」**，值写成 `总/中坚/标准`（中坚蓝、标准黄），排序按中坚次数。
+       ⚠️ 与上面的 `statMidNoStd` **互斥**（两个都改列结构，后点的赢）。默认关。 */
+    statMidMergeCounts: false,
     /* 统计页「隐藏被置灰的干员」（2026-11-21 用户加）：勾上后 `statHideOps` 里的人**整行不渲染**。
        ⚠️ 与「编辑模式」**互斥**：编辑模式靠点行循环状态，行被藏掉就点不到了 ——
           两个 setter 互相踢（进编辑模式自动取消隐藏，反之亦然）。默认关。 */
@@ -962,6 +966,27 @@ export const useSiteStore = defineStore('site', {
      */
     setStatMidNoStd(on) {
       this.statMidNoStd = !!on;
+      /* 与「合并中坚寻访三个次数」互斥 —— 两个开关都在改中坚表的列结构，
+         同时开会打架（一个想只留中坚次数、一个想把三个并成一列）。后点的赢。 */
+      if (this.statMidNoStd) this.statMidMergeCounts = false;
+    },
+
+    /**
+     * 中坚寻访表是否把**三个次数并成一列**（默认关，用户 2026-11-22 加）。
+     *
+     * 勾上后中坚表每组由「总次数 / 中坚次数 / 标准次数」三列收成**一列「次数」**，
+     * 单元格写成 `总/中坚/标准`（如 `8/1/9`），其中**中坚数字标蓝、标准数字标黄**
+     * —— 既省两列宽度，又能一眼看出「这三次里几次是中坚的」。
+     *
+     * ⚠️ 排序**以中坚次数为准**（用户指定）：表头那个「次数」挂的是 `upMid` / `shopMid`
+     *    这两个已有的排序 key，点它排的就是中坚次数。
+     * ⚠️ 纯展示层：不动 `computeStats` 的数据、不动标准寻访表；复制内容跟着合并（输出 `8/1/9` 文本）。
+     * ⚠️ 与「中坚寻访不看标准次数」**互斥**（后点的赢，见上）。
+     * ⚠️ 与其它统计开关同处理：**切服不重置**、不持久化。
+     */
+    setStatMidMergeCounts(on) {
+      this.statMidMergeCounts = !!on;
+      if (this.statMidMergeCounts) this.statMidNoStd = false;
     },
 
     /**

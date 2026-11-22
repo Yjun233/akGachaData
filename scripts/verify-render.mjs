@@ -1020,7 +1020,7 @@ try {
     /const noStd = computed\(\(\) => site\.statMidNoStd\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8'))
     && /:colspan="groupCols"/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8')), true);
   check('不看标准次数：复制**跟着屏幕收**（StatsView 把 `noStd` 传给中坚表）',
-    /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd \}\)/.test(svSrc)
+    /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(svSrc)
     && /const noStd = site\.statMidNoStd/.test(svSrc), true);
 
   /* 复制口径真跑一遍：勾上后中坚表只留「中坚次数」，且取的是 upMid / shopMid 那一列
@@ -1044,6 +1044,90 @@ try {
         '商店兑换 结束时间', '商店兑换 距今天数', '商店兑换 中坚次数']));
     check('不看标准次数：复制的中坚数据行取的是"中坚"那一列的次数',
       JSON.stringify(rr[1]), JSON.stringify(['2020-01-01', '甲', '2026-09-15', 27, 1, '2026-10-20', '进行中', 1]));
+  }
+
+  /* ---------------- 出率提升记录：右栏「合并中坚寻访三个次数」（2026-11-22 用户加） ----------------
+     勾上后中坚表把「总次数 / 中坚次数 / 标准次数」并成**一列「次数」**，
+     值写成 `总/中坚/标准`（中坚蓝 / 标准黄），排序**以中坚次数为准**（表头挂 upMid / shopMid）。
+     与「不看标准次数」**互斥**（store 的两个 setter 互相踢）。 */
+  check('合并三个次数：右栏有这个复选框，并接到 store 的 setStatMidMergeCounts',
+    /合并中坚寻访三个次数/.test(fdSrc)
+    && /setStatMidMergeCounts\(\$event\.target\.checked\)/.test(fdSrc), true);
+
+  const mergeR = await renderRoute('/operators', (s2) => { s2.statMidMergeCounts = true; });
+  const mh = mergeR.html;
+  const mStd6 = sectionHtml(mh, 's-6-std', 's-6-mid');
+  const mMid6 = sectionHtml(mh, 's-6-mid', 's-5-std');
+  const mMid5 = sectionHtml(mh, 's-5-mid');
+  check('合并三个次数：中坚表不再有「总次数 / 中坚次数 / 标准次数」三个列头',
+    !/总次数/.test(mMid6) && !/中坚次数/.test(mMid6) && !/标准次数/.test(mMid6)
+    && !/总次数/.test(mMid5) && !/中坚次数/.test(mMid5), true);
+  check('合并三个次数：中坚表每组组头 colspan 收到 3、数据行 8 个 td（2 + 3 + 3）',
+    count(mMid6, /class="group[^"]*"[^>]*colspan="3"/g) === 2 && firstRowCells(mMid6) === 8, true);
+  check('合并三个次数：合并列的表头就叫「次数」（每表 2 处：出率提升 / 商店兑换）',
+    count(mMid6, />次数<span class="arw">/g) === 2 && count(mMid5, />次数<span class="arw">/g) === 2, true);
+  /* 排序：合并列的 data-sort 必须是 upMid / shopMid —— 即**以中坚次数为准** */
+  check('合并三个次数：合并列排序挂中坚 key（data-sort=upMid / shopMid）',
+    /* ⚠️ 别按 `class="num" data-sort=...` 整串匹配 —— Vue SSR 会把**动态 class 排在静态前面**
+       （排序生效时是 `class="sort-asc num"`），按 data-sort + 文本节点匹配才稳。 */
+    /<th[^>]*data-sort="upMid"[^>]*>次数<span class="arw">/.test(mMid6)
+    && /<th[^>]*data-sort="shopMid"[^>]*>次数<span class="arw">/.test(mMid6), true);
+  check('合并三个次数：单元格写成 总/中坚/标准 三段（斜杠 + 两个标色 span）',
+    /<td class="num cnt-merge">\d+<span class="cnt-sep">\/<\/span><span class="cnt-mid">\d+<\/span><span class="cnt-sep">\/<\/span><span class="cnt-std">\d+<\/span><\/td>/.test(mMid6), true);
+  check('合并三个次数：中坚段是蓝、标准段是黄（样式在 main.css，浅底取深一档的黄）',
+    /\.cnt-merge \.cnt-mid\{color:#0098DC/.test(cssAll)
+    && /\.cnt-merge \.cnt-std\{color:#a97400/.test(cssAll), true);
+  check('合并三个次数：标准寻访表完全不受影响（仍是「次数」一列、没有 cnt-merge）',
+    !/cnt-merge/.test(mStd6) && count(mStd6, />次数<span class="arw">/g) === 2, true);
+  check('合并三个次数：**不筛行**（四张表行数仍是 46 / 48 / 46 / 68）',
+    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(mh, a)).join(','),
+    '46,48,46,68');
+  /* 防复发：别把「总次数 / 标准次数」等关键词写进模板注释（SSR 会原样输出） */
+  check('合并三个次数：渲染出的 HTML 里没有夹带次数关键词的模板注释',
+    !/<!--[^>]*(?:总次数|标准次数|中坚次数)/.test(mh), true);
+
+  /* 互斥：两个开关都改中坚表的列结构，后点的赢 */
+  {
+    const a1 = await renderRoute('/operators', (s2) => {
+      s2.setStatMidNoStd(true);
+      s2.setStatMidMergeCounts(true);
+    });
+    check('合并三个次数：勾「合并」会**自动取消**「不看标准次数」',
+      `${a1.store.statMidMergeCounts}|${a1.store.statMidNoStd}`, 'true|false');
+    const a2 = await renderRoute('/operators', (s2) => {
+      s2.setStatMidMergeCounts(true);
+      s2.setStatMidNoStd(true);
+    });
+    check('合并三个次数：勾「不看标准次数」会**自动取消**「合并」',
+      `${a2.store.statMidNoStd}|${a2.store.statMidMergeCounts}`, 'true|false');
+    check('合并三个次数：两个开关都**切服不重置**（setServer 里没动它们）',
+      `${setServerBody.includes('statMidMergeCounts')}`, 'false');
+  }
+
+  /* 复制：合并后是**一列文本** `总/中/标`（颜色带不进 Excel，顺序保留） */
+  {
+    const { statCopyRows: cp2 } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
+    const ban2 = (a, b) => ({ startDate: a, endDate: b });
+    const row2 = {
+      name: '甲', releaseDate: '2020-01-01',
+      upAll: [ban2('2026-09-01', '2026-09-15')],
+      upMid: [ban2('2026-09-01', '2026-09-15')],
+      upStd: [ban2('2026-06-01', '2026-06-10'), ban2('2026-07-01', '2026-07-10')],
+      shopAll: [ban2('2026-10-01', '2026-10-20')],
+      shopMid: [ban2('2026-10-01', '2026-10-20')],
+      shopStd: [ban2('2026-05-01', '2026-05-10')],
+    };
+    const rr2 = cp2([row2], { split: true, refDate: '2026-10-11', merge: true });
+    check('合并三个次数：复制的中坚表头 8 列、列名叫「次数」',
+      JSON.stringify(rr2[0]), JSON.stringify(['实装时间', '干员',
+        '出率提升 结束时间', '出率提升 距今天数', '出率提升 次数',
+        '商店兑换 结束时间', '商店兑换 距今天数', '商店兑换 次数']));
+    check('合并三个次数：复制出来的次数就是「总/中坚/标准」纯文本',
+      JSON.stringify(rr2[1]), JSON.stringify(['2020-01-01', '甲',
+        '2026-09-15', 27, '1/1/2', '2026-10-20', '进行中', '1/1/1']));
+    check('合并三个次数：StatsView 把 `merge` 传给中坚表（复制与屏幕一致）',
+      /const merge = site\.statMidMergeCounts/.test(svSrc)
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(svSrc), true);
   }
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
@@ -3382,7 +3466,7 @@ try {
       /中坚寻访只看中坚/.test(drawerSrc) && /site\.setStatMidOnly\(\$event\.target\.checked\)/.test(drawerSrc), true);
     check('只看中坚：**复制**出来的也用同一口径（tableCopy 走 viewEndInfo + 收 midOnly）',
       /viewEndInfo\(r, 'up', refDate, midOnly\)/.test(copySrc) && /midOnly = false/.test(copySrc)
-      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd \}\)/.test(statsViewSrc), true);
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(statsViewSrc), true);
     check('只看中坚：**次数列不跟着变**（模板里仍读 upAll / upMid / upStd 三个长度）',
       /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
   }

@@ -29,16 +29,21 @@ const daysText = (info) => (info.live ? '进行中' : (info.days === null ? DASH
  * ⚠️ 「结束时间 / 距今天数」走 `viewEndInfo()` —— 与表格同一个口径，
  *    所以**「中坚寻访只看中坚」勾上时，复制出来的也是那套值**（`midOnly` 由视图层传进来）。
  *
- * @param {{split?:boolean, refDate:string, midOnly?:boolean, noStd?:boolean}} opts
+ * @param {{split?:boolean, refDate:string, midOnly?:boolean, noStd?:boolean, merge?:boolean}} opts
  *        `split` = 中坚表（默认多「总次数 / 中坚次数 / 标准次数」三列）；`refDate` = 参考日期；
  *        `midOnly` = 右栏「中坚寻访只看中坚」；
  *        `noStd` = 右栏「中坚寻访不看标准次数」（仅 `split` 下有意义）——
- *                  **复制的列必须与屏幕一致**，所以勾上后中坚表也只留「中坚次数」一列
+ *                  **复制的列必须与屏幕一致**，所以勾上后中坚表也只留「中坚次数」一列；
+ *        `merge` = 右栏「合并中坚寻访三个次数」（仅 `split` 下有意义，与 `noStd` 互斥）——
+ *                  三列并成一列「次数」，值是 `总/中坚/标准` 的**纯文本**（如 `8/1/9`；
+ *                  颜色带不进 Excel，所以只保留顺序）
  * @returns {Array<Array<string|number>>} 第一行是表头
  */
-export function statCopyRows(rows, { split = false, refDate, midOnly = false, noStd = false } = {}) {
+export function statCopyRows(rows, {
+  split = false, refDate, midOnly = false, noStd = false, merge = false,
+} = {}) {
   const counts = split
-    ? (noStd ? ['中坚次数'] : ['总次数', '中坚次数', '标准次数'])
+    ? (merge ? ['次数'] : (noStd ? ['中坚次数'] : ['总次数', '中坚次数', '标准次数']))
     : ['次数'];
   const group = (name) => [
     `${name} 结束时间`, `${name} 距今天数`, ...counts.map((c) => `${name} ${c}`),
@@ -47,11 +52,14 @@ export function statCopyRows(rows, { split = false, refDate, midOnly = false, no
   const body = (rows || []).map((r) => {
     const up = viewEndInfo(r, 'up', refDate, midOnly);
     const shop = viewEndInfo(r, 'shop', refDate, midOnly);
-    /* 次数与 `counts` 一一对应：默认 [总, 中坚, 标准]、藏标准后只剩 [中坚] */
-    const upCounts = split ? (noStd ? [r.upMid.length] : [r.upAll.length, r.upMid.length, r.upStd.length])
-      : [r.upAll.length];
-    const shopCounts = split ? (noStd ? [r.shopMid.length] : [r.shopAll.length, r.shopMid.length, r.shopStd.length])
-      : [r.shopAll.length];
+    /* 次数与 `counts` 一一对应：默认 [总, 中坚, 标准]、藏标准后只剩 [中坚]、合并后是一串文本 */
+    const countOf = (all, mid, std) => {
+      if (!split) return [all.length];
+      if (merge) return [`${all.length}/${mid.length}/${std.length}`];
+      return noStd ? [mid.length] : [all.length, mid.length, std.length];
+    };
+    const upCounts = countOf(r.upAll, r.upMid, r.upStd);
+    const shopCounts = countOf(r.shopAll, r.shopMid, r.shopStd);
     return [
       r.releaseDate || DASH,
       r.name,
