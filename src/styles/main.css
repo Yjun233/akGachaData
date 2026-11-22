@@ -971,9 +971,27 @@ table.grid.fup-tbl tbody td:nth-child(-n+2){position:sticky;z-index:2;background
 /* 统计页「合并中坚寻访三个次数」（2026-11-22 用户加）：一格里写 `总/中坚/标准`（如 8/1/9）。
    中坚那段**蓝**、标准那段**黄** —— 用的就是全站那对大类的色（中坚 #0098DC / 标准 #FFD524），
    但标准黄在浅底上太淡，取「标准深墨」#a97400（与 `.optag.rar-6`、`CAT_DEEP['标准寻访']` 同族），
-   小面积上仍读得出是黄。斜杠本身压暗、不吃色，免得一眼看去像一串彩色。 */
-.cnt-merge{white-space:nowrap;font-variant-numeric:tabular-nums}
-.cnt-merge .cnt-sep{color:#b6c2d1;margin:0 1px}
+   小面积上仍读得出是黄。斜杠本身压暗、不吃色，免得一眼看去像一串彩色。
+   ⭐ 五个 span 排成 inline-grid（**挂在内层 `.cnt-box` 上，不是 td 上**）：
+   三段数字各 **min-width:2ch 且居中**（同位数左右留白相同、跨行也一条竖线），
+   数字与斜杠的间距统一交给 **column-gap**（.35ch）——「数字 ↔ 斜杠」左右两侧视觉间距相同
+   （用户 2026-11-22 要求：先右对齐、再居中、再要「同位数的数字和斜杠左右间距一致」）。
+   数字段用 tabular-nums 保证同宽。
+   ⚠️⚠️ **千万别把 `display:inline-grid` 写在 `<td>` 上** —— td 一旦不是 table-cell，
+      `vertical-align:middle` 就失效，整串会**贴底**（2026-11-22 用户当场报「没有垂直居中」）。
+      所以 td 保持默认的 table-cell（只补 `text-align:center`），grid 挂到里面那层
+      `inline-grid` 的 `.cnt-box` 上，垂直居中仍由 td 的 table-cell 负责。 */
+.cnt-merge{text-align:center}
+.cnt-merge > .cnt-box{
+  display:inline-grid;grid-template-columns:repeat(5, auto);column-gap:.35ch;
+  align-items:baseline;white-space:nowrap;font-variant-numeric:tabular-nums;
+  vertical-align:middle;   /* inline-grid 默认按 baseline 排，会差 1px 偏上 → 明确 middle */
+}
+.cnt-box > span{text-align:center}
+.cnt-merge .cnt-all,
+.cnt-merge .cnt-mid,
+.cnt-merge .cnt-std{min-width:2ch}
+.cnt-merge .cnt-sep{color:#b6c2d1;font-weight:400}
 .cnt-merge .cnt-mid{color:#0098DC;font-weight:700}
 .cnt-merge .cnt-std{color:#a97400;font-weight:700}
 

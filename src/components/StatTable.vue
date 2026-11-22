@@ -208,7 +208,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <template v-else>{{ r.up.days }}</template>
           </td>
           <template v-if="merge">
-            <td class="num cnt-merge">{{ r.upAll.length }}<span class="cnt-sep">/</span><span class="cnt-mid">{{ r.upMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.upStd.length }}</span></td>
+            <td class="num cnt-merge"><span class="cnt-box"><span class="cnt-all">{{ r.upAll.length }}</span><span class="cnt-sep">/</span><span class="cnt-mid">{{ r.upMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.upStd.length }}</span></span></td>
           </template>
           <template v-else>
             <td class="num">{{ r.upAll.length }}</td>
@@ -229,7 +229,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <template v-else>{{ r.shop.days }}</template>
           </td>
           <template v-if="merge">
-            <td class="num cnt-merge">{{ r.shopAll.length }}<span class="cnt-sep">/</span><span class="cnt-mid">{{ r.shopMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.shopStd.length }}</span></td>
+            <td class="num cnt-merge"><span class="cnt-box"><span class="cnt-all">{{ r.shopAll.length }}</span><span class="cnt-sep">/</span><span class="cnt-mid">{{ r.shopMid.length }}</span><span class="cnt-sep">/</span><span class="cnt-std">{{ r.shopStd.length }}</span></span></td>
           </template>
           <template v-else>
             <td class="num">{{ r.shopAll.length }}</td>

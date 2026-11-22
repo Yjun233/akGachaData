@@ -1011,8 +1011,24 @@ try {
        （排序生效时是 `class="sort-asc num"`），按 data-sort + 文本节点匹配才稳。 */
     /<th[^>]*data-sort="upMid"[^>]*>次数<span class="arw">/.test(mMid6)
     && /<th[^>]*data-sort="shopMid"[^>]*>次数<span class="arw">/.test(mMid6), true);
-  check('合并三个次数：单元格写成 总/中坚/标准 三段（斜杠 + 两个标色 span）',
-    /<td class="num cnt-merge">\d+<span class="cnt-sep">\/<\/span><span class="cnt-mid">\d+<\/span><span class="cnt-sep">\/<\/span><span class="cnt-std">\d+<\/span><\/td>/.test(mMid6), true);
+  check('合并三个次数：单元格写成 总/中坚/标准 三段（斜杠 + 两个标色 span，外面套 .cnt-box）',
+    /<td class="num cnt-merge"><span class="cnt-box"><span class="cnt-all">\d+<\/span><span class="cnt-sep">\/<\/span><span class="cnt-mid">\d+<\/span><span class="cnt-sep">\/<\/span><span class="cnt-std">\d+<\/span><\/span><\/td>/.test(mMid6), true);
+  /* 三段**各自垂直对齐 + 与斜杠的左右间距一致 + 整串在格子里水平/垂直居中**
+     （2026-11-22 用户要求，三轮调整后的最终形态）：数字段 `min-width:2ch` 居中（同位数位置相同），
+     间距统一给 `column-gap`，grid 挂在内层 `.cnt-box` 上（td 保持 table-cell 才有垂直居中）。 */
+  check('合并三个次数：三段等宽居中 + 统一 gap，且 grid 挂在内层 .cnt-box（td 保持 table-cell）',
+    /* ⚠️ CSS 里那条规则是**多行**的（`{` 后换行再写属性），别按 `{display` 整串匹配 */
+    /\.cnt-merge > \.cnt-box\{[\s\S]{0,80}?grid-template-columns:repeat\(5, auto\);column-gap:[.]35ch/.test(cssAll)
+    && /\.cnt-box > span\{text-align:center\}/.test(cssAll)
+    && /\.cnt-merge \.cnt-std\{min-width:2ch\}/.test(cssAll.replace(/\n\s*/g, ' '))
+    && /\.cnt-merge\{text-align:center\}/.test(cssAll)
+    /* 内层 inline-grid 要显式 middle（默认 baseline 会差 1px 偏上） */
+    && /\.cnt-merge > \.cnt-box\{[\s\S]{0,260}?vertical-align:middle/.test(cssAll)
+    && /font-variant-numeric:tabular-nums/.test(cssAll), true);
+  /* ⚠️ 防复发：`display:inline-grid` 一旦写到 td 上，vertical-align:middle 失效、整串贴底
+     （2026-11-22 用户报过一次）—— 这里直接钉住「td 那条规则里不许出现 display」。 */
+  check('合并三个次数：td 那条规则**不设 display**（否则丢掉 table-cell 的垂直居中）',
+    !/\.cnt-merge\{[^}]*display:/.test(cssAll), true);
   check('合并三个次数：中坚段是蓝、标准段是黄（样式在 main.css，浅底取深一档的黄）',
     /\.cnt-merge \.cnt-mid\{color:#0098DC/.test(cssAll)
     && /\.cnt-merge \.cnt-std\{color:#a97400/.test(cssAll), true);
