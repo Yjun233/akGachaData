@@ -20,7 +20,7 @@
  *   右栏「中坚寻访只看中坚」勾上时，中坚干员改按**中坚记录**算；
  *   从未在中坚 UP 过的，结束时间显示 `—`、天数自**迁入中坚寻访**那天起算（鼠标悬停有说明）。
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { WARN_DAYS, DANGER_DAYS } from '../lib/constants.js';
 import { viewEndInfo } from '../lib/stats.js';
 /* 干员名的**自适应字号** —— 列宽收窄后，超字数的名字降字号塞进去（口径见 lib/opNameFit.js）。
@@ -87,6 +87,34 @@ const viewRows = computed(() =>
 
 /** 「只看中坚」+ 从未在中坚 UP 过 → 天数是自迁入日算的，给个 tooltip 说清楚 */
 const fromClassicTitle = (r) => `从未在中坚寻访 UP 过；距今天数自迁入中坚寻访（${r.classicDate}）起算`;
+
+/**
+ * 结束时间的**悬停气泡**（2026-11-22 用户加）：显示这一格对应的卡池 —— 卡池名 + 时间范围。
+ *
+ * 数据来自 `viewEndInfo(...).banner`（= `endInfo` 里那个「最晚结束」的卡池对象本身），
+ * 所以气泡里的「结束时间」必然与格子里的日期一致；`fromClassic`（自迁入日起算、没有卡池）
+ * 时 `banner` 为 null → 不弹气泡，仍走原来的 `title`。
+ *
+ * ⚠️ 气泡用 `position:fixed`：表格外层 `.tbl-scroll` 是 `overflow:auto`，
+ *    绝对定位的气泡会被**裁掉**（与图表浮窗同一个坑）。
+ * ⚠️ 靠近视口顶部时翻到格子**下方**（`down`），否则会被顶栏挡住 / 跑到屏幕外。
+ */
+const tip = ref(null);
+const showTip = (e, b) => {
+  if (!b || !b.scName) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  tip.value = { name: b.scName, from: b.startDate, to: b.endDate, x: r.left + r.width / 2, y: r.top };
+};
+const hideTip = () => { tip.value = null; };
+const tipPos = computed(() => {
+  const t = tip.value;
+  if (!t) return null;
+  const below = t.y < 96;
+  return {
+    cls: below ? 'endtip down' : 'endtip',
+    style: { left: `${t.x}px`, top: `${below ? t.y + 28 : t.y - 8}px` },
+  };
+});
 
 const sortClass = (key) =>
   sort.value && sort.value.key === key ? `sort-${sort.value.dir}` : '';
@@ -197,7 +225,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             <b v-else :style="opNameStyle(r.name)">{{ r.name }}</b>
           </td>
           <!-- 出率提升 -->
-          <td class="num" :title="r.up.fromClassic ? fromClassicTitle(r) : null">
+          <td
+            class="num endcell" :title="r.up.fromClassic ? fromClassicTitle(r) : null"
+            @mouseenter="showTip($event, r.up.banner)" @mouseleave="hideTip"
+          >
             <span v-if="!r.up.end" class="dash">—</span><template v-else>{{ r.up.end }}</template>
           </td>
           <td class="num" :title="r.up.fromClassic ? fromClassicTitle(r) : null">
@@ -218,7 +249,10 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
             </template>
           </template>
           <!-- 商店兑换 -->
-          <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
+          <td
+            class="num endcell" :title="r.shop.fromClassic ? fromClassicTitle(r) : null"
+            @mouseenter="showTip($event, r.shop.banner)" @mouseleave="hideTip"
+          >
             <span v-if="!r.shop.end" class="dash">—</span><template v-else>{{ r.shop.end }}</template>
           </td>
           <td class="num" :title="r.shop.fromClassic ? fromClassicTitle(r) : null">
@@ -241,5 +275,9 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
         </tr>
       </tbody>
     </table>
+    <div v-if="tipPos" :class="tipPos.cls" :style="tipPos.style">
+      <b class="endtip-name">{{ tip.name }}</b>
+      <span class="endtip-range">{{ tip.from }} ~ {{ tip.to }}</span>
+    </div>
   </div>
 </template>

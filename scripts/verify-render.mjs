@@ -3409,6 +3409,25 @@ try {
       && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, merge \}\)/.test(statsViewSrc), true);
     check('只看中坚：**次数列不跟着变**（模板里仍读 upAll / upMid / upStd 三个长度）',
       /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
+
+    /* ---- 结束时间的悬停气泡（2026-11-22 用户加）----
+       鼠标移到结束时间上 → 气泡显示「卡池名 + 时间范围」。数据靠 `viewEndInfo().banner`
+       （= `endInfo` 里那个「最晚结束」的卡池对象），所以气泡与格子日期必然同源。 */
+    check('结束时间气泡：两个结束时间格都挂 hover，取的是 viewEndInfo 的 banner',
+      /@mouseenter="showTip\(\$event, r\.up\.banner\)"/.test(statTblSrc)
+      && /@mouseenter="showTip\(\$event, r\.shop\.banner\)"/.test(statTblSrc)
+      && /@mouseleave="hideTip"/.test(statTblSrc), true);
+    check('结束时间气泡：内容是「卡池名 + 起止日期」两行',
+      /class="endtip-name">\{\{ tip\.name \}\}/.test(statTblSrc)
+      && /class="endtip-range">\{\{ tip\.from \}\} ~ \{\{ tip\.to \}\}/.test(statTblSrc), true);
+    check('结束时间气泡：没有卡池（`banner` 为 null）时不弹，退回原来的 title',
+      /if \(!b \|\| !b\.scName\) return;/.test(statTblSrc)
+      && /fromClassic \? fromClassicTitle\(r\) : null/.test(statTblSrc), true);
+    /* 气泡默认不渲染（只在 mouseenter 后出现）—— SSR 出来的 HTML 里不该有 .endtip */
+    check('结束时间气泡：SSR 默认不渲染（悬停才出现）',
+      count(sh, /class="endtip/g), 0);
+    check('结束时间气泡：position:fixed + pointer-events:none（否则被 .tbl-scroll 的 overflow 裁掉 / 鼠标闪）',
+      /\.endtip\{[^}]*position:fixed/.test(cssAll) && /\.endtip\{[^}]*pointer-events:none/.test(cssAll), true);
   }
 
   /* 排序方向：用户 2026-11-16 ——「距今天数」第一次点就要从大到小（等得最久的排最前） */

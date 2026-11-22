@@ -113,9 +113,12 @@ export function latestEndDate(banners, categories, wanted) {
  */
 export function endInfo(arr, refDate) {
   const b = latest(arr);
-  if (!b) return { end: null, live: false, days: null };
+  if (!b) return { end: null, live: false, days: null, banner: null };
   const live = b.startDate <= refDate && refDate < b.endDate;
-  return { end: b.endDate, live, days: live ? null : diffDays(refDate, b.endDate) + 1 };
+  /* `banner` = 那个「最后一次」的**卡池对象本身**（2026-11-22 加）：表格的结束时间要挂
+     气泡显示「卡池名 + 时间范围」，只有日期是不够的。界面上别拿它做判断以外的事 ——
+     口径仍以 `end` / `live` / `days` 为准。 */
+  return { end: b.endDate, live, days: live ? null : diffDays(refDate, b.endDate) + 1, banner: b };
 }
 
 /**
@@ -137,7 +140,8 @@ export const daysSortValue = (info) => (info.live ? 0 : (info.days ?? -1));
  * @param {'up'|'shop'} which  看「出率提升」还是「商店兑换」
  * @param {string} refDate  参考日期
  * @param {boolean} [midOnly=false] 右栏「中坚寻访只看中坚」开关
- * @returns {{end:string|null, live:boolean, days:number|null, fromClassic:boolean}}
+ * @returns {{end:string|null, live:boolean, days:number|null, fromClassic:boolean,
+ *            banner:object|null}}
  *          `fromClassic` = 该行的天数是**从迁入中坚寻访那天**起算的（界面据此挂 tooltip）
  *
  * 三种情形：
@@ -156,9 +160,9 @@ export function viewEndInfo(row, which, refDate, midOnly = false) {
   if (!midOnly || !isMidAt(row, refDate)) return { ...endInfo(all, refDate), fromClassic: false };
   if (mid.length) return { ...endInfo(mid, refDate), fromClassic: false };
   const cd = row.classicDate || null;
-  if (!cd) return { end: null, live: false, days: null, fromClassic: false };
+  if (!cd) return { end: null, live: false, days: null, fromClassic: false, banner: null };
   /* 「结束日当天算 1 天」的口径与 `endInfo` 保持一致（`diffDays + 1`） */
-  return { end: null, live: false, days: diffDays(refDate, cd) + 1, fromClassic: true };
+  return { end: null, live: false, days: diffDays(refDate, cd) + 1, fromClassic: true, banner: null };
 }
 
 /**

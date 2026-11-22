@@ -1846,6 +1846,18 @@ check('距今天数：结束日 10 天后 = 11',
 check('距今天数：进行中时为 null（界面显示「进行中」，不是 1）',
   endInfo([sampleBanner], sampleBanner.startDate).days, null);
 
+/* 结束时间的气泡（2026-11-22 用户加）：`endInfo` 要把**那个卡池对象本身**带出来，
+   界面才拿得到名字与起止日期。多个池时必须是「结束日最晚」的那一个 —— 与格子里显示的
+   结束日期同源，否则会出现「气泡写 A 池、格子写 B 池的日期」。 */
+const endA = { ...sampleBanner, id: 'zz-a', scName: 'A 池', startDate: '2026-01-01', endDate: '2026-01-10' };
+const endB = { ...sampleBanner, id: 'zz-b', scName: 'B 池', startDate: '2026-02-01', endDate: '2026-03-10' };
+check('结束时间气泡：endInfo 带出的是「结束日最晚」那个卡池对象',
+  endInfo([endA, endB], '2026-04-01').banner.scName, 'B 池');
+check('结束时间气泡：气泡里的结束日期与格子里的结束日期同源',
+  endInfo([endA, endB], '2026-04-01').banner.endDate, endInfo([endA, endB], '2026-04-01').end);
+check('结束时间气泡：没有记录时 banner 为 null（界面不弹气泡、退回 title）',
+  endInfo([], '2026-04-01').banner, null);
+
 /* 排序值：「进行中」与「结束日当天（1 天）」必须能分开（否则两类行并列混在一起）。
    进行中 = 0、无数据 = -1、真实天数从 1 起（结束日当天就是 1）。 */
 check('排序值：进行中 = 0', daysSortValue({ live: true, days: null }), 0);
