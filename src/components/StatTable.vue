@@ -23,6 +23,8 @@
 import { computed, ref } from 'vue';
 import { WARN_DAYS, DANGER_DAYS } from '../lib/constants.js';
 import { viewEndInfo } from '../lib/stats.js';
+/** 结束时间气泡里的「干员 UP 情况」分组（纯函数，见 lib/bannerTip.js） */
+import { tipOps } from '../lib/bannerTip.js';
 /* 干员名的**自适应字号** —— 列宽收窄后，超字数的名字降字号塞进去（口径见 lib/opNameFit.js）。
    ⚠️ 别把这段说明写成 HTML 注释塞进 `<td>` 里：Vue SSR 会**原样输出**注释，于是
      「`<td class="opcell">` 紧跟 `<b>`」这类相邻匹配就断了（2026-10-16 真踩过）。 */
@@ -89,21 +91,37 @@ const viewRows = computed(() =>
 const fromClassicTitle = (r) => `从未在中坚寻访 UP 过；距今天数自迁入中坚寻访（${r.classicDate}）起算`;
 
 /**
- * 结束时间的**悬停气泡**（2026-11-22 用户加）：显示这一格对应的卡池 —— 卡池名 + 时间范围。
+ * 结束时间的**悬停气泡**（2026-11-22 用户加）：显示这一格对应的卡池 ——
+ * **卡池名 + 时间范围 + 干员 UP 情况**（后者为同日追加，见 `lib/bannerTip.js`）。
  *
  * 数据来自 `viewEndInfo(...).banner`（= `endInfo` 里那个「最晚结束」的卡池对象本身），
  * 所以气泡里的「结束时间」必然与格子里的日期一致；`fromClassic`（自迁入日起算、没有卡池）
  * 时 `banner` 为 null → 不弹气泡，仍走原来的 `title`。
  *
+ * ⭐ `op` = **当前这一行的干员名**（调用方传 `r.name`）：气泡里把它标成 `.cur`，
+ *    免得「一列 5 个 UP 干员、不知道哪一行是我在看的这位」。
+ *
  * ⚠️ 气泡用 `position:fixed`：表格外层 `.tbl-scroll` 是 `overflow:auto`，
  *    绝对定位的气泡会被**裁掉**（与图表浮窗同一个坑）。
  * ⚠️ 靠近视口顶部时翻到格子**下方**（`down`），否则会被顶栏挡住 / 跑到屏幕外。
+ * ⚠️ 带上 UP 名单后气泡变宽很多 → `x` 要 **clamp 进视口**（否则窄屏上左右被切）。
  */
 const tip = ref(null);
-const showTip = (e, b) => {
+const showTip = (e, b, op) => {
   if (!b || !b.scName) return;
   const r = e.currentTarget.getBoundingClientRect();
-  tip.value = { name: b.scName, from: b.startDate, to: b.endDate, x: r.left + r.width / 2, y: r.top };
+  /* 气泡最宽 320px（见 .endtip 的 max-width）→ 半宽 160；视口更窄时按视口算 */
+  const half = Math.min(160, Math.max(0, window.innerWidth / 2 - 8));
+  const x = Math.min(Math.max(r.left + r.width / 2, half), window.innerWidth - half);
+  tip.value = {
+    name: b.scName,
+    from: b.startDate,
+    to: b.endDate,
+    op,
+    groups: tipOps(b),
+    x,
+    y: r.top,
+  };
 };
 const hideTip = () => { tip.value = null; };
 const tipPos = computed(() => {
@@ -227,7 +245,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
           <!-- 出率提升 -->
           <td
             class="num endcell" :title="r.up.fromClassic ? fromClassicTitle(r) : null"
-            @mouseenter="showTip($event, r.up.banner)" @mouseleave="hideTip"
+            @mouseenter="showTip($event, r.up.banner, r.name)" @mouseleave="hideTip"
           >
             <span v-if="!r.up.end" class="dash">—</span><template v-else>{{ r.up.end }}</template>
           </td>
@@ -251,7 +269,7 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
           <!-- 商店兑换 -->
           <td
             class="num endcell" :title="r.shop.fromClassic ? fromClassicTitle(r) : null"
-            @mouseenter="showTip($event, r.shop.banner)" @mouseleave="hideTip"
+            @mouseenter="showTip($event, r.shop.banner, r.name)" @mouseleave="hideTip"
           >
             <span v-if="!r.shop.end" class="dash">—</span><template v-else>{{ r.shop.end }}</template>
           </td>
@@ -278,6 +296,15 @@ const onSort = (key) => site.toggleStatSort(props.tableId, key);
     <div v-if="tipPos" :class="tipPos.cls" :style="tipPos.style">
       <b class="endtip-name">{{ tip.name }}</b>
       <span class="endtip-range">{{ tip.from }} ~ {{ tip.to }}</span>
+      <div v-if="tip.groups.length" class="endtip-ops">
+        <div v-for="g in tip.groups" :key="g.rarity" class="endtip-row">
+          <span class="endtip-rar">{{ g.rarity }}★</span>
+          <span
+            v-for="o in g.ops" :key="o.name" class="endtip-op"
+            :class="{ cur: o.name === tip.op }"
+          ><i v-if="o.limited" class="mk mk-lim">限</i><i v-if="o.shop" class="mk mk-shop">店</i>{{ o.name }}</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>

@@ -995,22 +995,38 @@ table.grid.fup-tbl tbody td:nth-child(-n+2){position:sticky;z-index:2;background
 .cnt-merge .cnt-mid{color:#0098DC}
 .cnt-merge .cnt-std{color:#a97400}
 
-/* 统计表「结束时间」的悬停气泡（2026-11-22 用户加）：卡池名 + 时间范围。
+/* 统计表「结束时间」的悬停气泡（2026-11-22 用户加）：卡池名 + 时间范围 + 干员 UP 情况。
    ⚠️ 必须 `position:fixed` —— 表格外层 `.tbl-scroll` 是 `overflow:auto`，
       `absolute` 气泡会被裁掉（与图表浮窗同一个坑，见 lib/chartTooltip.js）。
    ⚠️ `pointer-events:none`：气泡不能挡住鼠标，否则会触发 `mouseleave` → 闪。
    z-index 取 60：高于 sticky 表头（8）与统计表冻结列，低于顶栏（70）/ 抽屉（75）。
-   近视口顶部时组件会加 `.down` 翻到格子下方。 */
+   近视口顶部时组件会加 `.down` 翻到格子下方。
+   ⚠️ 带上 UP 名单后不再 `nowrap` —— 只让**名字 / 日期**两行 nowrap，UP 那几行该折就折；
+      宽度上限 320px（组件按这个半宽把 `left` clamp 进视口，见 `showTip`）。 */
 .endtip{
   position:fixed;z-index:60;pointer-events:none;transform:translate(-50%,-100%);
-  padding:6px 10px;border-radius:8px;white-space:nowrap;
+  max-width:320px;padding:6px 10px;border-radius:8px;
   background:var(--white);border:1px solid var(--blue-200);
   box-shadow:0 8px 22px rgba(18,56,99,.16);
   font-size:12px;line-height:1.55;color:var(--ink-2);
 }
 .endtip.down{transform:translate(-50%,0)}
-.endtip b{display:block;font-size:12.5px;font-weight:700;color:var(--ink)}
-.endtip .endtip-range{color:var(--muted);font-variant-numeric:tabular-nums}
+.endtip b{display:block;font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap}
+.endtip .endtip-range{display:block;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* UP 名单：按星级分行（6★ 在上），名字之间 8px；行内标记「限 / 店」比表格里收小一号 */
+.endtip-ops{
+  margin-top:5px;padding-top:5px;border-top:1px dashed var(--blue-100,#dbe7f4);
+  display:flex;flex-direction:column;gap:2px;
+}
+.endtip-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.endtip-rar{
+  flex:0 0 auto;font-size:11px;font-weight:700;color:var(--muted);
+  font-variant-numeric:tabular-nums;min-width:20px;
+}
+.endtip-op{white-space:nowrap}
+/* ⭐ 当前这一行的干员（调用方传的 `tip.op`）—— 气泡里 5 个名字，得一眼看出哪个是自己 */
+.endtip-op.cur{font-weight:700;color:var(--ink);background:#eaf3fb;border-radius:4px;padding:0 3px;margin-left:-3px}
+.endtip .mk{min-width:13px;height:13px;line-height:13px;font-size:10px;margin-right:2px}
 
 /* ---------------- 卡池名称 = 可点击复制（用户 2026-10-19） ----------------
    两个视图共用：宽屏表格的「卡池名称」格、窄屏卡片的标题行。

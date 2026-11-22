@@ -3414,9 +3414,32 @@ try {
        鼠标移到结束时间上 → 气泡显示「卡池名 + 时间范围」。数据靠 `viewEndInfo().banner`
        （= `endInfo` 里那个「最晚结束」的卡池对象），所以气泡与格子日期必然同源。 */
     check('结束时间气泡：两个结束时间格都挂 hover，取的是 viewEndInfo 的 banner',
-      /@mouseenter="showTip\(\$event, r\.up\.banner\)"/.test(statTblSrc)
-      && /@mouseenter="showTip\(\$event, r\.shop\.banner\)"/.test(statTblSrc)
+      /@mouseenter="showTip\(\$event, r\.up\.banner, r\.name\)"/.test(statTblSrc)
+      && /@mouseenter="showTip\(\$event, r\.shop\.banner, r\.name\)"/.test(statTblSrc)
       && /@mouseleave="hideTip"/.test(statTblSrc), true);
+    /* ---- 干员 UP 情况（2026-11-22 用户追加）----
+       气泡第三块按星级列出该卡池 UP 了谁（限 / 店 标记与表格同口径），
+       并把**当前这一行的干员**标成 .cur（5 个名字里得看出哪个是自己）。 */
+    check('结束时间气泡：UP 名单按星级分组渲染（endtip-ops / row / rar / op）',
+      /class="endtip-ops"/.test(statTblSrc)
+      && /v-for="g in tip\.groups"/.test(statTblSrc)
+      && /class="endtip-rar">\{\{ g\.rarity \}\}★/.test(statTblSrc)
+      && /v-for="o in g\.ops"/.test(statTblSrc), true);
+    check('结束时间气泡：当前行干员高亮（o.name === tip.op → .cur）',
+      /:class="\{ cur: o\.name === tip\.op \}"/.test(statTblSrc), true);
+    check('结束时间气泡：「限 / 店」标记复用全站 .mk（与卡池列表同款）',
+      /class="mk mk-lim">限</.test(statTblSrc) && /class="mk mk-shop">店</.test(statTblSrc), true);
+    check('结束时间气泡：UP 名单为空时不渲染那一块（v-if 卡 groups.length）',
+      /v-if="tip\.groups\.length"/.test(statTblSrc), true);
+    check('结束时间气泡：变宽后 left 要 clamp 进视口（否则窄屏左右被切）',
+      /const half = Math\.min\(160, Math\.max\(0, window\.innerWidth \/ 2 - 8\)\)/.test(statTblSrc)
+      && /Math\.min\(Math\.max\(r\.left \+ r\.width \/ 2, half\), window\.innerWidth - half\)/.test(statTblSrc),
+      true);
+    check('结束时间气泡：样式给了宽度上限与 UP 行换行（不再整块 nowrap）',
+      /\.endtip\{[^}]*max-width:320px/.test(cssAll)
+      && /\.endtip-row\{[^}]*flex-wrap:wrap/.test(cssAll)
+      && /\.endtip-op\.cur\{/.test(cssAll)
+      && !/\.endtip\{[^}]*white-space:nowrap/.test(cssAll), true);
     check('结束时间气泡：内容是「卡池名 + 起止日期」两行',
       /class="endtip-name">\{\{ tip\.name \}\}/.test(statTblSrc)
       && /class="endtip-range">\{\{ tip\.from \}\} ~ \{\{ tip\.to \}\}/.test(statTblSrc), true);

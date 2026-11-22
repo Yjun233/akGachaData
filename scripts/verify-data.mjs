@@ -14,6 +14,7 @@ import {
   bulkCountRange, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
   computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo,
 } from '../src/lib/stats.js';
+import { tipOps } from '../src/lib/bannerTip.js';
 import {
   computeFirstUp, inFirstUpPool, metricLabel, modeFirstLabel, modeWord, firstUpRangeLabel,
   axisLabel, metricShort,
@@ -1857,6 +1858,30 @@ check('结束时间气泡：气泡里的结束日期与格子里的结束日期�
   endInfo([endA, endB], '2026-04-01').banner.endDate, endInfo([endA, endB], '2026-04-01').end);
 check('结束时间气泡：没有记录时 banner 为 null（界面不弹气泡、退回 title）',
   endInfo([], '2026-04-01').banner, null);
+
+/* 气泡里的「干员 UP 情况」（2026-11-22 用户追加）：`lib/bannerTip.js` 的 `tipOps()` 分组。
+   ⚠️ 组内顺序**保持 upOperators 原样**（资源仓排好的首发 / 陪跑次序），只按星级降序分组。 */
+{
+  const tb = {
+    scName: '测试池',
+    upOperators: [
+      { scCharName: '甲', rarity: 6, isLimited: true },
+      { scCharName: '乙', rarity: 5, isShop: true },
+      { scCharName: '丙', rarity: 6 },
+      { scCharName: '丁', rarity: 5 },
+    ],
+  };
+  check('气泡 UP 名单：按星级降序分组（6★ 在前），组内保持原顺序',
+    tipOps(tb).map((g) => `${g.rarity}:${g.ops.map((o) => o.name).join('')}`).join('|'), '6:甲丙|5:乙丁');
+  check('气泡 UP 名单：限 / 店 两个标记照搬卡池字段（缺省为 false）',
+    tipOps(tb).map((g) => g.ops.map((o) => `${o.limited ? '限' : ''}${o.shop ? '店' : ''}`).join(',')).join('|'),
+    '限,|店,');
+  check('气泡 UP 名单：空卡池 / 无 UP 项 → 空数组（界面不渲染那一块）',
+    `${tipOps(null).length}|${tipOps({}).length}|${tipOps({ upOperators: [] }).length}`, '0|0|0');
+  check('气泡 UP 名单：缺 rarity 的项归到最后一组，但不丢人（改 pool 结构时的兜底）',
+    tipOps({ upOperators: [{ scCharName: '戊' }, { scCharName: '己', rarity: 6 }] })
+      .map((g) => `${g.rarity}:${g.ops.length}`).join('|'), '6:1|0:1');
+}
 
 /* 排序值：「进行中」与「结束日当天（1 天）」必须能分开（否则两类行并列混在一起）。
    进行中 = 0、无数据 = -1、真实天数从 1 起（结束日当天就是 1）。 */
