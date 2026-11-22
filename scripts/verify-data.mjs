@@ -360,12 +360,12 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     mkRow('进行中', { up: [LIVE] }),
     mkRow('一天前', { up: [ago(1)] }),
     mkRow('五天前', { up: [ago(5)] }),
-    mkRow('正好七十天', { up: [ago(70)] }),
+    mkRow('正好七十一天', { up: [ago(71)] }),
     mkRow('一百二十天', { up: [ago(120)] }),
     mkRow('无记录', { up: [] }),
   ];
-  check('一键置灰①：距今天数 ≤ 70（默认值）→ 进行中 + 1 / 5 / **正好 70** 天（无数据不算）',
-    bulkRecentDays(upRows, R2, false, 'up', 70).join(','), '进行中,一天前,五天前,正好七十天');
+  check('一键置灰①：距今天数 ≤ 71（默认值）→ 进行中 + 1 / 5 / **正好 71** 天（无数据不算）',
+    bulkRecentDays(upRows, R2, false, 'up', 71).join(','), '进行中,一天前,五天前,正好七十一天');
   check('一键置灰①：门限改成 1 → 进行中 + 正好 1 天那档（**含等号**）',
     bulkRecentDays(upRows, R2, false, 'up', 1).join(','), '进行中,一天前');
   check('一键置灰①：门限非法（0 / 空 / 负）→ 一个都不选',

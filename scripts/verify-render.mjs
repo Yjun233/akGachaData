@@ -722,8 +722,8 @@ try {
        ③ 与「高亮干员」互斥（批量置灰后，高亮里同名的不再生效）。 */
   {
     const libB = await vite.ssrLoadModule('/src/lib/stats.js');
-    check('一键置灰：右栏 5 条规则 + 默认值 70 / 6 / 2019-04-30 / 2-6 / 2-6',
-      `${count(sh, /class="btn sm"/g)}|${/value="70"/.test(sh)}|${/value="6"/.test(sh)}`
+    check('一键置灰：右栏 5 条规则 + 默认值 71 / 6 / 2019-04-30 / 2-6 / 2-6',
+      `${count(sh, /class="btn sm"/g)}|${/value="71"/.test(sh)}|${/value="6"/.test(sh)}`
       + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}`,
       '5|true|true|true|2');
     /* 两个门限写「≤」不是「＜」（2026-11-22 用户改）—— 标签文案一起钉住，别只改比较符 */
@@ -737,23 +737,23 @@ try {
       + `|${count(sh, /q-dash/g)}|${count(sh, /名起/g)}`,
       '4|1|1|2|0');
 
-    /* ① 距今≤70 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
+    /* ① 距今≤71 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
     const bulkA = await renderRoute('/operators', (s) => {
       const n = s.statRows.map((r) => r.name);
       s.setStatHighlightOps(n);
       s.setStatHideOps([n[0]]);
-      s.hideRecentDays('up', 70);
+      s.hideRecentDays('up', 71);
     });
     const stA = bulkA.store;
     const refA = stA.refDate || stA.today;
     const wantRecent = stA.statRows
       .filter((r) => {
         const v = libB.daysSortValue(libB.viewEndInfo(r, 'up', refA, stA.statMidOnly));
-        return v >= 0 && v <= 70;
+        return v >= 0 && v <= 71;
       })
       .map((r) => r.name);
     const hidA = new Set(stA.statHideOps);
-    check('一键置灰①：命中 = 出率提升距今 **≤ 70 天**的全部（含正好 70 天，一处不漏、一处不多）',
+    check('一键置灰①：命中 = 出率提升距今 **≤ 71 天**的全部（含正好 71 天，一处不漏、一处不多）',
       `${wantRecent.every((n) => hidA.has(n))}|${stA.statHideOps.filter((n) => !wantRecent.includes(n)).length}`,
       `true|1`);
     check('一键置灰：**追加**语义 —— 已手动置灰的那位还在',
