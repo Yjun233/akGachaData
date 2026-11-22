@@ -722,20 +722,23 @@ try {
        ③ 与「高亮干员」互斥（批量置灰后，高亮里同名的不再生效）。 */
   {
     const libB = await vite.ssrLoadModule('/src/lib/stats.js');
-    check('一键置灰：右栏 5 条规则 + 默认值 71 / 6 / 2019-04-30 / 2-6 / 2-6',
+    check('一键置灰：右栏 5 条规则 + 默认值 71 / 6 / 2019-04-30 / 2-6 / 2-4',
       `${count(sh, /class="btn sm"/g)}|${/value="71"/.test(sh)}|${/value="6"/.test(sh)}`
-      + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}`,
-      '5|true|true|true|2');
+      + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}|${count(sh, /value="4"/g)}`,
+      '5|true|true|true|2|1');
     /* 两个门限写「≤」不是「＜」（2026-11-22 用户改）—— 标签文案一起钉住，别只改比较符 */
     check('一键置灰：两个门限的标签写「≤」（距今≤N 天 / 标准实装≤日期）',
       `${count(sh, /距今≤/g)}|${count(sh, /标准实装≤/g)}|${count(sh, /距今＜/g)}|${count(sh, /标准实装＜/g)}`,
       '1|1|0|0');
-    /* ④⑤ 是**名次区间**（2026-11-22）：两行各两个窄数字框，默认 2 - 6。
-       ⚠️ 数标签要按**文本节点边界**（`>首次UP<`）——「首次UP间隔」在导航里也出现。 */
-    check('一键置灰：④⑤ 各有两个名次输入框（默认 2 - 6，含两端）',
-      `${count(sh, /class="q-num q-num2"/g)}|${count(sh, />首次UP</g)}|${count(sh, />首次进店</g)}`
-      + `|${count(sh, /q-dash/g)}|${count(sh, /名起/g)}`,
-      '4|1|1|2|0');
+    /* ④⑤ 是**名次区间**（2026-11-22）：两行各两个窄数字框，④ 默认 2-6、⑤ 默认 2-4。
+       ⚠️ 标签是用户 2026-11-22 改的「首次UP队列 / 首次进店队列」（原来的「首次UP / 首次进店」、
+      末尾的单位「名」都去掉了）；数它要按**文本节点边界**（`>首次UP队列<`）——
+      「首次UP间隔」在导航里也出现。 */
+    check('一键置灰：④⑤ 各有两个名次输入框（默认 2-6 / 2-4，含两端）',
+      `${count(sh, /class="q-num q-num2"/g)}|${count(sh, />首次UP队列</g)}|${count(sh, />首次进店队列</g)}`
+      + `|${count(sh, /q-dash/g)}|${count(sh, /名起/g)}|${count(sh, />名</g)}`,
+      /* 最后的 `>名<` 只剩「进店等待前 N 名」那一处 —— ④⑤ 两行末尾的单位「名」已被用户去掉 */
+      '4|1|1|2|0|1');
 
     /* ① 距今≤71 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
     const bulkA = await renderRoute('/operators', (s) => {
@@ -802,8 +805,9 @@ try {
     check('一键置灰③：默认值 2019-04-30 在**真实数据**上仍一位都不命中（开服那批已全进中坚）',
       (await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); })).store.statHideOps.length, 0);
 
-    /* ④⑤ 取「第 2 ~ 6 名」（2026-11-22 由「第 N 名起」改成区间，默认 2-6）：
-       每张表各排各的「仅 1 次」队列，各取第 2 到第 6 位（不足就截断、放过最早的 1 位）。 */
+    /* ④ 取「第 2 ~ 6 名」（2026-11-22 由「第 N 名起」改成区间，默认 2-6）：
+       每张表各排各的「仅 1 次」队列，取第 2 到第 6 位（不足就截断、放过最早的 1 位）。
+       ⑤ 的区间默认是 2-4（同日用户单独把终点改成 4），见下一条。 */
     const bulkD = await renderRoute('/operators', (s) => { s.hideUpOnceRange(2, 6); });
     const stD = bulkD.store;
     const wantSingleUp = splitRows(stD.statRows, stD.refDate || stD.today).flatMap((bucket) => bucket
@@ -816,12 +820,13 @@ try {
         const r = stD.statRows.find((x) => x.name === n);
         return r && r.upAll.length !== 1;
       }).length, 0);
-    const bulkE = await renderRoute('/operators', (s) => { s.hideShopNoneRange(2, 6); });
+    const bulkE = await renderRoute('/operators', (s) => { s.hideShopNoneRange(2, 4); });
     const stE = bulkE.store;
-    /* ⑤ 与④相反：挑的是**一次都没进过店（次数 = 0）**的那批，同样取第 2~6 名 */
+    /* ⑤ 与④相反：挑的是**一次都没进过店（次数 = 0）**的那批，取第 2~4 名
+       （2026-11-22 用户把 ⑤ 的默认终点改成 4，④ 仍是 6） */
     const wantShopNone = splitRows(stE.statRows, stE.refDate || stE.today).flatMap((bucket) => bucket
-      .filter((r) => r.shopAll.length === 0).sort(libB.defaultStatSort).slice(1, 6).map((r) => r.name));
-    check('一键置灰⑤：只挑「商店兑换次数 = 0」的那批（每张表各取第 2~6 名）',
+      .filter((r) => r.shopAll.length === 0).sort(libB.defaultStatSort).slice(1, 4).map((r) => r.name));
+    check('一键置灰⑤：只挑「商店兑换次数 = 0」的那批（每张表各取第 2~4 名）',
       `${stE.statHideOps.length}|${stE.statHideOps.join(',') === wantShopNone.join(',')}`,
       `${wantShopNone.length}|true`);
     check('一键置灰⑤：进过店的（次数 ≥1）一位都不在结果里',
