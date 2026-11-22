@@ -2446,8 +2446,11 @@ try {
      只断言「宽 = 高 × 2」这条比例契约 —— 以后他再调尺寸也不会被误判成回归。 */
   const rectW = Number((rectCss.match(/[;{]width:(\d+(?:\.\d+)?)px/) || [])[1]);
   const rectH = Number((rectCss.match(/[;{]height:(\d+(?:\.\d+)?)px/) || [])[1]);
-  check('统计页图片模式：长方形蒙版 = 宽是高 2 倍（当前 68 × 34）',
-    Number.isFinite(rectW) && rectH > 0 && rectW === rectH * 2, true);
+  /* ⚠️ 2026-11-22 用户把几何从 68×34（正好 2:1）调到 **81×30**（更宽更扁，横向多覆盖一点名字），
+     「宽 = 高 × 2」这条契约**不再成立** → 改成只守「是横向长方形」（宽 > 高），
+     它才是与卡池列表那个**方形** `.av` 区分开的真正意图；像素仍不写死。 */
+  check(`统计页图片模式：长方形蒙版 = 横向长方形（当前 ${rectW} × ${rectH}，宽 > 高）`,
+    Number.isFinite(rectW) && rectH > 0 && rectW > rectH, true);
   /* 蒙版：四边渐隐 = 左右 + 上下两层 linear-gradient 取交集。
      ⚠️ 同样**不写死像素**（用户连续微调过 5px → 左右 10px / 上下 2px）——只守结构契约：
      两层、方向分别是 `to right` / `to bottom`、四个停点是 `transparent 0 → #000 A → #000 calc(100% - A) → transparent 100%`
@@ -2478,8 +2481,13 @@ try {
   const rectImgCss = (cssAll.match(/\.avt-img img\{[\s\S]*?\}/) || [''])[0].replace(/\s+/g, '');
   check('统计页图片模式：头像不被拉伸（object-fit:cover）+ 绝对定位（不影响行高）',
     /object-fit:cover/.test(rectImgCss) && /position:absolute/.test(rectCss), true);
-  check('统计页图片模式：行高由「两表统一」的 height:35px 钉死（占位行框已随行高统一删除）',
-    /stat-tbl tbody td,\s*table\.grid\.fup-tbl tbody td\{\s*padding-top:0;padding-bottom:0;height:35px;\s*\}/.test(cssAll), true);
+  /* ⚠️ 行高同样**不写死像素**（2026-10-16 是 35px，2026-11-22 用户调到 30px 配合更扁的头像）——
+     守的是「统计表 + 首次UP表格版**共用同一条规则**」这个契约：两表分开写会走散。 */
+  const rowH = (cssAll.match(
+    /stat-tbl tbody td,\s*table\.grid\.fup-tbl tbody td\{\s*padding-top:0;padding-bottom:0;height:(\d+(?:\.\d+)?)px;\s*\}/,
+  ) || [])[1];
+  check(`统计页图片模式：行高由「两表统一」的一条规则钉死（当前 ${rowH}px，两表同值）`,
+    Number(rowH) > 0, true);
   /* ⚠️ 冻结列表头的 z-index 必须**高于**分组表头，否则 DOM 靠后的「出率提升」会盖住「干员」。
      而全局 `table.grid.floating thead tr:first-child th`（特异性 0,3,4）会压过
      只写到 `.stat-tbl` 的规则 —— 所以选择器必须带上 .floating 与 tr。 */

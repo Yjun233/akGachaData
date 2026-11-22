@@ -802,7 +802,7 @@ table.grid td.wrapcell{white-space:normal;overflow-wrap:anywhere;word-break:brea
 table.grid.stat-tbl td.wrapcell .avt-img,
 table.grid.fup-tbl td.opcell .avt-img{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:68px;height:34px;
+  width:81px;height:30px;
   -webkit-mask-image:
    linear-gradient(to right,  transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%),
    linear-gradient(to bottom, transparent 0, #000 2px, #000 calc(100% - 2px), transparent 100%);
@@ -816,7 +816,7 @@ table.grid.fup-tbl td.opcell .avt-img{
 /* 真素材：填满外层（尺寸 / 取景 / 渐隐都由 `.avt-img` 那层管） */
 table.grid.stat-tbl td.wrapcell .avt-img img,
 table.grid.fup-tbl td.opcell .avt-img img{
-  width:100%;height:100%;object-fit:cover;object-position:50% 70%;
+  width:100%;height:100%;object-fit:cover;object-position:50% 63%;
 }
 /* 占位层：跟真图同一个取景口径（首字是居中的，object-position 对它没意义，
    background 默认居中即可） */
@@ -837,7 +837,7 @@ table.grid.fup-tbl td.opcell .avt-img img{
    ⚠️ 只作用于 tbody：表头（统计表两行表头的 sticky 对齐靠 `--head-h`）不受影响。 */
 table.grid.stat-tbl tbody td,
 table.grid.fup-tbl tbody td{
-  padding-top:0;padding-bottom:0;height:35px;
+  padding-top:0;padding-bottom:0;height:30px;
 }
 .avt .corners{position:absolute;top:-6px;right:-5px;display:flex;gap:2px;pointer-events:none}
 .avt .corners .mk{
