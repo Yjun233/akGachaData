@@ -368,8 +368,8 @@ export function bulkStdBefore(rows, refDate, before) {
 }
 
 /**
- * ④⑤ **次数恰好 `count` 次**的干员，按**实装时间升序**排，从第 `from` 名起（含该名）。
- * **每张表各排各的**（四张表各有一份「第 N 名起」的名额）。
+ * ④⑤ **次数恰好 `count` 次**的干员，按**实装时间升序**排，取**第 `from` ~ `to` 名**（闭区间，含两端）。
+ * **每张表各排各的**（四张表各有一份「第几名到第几名」的名额）。
  *
  * 两条规则只差一个 `count`：
  *   · ④ 「首次UP 队列」= 出率提升次数 **1 次**（只轮过一次的那批）；
@@ -378,22 +378,27 @@ export function bulkStdBefore(rows, refDate, before) {
  * @param {'up'|'shop'} which `'up'` = 出率提升次数（`upAll`）、`'shop'` = 商店兑换次数（`shopAll`）
  * @param {string} refDate 参考日期（要它才能分表：`isMidAt` 的判据时点）
  * @param {number} count 次数**恰好等于**它才入选（`0` / `1`）
- * @param {number} from 从第几名开始（`2` = 不含最早的 1 名；`1` = 全部都算）
+ * @param {number} from 起始名次（`1`-based，含）
+ * @param {number} to 结束名次（`1`-based，含；超过该表人数就自动截断）
  *
+ * ⚠️ **区间含两端**（2026-11-22 用户由「第 N 名起」改成「第 A - B 名」，默认 2-6）。
+ * ⚠️ `to < from` → 空结果（不自动交换：交换会把「填反了」变成静默生效）。
  * ⚠️ 实装日缺失的排**最后**（`defaultStatSort` 的 `9999`），不会白占「最早几名」的名额。
  */
-export function bulkCountFrom(rows, which, refDate, count, from) {
-  const n = Math.floor(Number(from));
-  /* ⚠️ 空串不当作 0：`Number('')` 是 0，会静默变成「次数 0 次」那一档 */
-  if (!String(count ?? '').trim()) return [];
+export function bulkCountRange(rows, which, refDate, count, from, to) {
+  const a = Math.floor(Number(from));
+  const b = Math.floor(Number(to));
+  /* ⚠️ 空串不当作 0：`Number('')` 是 0，会静默变成「次数 0 次」那一档 / 第 0 名 */
+  if (!String(count ?? '').trim() || !String(from ?? '').trim() || !String(to ?? '').trim()) return [];
   const want = Math.floor(Number(count));
-  if (!Number.isFinite(n) || n < 1 || !Number.isFinite(want) || want < 0) return [];
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a < 1 || b < a) return [];
+  if (!Number.isFinite(want) || want < 0) return [];
   const out = [];
   for (const bucket of splitByTable(rows, refDate)) {
     out.push(...bucket
       .filter((r) => (which === 'shop' ? r.shopAll : r.upAll).length === want)
       .sort(defaultStatSort)
-      .slice(n - 1)
+      .slice(a - 1, b)
       .map((r) => r.name));
   }
   return out;

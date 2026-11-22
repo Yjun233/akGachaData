@@ -272,6 +272,16 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
    日期那一行把「标准实装≤」压成 nowrap，输入框自己吃剩余宽度。 */
 .bulk .quick-row .q-num{width:6ch}
 .bulk .q-txt{white-space:nowrap;font-size:12.5px}
+/* 「首次XX A - B 名」（2026-11-22）一行要塞两个数字框 → 各自压到 3.4ch，
+   并**去掉 number 框的 spinner**（它吃掉近半个窄框，键盘上下键照样能用）；
+   中间那个「-」把两侧 gap 收掉一点，免得看着像三个独立控件。 */
+.bulk .quick-row .q-num2{
+  width:3.4ch;padding-left:4px;padding-right:2px;
+  appearance:textfield;-moz-appearance:textfield;
+}
+.bulk .quick-row .q-num2::-webkit-outer-spin-button,
+.bulk .quick-row .q-num2::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.bulk .quick-row .q-dash{padding:0;margin:0 -1px;color:var(--muted)}
 /* 日期那一条折两行：标签一行，输入框 + 确定 一行（一行放不下，日期会被截断） */
 .bulk-stack{display:flex;flex-direction:column;gap:4px}
 .bulk-stack .quick-row{gap:6px}

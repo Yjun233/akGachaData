@@ -722,7 +722,7 @@ try {
        ③ 与「高亮干员」互斥（批量置灰后，高亮里同名的不再生效）。 */
   {
     const libB = await vite.ssrLoadModule('/src/lib/stats.js');
-    check('一键置灰：右栏 5 条规则 + 默认值 70 / 6 / 2019-04-30 / 2 / 2',
+    check('一键置灰：右栏 5 条规则 + 默认值 70 / 6 / 2019-04-30 / 2-6 / 2-6',
       `${count(sh, /class="btn sm"/g)}|${/value="70"/.test(sh)}|${/value="6"/.test(sh)}`
       + `|${/value="2019-04-30"/.test(sh)}|${count(sh, /value="2"/g)}`,
       '5|true|true|true|2');
@@ -730,6 +730,12 @@ try {
     check('一键置灰：两个门限的标签写「≤」（距今≤N 天 / 标准实装≤日期）',
       `${count(sh, /距今≤/g)}|${count(sh, /标准实装≤/g)}|${count(sh, /距今＜/g)}|${count(sh, /标准实装＜/g)}`,
       '1|1|0|0');
+    /* ④⑤ 是**名次区间**（2026-11-22）：两行各两个窄数字框，默认 2 - 6。
+       ⚠️ 数标签要按**文本节点边界**（`>首次UP<`）——「首次UP间隔」在导航里也出现。 */
+    check('一键置灰：④⑤ 各有两个名次输入框（默认 2 - 6，含两端）',
+      `${count(sh, /class="q-num q-num2"/g)}|${count(sh, />首次UP</g)}|${count(sh, />首次进店</g)}`
+      + `|${count(sh, /q-dash/g)}|${count(sh, /名起/g)}`,
+      '4|1|1|2|0');
 
     /* ① 距今≤70 天：先全高亮 + 手动置灰一位，再批量 → 高亮被摘、手动那位保留 */
     const bulkA = await renderRoute('/operators', (s) => {
@@ -796,13 +802,13 @@ try {
     check('一键置灰③：默认值 2019-04-30 在**真实数据**上仍一位都不命中（开服那批已全进中坚）',
       (await renderRoute('/operators', (s) => { s.hideStdBefore('2019-04-30'); })).store.statHideOps.length, 0);
 
-    /* ④⑤ 次数仅 1 次的，从第 2 名起：最早的**那一位**不会被置灰，其余单次干员都在 */
-    const bulkD = await renderRoute('/operators', (s) => { s.hideUpOnceFrom(2); });
+    /* ④⑤ 取「第 2 ~ 6 名」（2026-11-22 由「第 N 名起」改成区间，默认 2-6）：
+       每张表各排各的「仅 1 次」队列，各取第 2 到第 6 位（不足就截断、放过最早的 1 位）。 */
+    const bulkD = await renderRoute('/operators', (s) => { s.hideUpOnceRange(2, 6); });
     const stD = bulkD.store;
-    /* 每张表各排各的「仅 1 次」队列，各放过最早的那一位 */
     const wantSingleUp = splitRows(stD.statRows, stD.refDate || stD.today).flatMap((bucket) => bucket
-      .filter((r) => r.upAll.length === 1).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
-    check('一键置灰④：每张表各自放过「最早的那一位」，其余单次干员都在',
+      .filter((r) => r.upAll.length === 1).sort(libB.defaultStatSort).slice(1, 6).map((r) => r.name));
+    check('一键置灰④：每张表各自取「第 2~6 名」（放过最早的 1 位，第 7 名往后不要）',
       `${stD.statHideOps.length}|${stD.statHideOps.join(',') === wantSingleUp.join(',')}`,
       `${wantSingleUp.length}|true`);
     check('一键置灰④：次数 0 / ≥2 的干员一位都不在结果里',
@@ -810,12 +816,12 @@ try {
         const r = stD.statRows.find((x) => x.name === n);
         return r && r.upAll.length !== 1;
       }).length, 0);
-    const bulkE = await renderRoute('/operators', (s) => { s.hideShopNoneFrom(2); });
+    const bulkE = await renderRoute('/operators', (s) => { s.hideShopNoneRange(2, 6); });
     const stE = bulkE.store;
-    /* ⑤ 与④相反：挑的是**一次都没进过店（次数 = 0）**的那批 */
+    /* ⑤ 与④相反：挑的是**一次都没进过店（次数 = 0）**的那批，同样取第 2~6 名 */
     const wantShopNone = splitRows(stE.statRows, stE.refDate || stE.today).flatMap((bucket) => bucket
-      .filter((r) => r.shopAll.length === 0).sort(libB.defaultStatSort).slice(1).map((r) => r.name));
-    check('一键置灰⑤：只挑「商店兑换次数 = 0」的那批（每张表各放过最早那位）',
+      .filter((r) => r.shopAll.length === 0).sort(libB.defaultStatSort).slice(1, 6).map((r) => r.name));
+    check('一键置灰⑤：只挑「商店兑换次数 = 0」的那批（每张表各取第 2~6 名）',
       `${stE.statHideOps.length}|${stE.statHideOps.join(',') === wantShopNone.join(',')}`,
       `${wantShopNone.length}|true`);
     check('一键置灰⑤：进过店的（次数 ≥1）一位都不在结果里',

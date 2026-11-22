@@ -25,7 +25,7 @@ import { loadSiteData, toBannerList } from '../lib/loadData.js';
 import { SERVER_FIELD, SERVER_CLASSIC_FIELD } from '../lib/constants.js';
 import { localToday, shiftYears } from '../lib/date.js';
 import {
-  bulkCountFrom, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
+  bulkCountRange, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
   computeStats, daysSortValue, isMidAt, latestEndDate, sortStatRows, viewEndInfo,
 } from '../lib/stats.js';
 import { computeFirstUp } from '../lib/firstUp.js';
@@ -1033,16 +1033,16 @@ export const useSiteStore = defineStore('site', {
       return this._addHideOps(bulkStdBefore(this.statRows, refDate, before));
     },
 
-    /** ④ 出率提升次数**恰好 1 次**的，**每张表**按实装时间升序从第 `from` 名起 */
-    hideUpOnceFrom(from) {
+    /** ④ 出率提升次数**恰好 1 次**的，**每张表**按实装时间升序取**第 `from` ~ `to` 名**（闭区间） */
+    hideUpOnceRange(from, to) {
       const refDate = this.refDate || this.today;
-      return this._addHideOps(bulkCountFrom(this.statRows, 'up', refDate, 1, from));
+      return this._addHideOps(bulkCountRange(this.statRows, 'up', refDate, 1, from, to));
     },
 
-    /** ⑤ 商店兑换次数**恰好 0 次**的（一次都没进过店），**每张表**按实装时间升序从第 `from` 名起 */
-    hideShopNoneFrom(from) {
+    /** ⑤ 商店兑换次数**恰好 0 次**的（一次都没进过店），**每张表**按实装时间升序取第 `from` ~ `to` 名 */
+    hideShopNoneRange(from, to) {
       const refDate = this.refDate || this.today;
-      return this._addHideOps(bulkCountFrom(this.statRows, 'shop', refDate, 0, from));
+      return this._addHideOps(bulkCountRange(this.statRows, 'shop', refDate, 0, from, to));
     },
 
     /**

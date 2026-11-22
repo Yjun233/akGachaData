@@ -132,8 +132,12 @@ const bulk = ref({
   upDays: '70',        // 距今≤N 天（用户 2026-11-21 定 70，原定 84）
   shopTop: '6',        // 进店等待前 N 名
   stdBefore: '2019-04-30', // 标准内实装 ≤ 日期
-  firstUp: '2',        // 首次UP队列第 N 名起
-  firstShop: '2',      // 首次进店队列第 N 名起
+  /* ④⑤ 是**名次区间**（2026-11-22 用户由「第 N 名起」改成「第 A - B 名」，默认 2-6）：
+     A = 起始名次、B = 结束名次，**闭区间含两端**。 */
+  firstUpFrom: '2',
+  firstUpTo: '6',
+  firstShopFrom: '2',
+  firstShopTo: '6',
 });
 const bulkMsg = ref('');
 /* 切服会**清空**高亮 / 置灰名单（见 store 的 `setServer`）→ 那句「已新增置灰 N 位」也跟着清掉，
@@ -435,17 +439,21 @@ function resetUp() {
             <button class="btn sm" type="button" @click="runBulk(() => site.hideStdBefore(bulk.stdBefore))">确定</button>
           </div>
         </div>
-        <div class="quick-row" title="每张表各排：出率提升次数只有 1 次的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
-          <span class="q-txt">首次UP第</span>
-          <input v-model="bulk.firstUp" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列从第几名起" />
-          <span class="q-txt">名起</span>
-          <button class="btn sm" type="button" @click="runBulk(() => site.hideUpOnceFrom(bulk.firstUp))">确定</button>
+        <div class="quick-row" title="每张表各排：出率提升次数只有 1 次的干员按实装时间从早到晚排，置灰第 A - B 名（含两端；默认 2-6 = 每张表放过最早的 1 名、取到第 6 名）">
+          <span class="q-txt">首次UP</span>
+          <input v-model="bulk.firstUpFrom" class="q-num q-num2" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列起始名次" />
+          <span class="q-txt q-dash">-</span>
+          <input v-model="bulk.firstUpTo" class="q-num q-num2" type="number" min="1" step="1" inputmode="numeric" aria-label="首次UP队列结束名次" />
+          <span class="q-txt">名</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideUpOnceRange(bulk.firstUpFrom, bulk.firstUpTo))">确定</button>
         </div>
-        <div class="quick-row" title="每张表各排：商店兑换次数为 0（一次都没进过店）的干员按实装时间从早到晚排，从第 N 名起全部置灰（默认 2 = 每张表各放过最早的 1 名）">
-          <span class="q-txt">首次进店第</span>
-          <input v-model="bulk.firstShop" class="q-num" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列从第几名起" />
-          <span class="q-txt">名起</span>
-          <button class="btn sm" type="button" @click="runBulk(() => site.hideShopNoneFrom(bulk.firstShop))">确定</button>
+        <div class="quick-row" title="每张表各排：商店兑换次数为 0（一次都没进过店）的干员按实装时间从早到晚排，置灰第 A - B 名（含两端；默认 2-6 = 每张表放过最早的 1 名、取到第 6 名）">
+          <span class="q-txt">首次进店</span>
+          <input v-model="bulk.firstShopFrom" class="q-num q-num2" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列起始名次" />
+          <span class="q-txt q-dash">-</span>
+          <input v-model="bulk.firstShopTo" class="q-num q-num2" type="number" min="1" step="1" inputmode="numeric" aria-label="首次进店队列结束名次" />
+          <span class="q-txt">名</span>
+          <button class="btn sm" type="button" @click="runBulk(() => site.hideShopNoneRange(bulk.firstShopFrom, bulk.firstShopTo))">确定</button>
         </div>
         <div v-if="bulkMsg" class="bulk-msg">{{ bulkMsg }}</div>
       </div>

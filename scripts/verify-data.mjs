@@ -11,7 +11,7 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  bulkCountFrom, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
+  bulkCountRange, bulkRecentDays, bulkShopWaitingTop, bulkStdBefore,
   computeStats, endInfo, isMidAt, latestEndDate, sortStatRows, daysSortValue, viewEndInfo,
 } from '../src/lib/stats.js';
 import {
@@ -410,7 +410,8 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
   check('一键置灰③：日期格式不对 → 空结果',
     ['', '2019/04/30', 'abc'].map((d) => bulkStdBefore(stdRows, R2, d).length).join('|'), '0|0|0');
 
-  /* ④ 出率提升次数**恰好 1 次**的，按实装时间升序从第 N 名起 —— **每张表各排各的** */
+  /* ④ 出率提升次数**恰好 1 次**的，按实装时间升序取**第 A ~ B 名**（闭区间）——
+     **每张表各排各的**（2026-11-22 用户由「第 N 名起」改成「第 A - B 名」，默认 2-6） */
   const oneRows = [
     mkRow('晚实装', { release: '2019-06-01', up: [ago(30)] }),
     mkRow('早实装', { release: '2019-04-01', up: [ago(60)] }),
@@ -420,15 +421,24 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     mkRow('缺实装日', { release: null, up: [ago(10)] }),
     mkRow('五星唯一', { rarity: 5, release: '2019-03-01', up: [ago(20)] }),
   ];
-  check('一键置灰④：次数仅 1 的按实装升序，第 2 名起（最早的那名被放过；≥2 次 / 0 次 / 缺实装日都不参与）',
-    bulkCountFrom(oneRows, 'up', R2, 1, 2).join(','), '中实装,晚实装,缺实装日');
-  check('一键置灰④：第 1 名起 = 全部都算（缺实装日的排最后、5★ 表在后面）',
-    bulkCountFrom(oneRows, 'up', R2, 1, 1).join(','), '早实装,中实装,晚实装,缺实装日,五星唯一');
-  check('一键置灰④：次数 ≥2 的那位永远不参与（每一档起点都不含他）',
-    [1, 2, 3, 4, 5].map((n) => bulkCountFrom(oneRows, 'up', R2, 1, n).includes('轮过两次')).join('|'),
-    'false|false|false|false|false');
-  check('一键置灰④：名次四张表分别算（5★ 表只有 1 位 → 第 2 名起就放过他）',
-    bulkCountFrom(oneRows, 'up', R2, 1, 2).includes('五星唯一'), false);
+  /* 6★ 表里 count=1 的队列（按实装升序）= 早实装 → 中实装 → 晚实装 → 缺实装日；5★ 表 = 五星唯一 */
+  check('一键置灰④：默认 2-6 → 6★ 表第 2~4 名（放过最早的 1 名），5★ 表只有 1 位故整个轮空',
+    bulkCountRange(oneRows, 'up', R2, 1, 2, 6).join(','), '中实装,晚实装,缺实装日');
+  check('一键置灰④：1-6 → 两张表的全部（缺实装日排最后、5★ 表在后面）',
+    bulkCountRange(oneRows, 'up', R2, 1, 1, 6).join(','), '早实装,中实装,晚实装,缺实装日,五星唯一');
+  check('一键置灰④：2-3 只取「中实装、晚实装」（区间**含右端**，不是「第 2 名起」）',
+    bulkCountRange(oneRows, 'up', R2, 1, 2, 3).join(','), '中实装,晚实装');
+  check('一键置灰④：1-2 → 每张表各自的前两位（5★ 表只有 1 位，也一起进来）',
+    bulkCountRange(oneRows, 'up', R2, 1, 1, 2).join(','), '早实装,中实装,五星唯一');
+  check('一键置灰④：3-6 → 从第 3 名到队尾（超出部分自动截断）',
+    bulkCountRange(oneRows, 'up', R2, 1, 3, 6).join(','), '晚实装,缺实装日');
+  check('一键置灰④：区间完全超出队尾（5-6）→ 空结果',
+    bulkCountRange(oneRows, 'up', R2, 1, 5, 6).length, 0);
+  check('一键置灰④：次数 ≥2 的那位永远不参与（任何区间都不含他）',
+    [[1, 2], [2, 6], [1, 99]].map(([a, b]) => bulkCountRange(oneRows, 'up', R2, 1, a, b).includes('轮过两次')).join('|'),
+    'false|false|false');
+  check('一键置灰④：名次四张表分别算（5★ 表只有 1 位 → 第 2 名起就轮空）',
+    bulkCountRange(oneRows, 'up', R2, 1, 2, 2).includes('五星唯一'), false);
 
   /* ⑤ 商店兑换次数**恰好 0 次**（一次都没进过店）—— 2026-11-21 用户更正（原先误写成「仅 1 次」） */
   const noneRows = [
@@ -439,17 +449,24 @@ const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗',
     mkRow('进过2次', { release: '2019-03-01', shop: [ago(30), ago(60)] }),
     mkRow('五星没进过', { rarity: 5, release: '2019-06-01', shop: [] }),
   ];
-  check('一键置灰⑤：只挑「商店兑换次数 = 0」的，按实装升序第 2 名起（缺实装日排最后；进过店的都不参与）',
-    bulkCountFrom(noneRows, 'shop', R2, 0, 2).join(','), '没进过B,没进过C');
-  check('一键置灰⑤：第 1 名起 = 每张表的全部「没进过店」干员（5★ 表在后面）',
-    bulkCountFrom(noneRows, 'shop', R2, 0, 1).join(','), '没进过A,没进过B,没进过C,五星没进过');
-  check('一键置灰⑤：进过 1 次 / 2 次的无论第几名起都不参与（这与「仅 1 次」的④是相反的选择）',
-    [1, 2, 3, 4, 5].map((n) => bulkCountFrom(noneRows, 'shop', R2, 0, n)
-      .filter((x) => x === '进过1次' || x === '进过2次').length).join('|'), '0|0|0|0|0');
-  check('一键置灰④⑤：起点非法（0 / 负数 / 空）→ 空结果（不会把「第 0 名」当成全部）',
-    ['0', '-1', ''].map((n) => bulkCountFrom(oneRows, 'up', R2, 1, n).length).join('|'), '0|0|0');
+  check('一键置灰⑤：默认 2-6 → 6★ 表第 2~3 名（缺实装日排最后；进过店都不参与）',
+    bulkCountRange(noneRows, 'shop', R2, 0, 2, 6).join(','), '没进过B,没进过C');
+  check('一键置灰⑤：1-6 → 每张表的全部「没进过店」干员（5★ 表在后面）',
+    bulkCountRange(noneRows, 'shop', R2, 0, 1, 6).join(','), '没进过A,没进过B,没进过C,五星没进过');
+  check('一键置灰⑤：1-2 取每张表各自的前两位（5★ 表只有 1 位，也一起进来）',
+    bulkCountRange(noneRows, 'shop', R2, 0, 1, 2).join(','), '没进过A,没进过B,五星没进过');
+  check('一键置灰⑤：进过 1 次 / 2 次的任何区间都不参与（这与「仅 1 次」的④是相反的选择）',
+    [[1, 6], [2, 2], [1, 99]].map(([a, b]) => bulkCountRange(noneRows, 'shop', R2, 0, a, b)
+      .filter((x) => x === '进过1次' || x === '进过2次').length).join('|'), '0|0|0');
+  /* 区间参数非法：起点 < 1、终点 < 起点、空串 —— 一律空结果（不自动交换，免得「填反了」静默生效） */
+  check('一键置灰④⑤：起点非法（0 / 负数）→ 空结果（不会把「第 0 名」当成全部）',
+    [[0, 6], [-1, 6]].map(([a, b]) => bulkCountRange(oneRows, 'up', R2, 1, a, b).length).join('|'), '0|0');
+  check('一键置灰④⑤：终点 < 起点（3-2）→ 空结果（不自动交换）',
+    bulkCountRange(oneRows, 'up', R2, 1, 3, 2).length, 0);
+  check('一键置灰④⑤：起点或终点空串 → 空结果（Number(空串) 是 0，别当成第 0 名）',
+    [['', '6'], ['2', '']].map(([a, b]) => bulkCountRange(oneRows, 'up', R2, 1, a, b).length).join('|'), '0|0');
   check('一键置灰④⑤：次数参数非法（负数 / 空）→ 空结果',
-    ['-1', ''].map((c) => bulkCountFrom(oneRows, 'up', R2, c, 1).length).join('|'), '0|0');
+    ['-1', ''].map((c) => bulkCountRange(oneRows, 'up', R2, c, 1, 6).length).join('|'), '0|0');
 }
 
 /* ---------------- 自定义卡池（浏览器本地自设） ----------------
