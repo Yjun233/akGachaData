@@ -646,8 +646,8 @@ try {
      勾上后 `statHideOps` 里的人**整行不渲染**（表格 / 复制 / 截图同源：都在 `statGroups` 里滤）。
      与「编辑模式」互斥：进编辑模式自动取消隐藏，反之亦然。 */
   {
-    check('隐藏置灰：右栏有这个复选框（紧跟在「中坚寻访不看标准次数」下面）',
-      /中坚寻访不看标准次数[\s\S]{0,400}?隐藏被置灰的干员/.test(sh)
+    check('隐藏置灰：右栏有这个复选框（紧跟在「合并中坚寻访三个次数」下面）',
+      /合并中坚寻访三个次数[\s\S]{0,500}?隐藏被置灰的干员/.test(sh)
       && count(sh, />隐藏被置灰的干员</g) === 1, true);
     check('隐藏置灰：默认关（表格行数不变）',
       `${stats.store.statGrayedHidden}|${tableRows(sh, 's-6-std')}`, `false|46`);
@@ -963,93 +963,32 @@ try {
   check('高亮干员：不进复制内容（tableCopy 不读高亮状态）',
     !/highlight/i.test(fs.readFileSync(path.join(ROOT, 'src/lib/tableCopy.js'), 'utf8')), true);
 
-  /* ---------------- 出率提升记录：右栏「中坚寻访不看标准次数」（2026-10-16 用户加） ----------------
-     勾上后**中坚寻访表**藏掉「总次数 / 标准次数」两列（每组由 5 列收成 3 列），只留「中坚次数」；
-     标准寻访表**不受影响**（它那一列叫「次数」，本来就没有「标准次数」的概念）。
-     与「高亮干员」同理：**真跑**一次渲染来钉结构，而不是只读源码。
-     ⚠️ 断言**不能在全页 HTML 上直接数「标准次数」** —— 右栏那个复选框的**文案**里就带这四个字，
+  /* ---------------- 中坚表的**默认结构**（每组 5 列：结束时间 / 距今天数 / 总次数 / 中坚次数 / 标准次数） ----------------
+     ⚠️ 「中坚寻访不看标准次数」那个开关已于 2026-11-22 **删除**（用户要求，由「合并中坚寻访三个次数」取代）——
+        这里只留「默认形态」的断言，外加一条「别把开关放回来」的守卫。
+     ⚠️ 断言**不能在全页 HTML 上直接数「标准次数」** —— 右栏那个合并开关的**文案**里就带这几个字，
         必须按分节切片（`sectionHtml`，见上面统计页开头）落到具体那张表里数。 */
   const firstRowCells = (html) => {
     const t = html.indexOf('<tbody>');
     return count(html.slice(t, html.indexOf('</tr>', t)), /<td[\s>]/g);
   };
 
-  /* 默认（开关关）：中坚表每组 5 列、标准表每组 3 列 —— 全部分节切片数，别在全页上数 */
-  check('不看标准次数：默认关 → 中坚表照常带「总次数 / 标准次数」（每组各一个）',
+  check('中坚表默认结构：每组 5 列，带「总次数 / 标准次数」（每组各一个）',
     count(mid6Section, /总次数/g) === 2 && count(mid6Section, /标准次数/g) === 2
     && count(mid5Section, /总次数/g) === 2, true);
-  check('不看标准次数：默认关 → 中坚表每组组头 colspan=5、数据行 12 个 td',
+  check('中坚表默认结构：组头 colspan=5、数据行 12 个 td（2 + 5 + 5）',
     count(mid6Section, /class="group[^"]*"[^>]*colspan="5"/g) === 2
     && firstRowCells(mid6Section) === 12, true);
-  check('不看标准次数：右栏有这个复选框，并接到 store 的 setStatMidNoStd',
-    /中坚寻访不看标准次数/.test(fdSrc) && /setStatMidNoStd\(\$event\.target\.checked\)/.test(fdSrc), true);
+  check('「中坚寻访不看标准次数」已彻底删除（store 状态 / setter / 右栏复选框都别复活）',
+    `${/statMidNoStd:/.test(storeSrc)}|${/setStatMidNoStd\(/.test(storeSrc)}|${/site\.statMidNoStd/.test(fdSrc)}`,
+    'false|false|false');
 
-  const noStdR = await renderRoute('/operators', (s) => { s.statMidNoStd = true; });
-  const nh = noStdR.html;
-  const std6 = sectionHtml(nh, 's-6-std', 's-6-mid');
-  const mid6 = sectionHtml(nh, 's-6-mid', 's-5-std');
-  const mid5 = sectionHtml(nh, 's-5-mid');
-  check('不看标准次数：两张中坚表里不再有「总次数 / 标准次数」',
-    !/总次数/.test(mid6) && !/标准次数/.test(mid6)
-    && !/总次数/.test(mid5) && !/标准次数/.test(mid5), true);
-  check('不看标准次数：中坚表仍保留「中坚次数」列（每组一个 → 每表 2 处）',
-    count(mid6, /中坚次数/g) === 2 && count(mid5, /中坚次数/g) === 2, true);
-  check('不看标准次数：中坚表两个组头的 colspan 由 5 收到 3',
-    count(mid6, /class="group[^"]*"[^>]*colspan="3"/g), 2);
-  check('不看标准次数：中坚表数据行由 12 个 td 收到 8 个（2 + 3 + 3）',
-    firstRowCells(mid6), 8);
-  check('不看标准次数：标准寻访表完全不受影响（仍是每组 3 列 + 列头「次数」）',
-    count(std6, /class="group[^"]*"[^>]*colspan="3"/g) === 2
-    && !/总次数/.test(std6) && count(std6, />次数<span class="arw">/g) === 2, true);
-  check('不看标准次数：**不筛行** —— 四张表行数仍是 46 / 48 / 46 / 68',
-    ['s-6-std', 's-6-mid', 's-5-std', 's-5-mid'].map((a) => tableRows(nh, a)).join(','),
-    '46,48,46,68');
-  /* ⚠️ 防复发：Vue SSR 会把**模板里的 HTML 注释原样输出** —— 只要有人再把
-     「总次数 / 标准次数」写进模板注释，分节切片里就会多出字面量、上面几条断言当场变红。
-     这条把「注释泄漏」本身也钉住（2026-10-16 真栽过：注释把列数断言搅乱）。 */
-  check('不看标准次数：渲染出的 HTML 里没有夹带「总次数 / 标准次数」的模板注释',
-    !/<!--[^>]*(?:总次数|标准次数)/.test(nh), true);
-
-  /* 接线（读源码）：store 的开关 + 组件里的三个 computed + 复制跟着收 */
   const svSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
-  check('不看标准次数：store 有初值（默认关）+ setStatMidNoStd',
-    /statMidNoStd: false/.test(storeSrc) && /setStatMidNoStd\(on\) \{/.test(storeSrc), true);
-  check('不看标准次数：**切服不重置**（setServer 里没动它）',
-    setServerBody.length > 200 && !setServerBody.includes('statMidNoStd'), true);
-  check('不看标准次数：组件里 colspan / 单元格都走那几个 computed（不是各写各的）',
-    /const noStd = computed\(\(\) => site\.statMidNoStd\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8'))
-    && /:colspan="groupCols"/.test(fs.readFileSync(path.join(ROOT, 'src/components/StatTable.vue'), 'utf8')), true);
-  check('不看标准次数：复制**跟着屏幕收**（StatsView 把 `noStd` 传给中坚表）',
-    /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(svSrc)
-    && /const noStd = site\.statMidNoStd/.test(svSrc), true);
-
-  /* 复制口径真跑一遍：勾上后中坚表只留「中坚次数」，且取的是 upMid / shopMid 那一列
-     （故意让 upStd 有 2 条、upMid 只有 1 条，取值写错就会露馅） */
-  {
-    const { statCopyRows: cp } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
-    const ban = (a, b) => ({ startDate: a, endDate: b });
-    const row = {
-      name: '甲', releaseDate: '2020-01-01',
-      upAll: [ban('2026-09-01', '2026-09-15')],
-      upMid: [ban('2026-09-01', '2026-09-15')],
-      upStd: [ban('2026-06-01', '2026-06-10'), ban('2026-07-01', '2026-07-10')],
-      shopAll: [ban('2026-10-01', '2026-10-20')],
-      shopMid: [ban('2026-10-01', '2026-10-20')],
-      shopStd: [ban('2026-05-01', '2026-05-10')],
-    };
-    const rr = cp([row], { split: true, refDate: '2026-10-11', noStd: true });
-    check('不看标准次数：复制的中坚表头只剩「中坚次数」（12 列 → 8 列）',
-      JSON.stringify(rr[0]), JSON.stringify(['实装时间', '干员',
-        '出率提升 结束时间', '出率提升 距今天数', '出率提升 中坚次数',
-        '商店兑换 结束时间', '商店兑换 距今天数', '商店兑换 中坚次数']));
-    check('不看标准次数：复制的中坚数据行取的是"中坚"那一列的次数',
-      JSON.stringify(rr[1]), JSON.stringify(['2020-01-01', '甲', '2026-09-15', 27, 1, '2026-10-20', '进行中', 1]));
-  }
 
   /* ---------------- 出率提升记录：右栏「合并中坚寻访三个次数」（2026-11-22 用户加） ----------------
      勾上后中坚表把「总次数 / 中坚次数 / 标准次数」并成**一列「次数」**，
      值写成 `总/中坚/标准`（中坚蓝 / 标准黄），排序**以中坚次数为准**（表头挂 upMid / shopMid）。
-     与「不看标准次数」**互斥**（store 的两个 setter 互相踢）。 */
+     ⚠️ 它**取代**了同日删掉的「中坚寻访不看标准次数」。 */
   check('合并三个次数：右栏有这个复选框，并接到 store 的 setStatMidMergeCounts',
     /合并中坚寻访三个次数/.test(fdSrc)
     && /setStatMidMergeCounts\(\$event\.target\.checked\)/.test(fdSrc), true);
@@ -1086,23 +1025,8 @@ try {
   check('合并三个次数：渲染出的 HTML 里没有夹带次数关键词的模板注释',
     !/<!--[^>]*(?:总次数|标准次数|中坚次数)/.test(mh), true);
 
-  /* 互斥：两个开关都改中坚表的列结构，后点的赢 */
-  {
-    const a1 = await renderRoute('/operators', (s2) => {
-      s2.setStatMidNoStd(true);
-      s2.setStatMidMergeCounts(true);
-    });
-    check('合并三个次数：勾「合并」会**自动取消**「不看标准次数」',
-      `${a1.store.statMidMergeCounts}|${a1.store.statMidNoStd}`, 'true|false');
-    const a2 = await renderRoute('/operators', (s2) => {
-      s2.setStatMidMergeCounts(true);
-      s2.setStatMidNoStd(true);
-    });
-    check('合并三个次数：勾「不看标准次数」会**自动取消**「合并」',
-      `${a2.store.statMidNoStd}|${a2.store.statMidMergeCounts}`, 'true|false');
-    check('合并三个次数：两个开关都**切服不重置**（setServer 里没动它们）',
-      `${setServerBody.includes('statMidMergeCounts')}`, 'false');
-  }
+  check('合并三个次数：**切服不重置**（setServer 里没动它）',
+    `${setServerBody.includes('statMidMergeCounts')}`, 'false');
 
   /* 复制：合并后是**一列文本** `总/中/标`（颜色带不进 Excel，顺序保留） */
   {
@@ -1127,7 +1051,7 @@ try {
         '2026-09-15', 27, '1/1/2', '2026-10-20', '进行中', '1/1/1']));
     check('合并三个次数：StatsView 把 `merge` 传给中坚表（复制与屏幕一致）',
       /const merge = site\.statMidMergeCounts/.test(svSrc)
-      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(svSrc), true);
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, merge \}\)/.test(svSrc), true);
   }
 
   /* 顶部定位按钮（统计页才有）—— 文案与 StatsView 的分节标题保持一致 */
@@ -3466,7 +3390,7 @@ try {
       /中坚寻访只看中坚/.test(drawerSrc) && /site\.setStatMidOnly\(\$event\.target\.checked\)/.test(drawerSrc), true);
     check('只看中坚：**复制**出来的也用同一口径（tableCopy 走 viewEndInfo + 收 midOnly）',
       /viewEndInfo\(r, 'up', refDate, midOnly\)/.test(copySrc) && /midOnly = false/.test(copySrc)
-      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, noStd, merge \}\)/.test(statsViewSrc), true);
+      && /statCopyRows\(g\['6-mid'\], \{ split: true, refDate, midOnly, merge \}\)/.test(statsViewSrc), true);
     check('只看中坚：**次数列不跟着变**（模板里仍读 upAll / upMid / upStd 三个长度）',
       /\{\{ r\.upAll\.length \}\}/.test(statTblSrc) && /\{\{ r\.upMid\.length \}\}/.test(statTblSrc), true);
   }

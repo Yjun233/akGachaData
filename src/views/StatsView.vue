@@ -25,19 +25,18 @@ const site = useSiteStore();
 const groups = computed(() => site.statGroups);
 
 /** 四张表各自的「复制」数据（含表头行）。⚠️ 中坚那两张多三列，用 `split: true` 区分；
-    再带上 `midOnly` / `noStd` / `merge` —— 复制的内容必须与屏幕上看到的一致
-    （「只看中坚」口径 + 「不看标准次数」藏起来的那两列 + 「合并三个次数」并成的一列）。 */
+    再带上 `midOnly` / `merge` —— 复制的内容必须与屏幕上看到的一致
+    （「只看中坚」口径 + 「合并三个次数」并成的那一列）。 */
 const copyRows = computed(() => {
   const refDate = site.refDate || site.today;
   const midOnly = site.statMidOnly;
-  const noStd = site.statMidNoStd;
   const merge = site.statMidMergeCounts;
   const g = groups.value;
   return {
     '6-std': statCopyRows(g['6-std'], { refDate, midOnly }),
-    '6-mid': statCopyRows(g['6-mid'], { split: true, refDate, midOnly, noStd, merge }),
+    '6-mid': statCopyRows(g['6-mid'], { split: true, refDate, midOnly, merge }),
     '5-std': statCopyRows(g['5-std'], { refDate, midOnly }),
-    '5-mid': statCopyRows(g['5-mid'], { split: true, refDate, midOnly, noStd, merge }),
+    '5-mid': statCopyRows(g['5-mid'], { split: true, refDate, midOnly, merge }),
   };
 });
 </script>
