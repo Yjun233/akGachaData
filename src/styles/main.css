@@ -267,9 +267,9 @@ nav.sidenav{display:flex;flex-direction:column;gap:4px;padding:12px 10px 0}
 .tbl-scroll.edit-mode tbody tr:hover{box-shadow:inset 0 0 0 2px var(--blue-200)}
 .tbl-scroll.edit-mode tbody tr:hover > td{background-image:linear-gradient(rgba(0,98,155,.05),rgba(0,98,155,.05))}
 
-/* 统计页「一键置灰」：五条规则各一行（复用 `.quick-row` / `.date-row` / `.btn.sm`）。
+/* 统计页「一键置灰」：五条规则各一行（复用 `.quick-row` / `.btn.sm`；日期那条另用 `.bulk-stack` 折两行）。
    抽屉内容宽 ~221px，标签 + 数字 + 单位 + 确定 要挤进一行 → 数字框只给 6ch；
-   日期那一行把「标准实装≤」压成 nowrap，输入框自己吃剩余宽度。 */
+   日期那一行把「标准实装≤」独占一行，输入框吃满剩余宽度。 */
 .bulk .quick-row .q-num{width:6ch}
 .bulk .q-txt{white-space:nowrap;font-size:12.5px}
 /* 「首次XX A - B 名」（2026-11-22）一行要塞两个数字框 → 各自压到 3.4ch，
@@ -513,26 +513,28 @@ main.content{
 .copy-btn.fail{color:var(--danger);border-color:var(--danger)}
 
 /* 表格标题行的动作按钮（2026-11-15；2026-11-21 统计页多一个编辑模式、文案改短）：
-   编辑模式 / 屏蔽模式 / 复制 / 截图（顺序见 CopyButton.vue，
-   2026-11-16 用户把「复制模式」挪到了最前），横排挂在表标题右侧。
+   编辑模式 / 屏蔽模式 / 复制 / 截图（顺序见 CopyButton.vue：用户 2026-11-16 调过一次，
+   2026-11-21 又把编辑模式加在最左），横排挂在表标题右侧。
    ⚠️ `margin-left:auto` 写在容器上（原来写在各 `copy-btn` 上，第一个按钮吃 auto）——
    用户微调时挪过来的，按钮顺序再变也不用跟着改。 */
 .copy-actions{display:inline-flex;margin-left: auto;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .copy-btn.active{color:#fff;background:var(--blue-700);border-color:var(--blue-700)}
 .copy-btn.active:hover{background:var(--blue-800,#1b4f9c);border-color:var(--blue-800,#1b4f9c)}
 
-/* 复制模式（2026-11-15）：整表可点；选中一行后只把「**不会被复制**的行」涂暗
+/* 屏蔽模式（2026-11-15）：整表可点；选中一行后只把「**不会被复制**的行」涂暗
    （范围外 = 灰底 + 压暗文字），复制范围与选中行本身都保持原样 ——
    用户明确要求「别给选中行染色」，因为染色会被带进「截图」里。
    ⚠️ 范围由 `lib/tableCopy.js` 的 `copyRangeIndexes()` 算 —— 与复制文本、截图共用同一份算法。
    ⚠️ 表头永远在范围内，所以表头不染色。
-   ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压。 */
+   ⚠️ 冻结列（前两列）的 td 是 `background:inherit`，不吃 tr 的底色 → 只能 `!important` 直接压。
+   ⚠️ **类名仍是 `copy-mode` / `.row-out`**（UI 文案 2026-11-21 已改叫「屏蔽模式」）——
+      样式与 `CopyButton.vue` 都按这两个类名取，别跟着文案改名。 */
 .tbl-scroll.copy-mode tbody tr{cursor:pointer}
 .tbl-scroll.copy-mode tbody tr:hover td{background:#f1f7ff}
 /* 范围外的行：冷灰底 + 压暗文字（只靠底色太淡，扫一眼分不清「哪些不会被复制」）。
    彩色小标签（进行中 / 标红的逾期天数）保留自己的颜色，正好还能看清）。
    ⚠️ 2026-11-17 加深了一档（`#eceff4` → `#dde2ea`）：统计页新加了「置灰干员」也用灰罩，
-      两者必须能一眼分开 —— 置灰 = 浅灰（#eceff4），复制模式（临时操作态）= 深灰。 */
+      两者必须能一眼分开 —— 置灰 = 浅灰（#eceff4），屏蔽模式（临时操作态）= 深灰。 */
 .tbl-scroll tbody tr.row-out td{background:#dde2ea !important;color:var(--muted)}
 
 /* 截图期间（lib/tableShot.js）：sticky 会按当前滚动位置算，截出来可能错位/重叠 → 一律改回 static */
@@ -706,14 +708,14 @@ table.grid.stat-tbl tbody tr:hover{background:#f7fbff}
 table.grid.stat-tbl tbody tr.hl{background:#fff3c4}
 table.grid.stat-tbl tbody tr.hl:hover{background:#ffedaa}
 /* 统计表：右栏「置灰干员」命中的行盖**灰罩**（2026-11-17 用户加）。
-   底色取「复制模式遮罩之前那一档」`#eceff4` —— 用户要求两者样式一致，
-   而复制模式在那之后又加深到 `#dde2ea` 以便区分（复制模式是临时操作态，应该更重）。
+   底色取「屏蔽模式遮罩之前那一档」`#eceff4` —— 用户要求两者样式一致，
+   而屏蔽模式在那之后又加深到 `#dde2ea` 以便区分（屏蔽模式是临时操作态，应该更重）。
    ⚠️ 同样必须写在 `tr:hover` 之后（特异性 (0,3,4) 已高于 hover 的 (0,3,3)，但仍放在后面更稳）。
    ⚠️ 与 `.hl` 互斥（store 的 setter 保证），不会同时命中；真撞上时这条在后面 → 灰罩胜出。 */
 table.grid.stat-tbl tbody tr.mute{background:#eceff4}
 table.grid.stat-tbl tbody tr.mute:hover{background:#e6eaf2}
 table.grid.stat-tbl tbody tr.mute td{color:var(--muted)}
-/* 彩色小标签（进行中胶囊 / 标红的逾期天数）保留自己的颜色，跟复制模式那边一致 */
+/* 彩色小标签（进行中胶囊 / 标红的逾期天数）保留自己的颜色，跟屏蔽模式那边一致 */
 table.grid.stat-tbl tbody tr.mute td .tag,
 table.grid.stat-tbl tbody tr.mute td .neg{color:inherit}
 table.grid.stat-tbl tbody td:nth-child(-n+2){z-index:2;background:inherit}

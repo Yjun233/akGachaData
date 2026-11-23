@@ -15,7 +15,7 @@
  *       粘到纯文本框里会退化成一行 data URI（这是老接口的固有代价）。
  *    两条都失败才 `downloadBlob()` 兜底，并且界面如实显示「已下载图片」而不是假装复制成功。
  *
- * ⚠️ **部分复制**（复制模式里选了某一行）：不是截完再裁 —— 表头与选中的行未必连续，
+ * ⚠️ **部分复制**（屏蔽模式里选了某一行）：不是截完再裁 —— 表头与选中的行未必连续，
  *    裁不掉中间那段。改成**截图前临时把不要的行 `display:none`**，让布局自己收缩，截完再恢复。
  *
  * ⚠️ **冻结列 / 表头 sticky**：截图时 `position: sticky` 会按当前滚动位置算，出来可能错位或重叠，
@@ -41,7 +41,7 @@ export async function tableToBlob(container, { keepRow = null, pixelRatio = 2 } 
       if (!keepRow(i)) { tr.style.display = 'none'; hidden.push(tr); }
     });
   }
-  /* 复制模式的「范围外染灰」（`.row-out`）是给人看的操作提示，**不能进截图** ——
+  /* 屏蔽模式的「范围外染灰」（`.row-out`）是给人看的操作提示，**不能进截图** ——
      用户 2026-11-15 明确要求「截图里不要有因为选中而染的色」。
      摘掉类最稳（比用 CSS 覆盖回去好：覆盖要跟 `!important` 打架，还会丢掉隔行底色）。 */
   const tinted = [...container.querySelectorAll('tbody tr.row-out')];

@@ -410,37 +410,37 @@ try {
   check('统计页：复制按钮组挂在**标题行**里（不是表格上方的工具条）',
     count(sh, /class="sec-title[^"]*"[^>]*>[\s\S]{0,140}?class="copy-actions"/g) === 4
     && count(sh, /class="tbl-tools"/g) === 0, true);
-  /* 复制模式（2026-11-15）：选中某行只复制「表头 + 该行及以上 / 及以下」。
+  /* 屏蔽模式（2026-11-15）：选中某行只复制「表头 + 该行及以上 / 及以下」。
      两个方向是用户按页面分别指定的 —— 统计页 above、首次UP表格版 below。 */
   {
     const { sliceCopyRows, copyRangeIndexes } = await vite.ssrLoadModule('/src/lib/tableCopy.js');
     const fx = [['头'], ['a'], ['b'], ['c'], ['d']];
-    check('复制模式：统计页口径 = 表头 + 该行及以上',
+    check('屏蔽模式：统计页口径 = 表头 + 该行及以上',
       sliceCopyRows(fx, 1, 'above').map((r) => r[0]).join(''), '头ab');
-    check('复制模式：首次UP表格版口径 = 表头 + 该行及以下',
+    check('屏蔽模式：首次UP表格版口径 = 表头 + 该行及以下',
       sliceCopyRows(fx, 1, 'below').map((r) => r[0]).join(''), '头bcd');
-    check('复制模式：没选行 = 整表（仍含表头）', sliceCopyRows(fx, null, 'below').length, 5);
-    check('复制模式：行下标越界也不炸（夹到末行）', sliceCopyRows(fx, 99, 'above').length, 5);
+    check('屏蔽模式：没选行 = 整表（仍含表头）', sliceCopyRows(fx, null, 'below').length, 5);
+    check('屏蔽模式：行下标越界也不炸（夹到末行）', sliceCopyRows(fx, 99, 'above').length, 5);
     check('接线：统计页 range=above、表格版 range=below',
       /range="above"/.test(fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8'))
       && /range="below"/.test(fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8')), true);
 
     /* 页面上涂的暗色必须与「会复制到哪几行」是同一个范围（算法同一份，这里钉住它） */
-    check('复制模式：高亮范围 = 复制范围（above：首行到选中行）',
+    check('屏蔽模式：高亮范围 = 复制范围（above：首行到选中行）',
       copyRangeIndexes(5, 2, 'above').join('~'), '0~2');
-    check('复制模式：高亮范围（below：选中行到末行）',
+    check('屏蔽模式：高亮范围（below：选中行到末行）',
       copyRangeIndexes(5, 2, 'below').join('~'), '2~4');
-    check('复制模式：没选行时高亮整表 / 空表不越界',
+    check('屏蔽模式：没选行时高亮整表 / 空表不越界',
       `${copyRangeIndexes(5, null, 'below').join('~')}|${copyRangeIndexes(0, 0, 'above').join('~')}`,
       '0~4|-1~-1');
     /* 2026-11-15 用户改口径：只染**范围外**的行；表头与选中行都不染（染色会被带进截图） */
-    check('复制模式：只染范围外的行，表头与选中行都不染',
+    check('屏蔽模式：只染范围外的行，表头与选中行都不染',
       /\.tbl-scroll tbody tr\.row-out td\{[^}]*background/.test(cssAll)
       && !/\.tbl-scroll\.has-sel thead th/.test(cssAll)
       && !/tr\.row-sel td\{[^}]*background/.test(cssAll), true);
 
     /* ⚠️ 2026-11-15 真踩过：StatsView 传的是 `table-id="6-std"`，而 StatTable 的容器 id 是
-       `tbl-6-std` → `getElementById` 拿到 null，复制模式**点了行毫无反应、也不报错**。
+       `tbl-6-std` → `getElementById` 拿到 null，屏蔽模式**点了行毫无反应、也不报错**。
        这里拿 SSR 产出的真实 id 对撞：每个复制按钮的 table-id 都必须在页面上存在。
        （`table-id` 是声明过的 prop，不会作为属性渲染进 HTML，所以只能从视图源码里读。） */
     const statsSrc = fs.readFileSync(path.join(ROOT, 'src/views/StatsView.vue'), 'utf8');
@@ -456,26 +456,26 @@ try {
     const fupSrc = fs.readFileSync(path.join(ROOT, 'src/views/FirstUpTableView.vue'), 'utf8');
     check('表格版：复制按钮与表格容器的 id 是同一个表达式（tbl-fup-${sec.key}）',
       (fupSrc.match(/`tbl-fup-\$\{sec\.key\}`/g) || []).length >= 2, true);
-    check('复制模式：排序（rows 引用变化）会作废选中',
+    check('屏蔽模式：排序（rows 引用变化）会作废选中',
       /watch\(\(\) => props\.rows/.test(fs.readFileSync(path.join(ROOT, 'src/components/CopyButton.vue'), 'utf8')), true);
   }
 
-  /* 复制为图片：先写剪贴板，真写不进去才下载（用户 2026-11-15「我希望复制到剪贴板而不是下载」） */
+  /* 截图：先写剪贴板，真写不进去才下载（用户 2026-11-15「我希望复制到剪贴板而不是下载」） */
   {
     const shotSrc = fs.readFileSync(path.join(ROOT, 'src/lib/tableShot.js'), 'utf8');
-    check('复制为图片：有 copyImage 兜底链（异步剪贴板 → execCommand → 下载）',
+    check('截图：有 copyImage 兜底链（异步剪贴板 → execCommand → 下载）',
       /export async function copyImage\(/.test(shotSrc)
       && /export async function copyImageByDom\(/.test(shotSrc)
       && /execCommand\('copy'\)/.test(shotSrc), true);
-    check('复制为图片：表格与跨服弹窗都走 copyImage（不是直接下载）',
+    check('截图：表格与跨服弹窗都走 copyImage（不是直接下载）',
       /copyImage\(blob\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/CopyButton.vue'), 'utf8'))
       && /copyImage\(blob\)/.test(fs.readFileSync(path.join(ROOT, 'src/components/CrossServerUpDialog.vue'), 'utf8')), true);
     /* 截图里不能出现「因为选中而染的色」—— 也不能出现按钮自己（用户 2026-11-15 两次反馈） */
-    check('复制为图片：截图前摘掉复制模式的染色，截完补回',
+    check('截图：截图前摘掉屏蔽模式的染色，截完补回',
       /querySelectorAll\('tbody tr\.row-out'\)/.test(shotSrc)
       && /classList\.remove\('row-out'\)/.test(shotSrc)
       && /classList\.add\('row-out'\)/.test(shotSrc), true);
-    check('复制为图片：截图期间藏掉弹窗自己的按钮（✕ 与「复制为图片」）',
+    check('截图：截图期间藏掉弹窗自己的按钮（✕ 与「截图」）',
       /\.shot-capturing \.xup-shot\{display:none/.test(cssAll), true);
   }
 
@@ -548,8 +548,8 @@ try {
   /* ---------------- 出率提升记录：右栏「高亮干员」（2026-10-16 用户加） ----------------
      纯视觉标记：命中的行加**浅黄底**（`.hl`），**不筛行、不改次数、不进复制内容**。
      这里**真跑**一次带高亮的渲染 —— 直接改 store 的 `statHighlightOps` 再 renderToString。
-     高亮状态**不持久化**（刷新即清）、**切服不重置**（干员名三服通用），与「甄选计入」
-     「只看中坚」两个统计开关同处理。 */
+     高亮状态**不持久化**（刷新即清）；**切服务器会清空**（名单按干员名存、名字分服，
+     见 store 的 `setServer`）—— 而「甄选计入」「只看中坚」两个统计开关本身不重置。 */
   check('高亮干员：默认不选 → store 里是空数组', JSON.stringify(stats.store.statHighlightOps), '[]');
   check('高亮干员：右栏有这个控件（label + OpPicker 都渲染出来了）',
     sh.includes('高亮干员') && count(sh, /class="oppick"/g) === 2, true);
@@ -604,7 +604,7 @@ try {
     /statHighlightOps: \[\]/.test(storeSrc) && /setStatHighlightOps\(list\) \{/.test(storeSrc), true);
 
   /* ---------------- 出率提升记录：右栏「置灰干员」（2026-11-17 用户加） ----------------
-     与「高亮干员」同一套交互，但那一行**盖灰罩**（`.mute`，取复制模式遮罩原来的 #eceff4）。
+     与「高亮干员」同一套交互，但那一行**盖灰罩**（`.mute`，取屏蔽模式遮罩原来的 #eceff4）。
      ⚠️ 两边**互斥**：同一个干员不能既高亮又置灰（store 的 setter 里「谁后选归谁」）。 */
   check('置灰干员：默认不选 → store 里是空数组', JSON.stringify(stats.store.statHideOps), '[]');
   check('置灰干员：右栏有这个控件',
@@ -858,7 +858,8 @@ try {
     check('高亮 / 置灰干员：清除后两个名单都空（不互相影响）',
       `${cleared.store.statHighlightOps.length}|${cleared.store.statHideOps.length}`, '0|0');
 
-    /* 切服不重置 / 不持久化：与手动置灰同一份 state，这里只钉「没写进 localStorage」 */
+    /* 不持久化：与手动置灰同一份 state（切服会清空，见 store 的 `setServer`），
+       这里只钉「没写进 localStorage」 */
     check('一键置灰：不持久化（写本地存储的只有自设卡池）',
       !/statHideOps/.test(fs.readFileSync(path.join(ROOT, 'src/lib/customBanners.js'), 'utf8')), true);
   }
@@ -928,11 +929,11 @@ try {
       `${countIn(fdSrc2)}|${suggestIn(fdSrc2)}|${countIn(cbdSrc)}|${suggestIn(cbdSrc)}`, '4|4|3|3');
   }
 
-  /* 样式：置灰 = 复制模式**原来**那一档 (#eceff4)；复制模式后来加深到 #dde2ea 以便区分 */
+  /* 样式：置灰 = 屏蔽模式**原来**那一档 (#eceff4)；屏蔽模式后来加深到 #dde2ea 以便区分 */
   check('置灰干员：灰罩用 #eceff4（行底色 + 文字压暗，冻结列 follow inherit）',
     /table\.grid\.stat-tbl tbody tr\.mute\{background:#eceff4\}/.test(cssAll)
     && /table\.grid\.stat-tbl tbody tr\.mute td\{color:var\(--muted\)\}/.test(cssAll), true);
-  check('复制模式：遮罩加深到 #dde2ea（与置灰的 #eceff4 拉开）',
+  check('屏蔽模式：遮罩加深到 #dde2ea（与置灰的 #eceff4 拉开）',
     /\.tbl-scroll tbody tr\.row-out td\{background:#dde2ea !important/.test(cssAll)
     && !/#eceff4 !important/.test(cssAll), true);
   /* 切服**清空**高亮 / 置灰名单（2026-11-21 用户要求改：原来是不重置）——
@@ -2076,7 +2077,7 @@ try {
   check('星级切换压成一行（.sortrow + .seg.mini，不再带人数）',
     /<span class="sortlabel">切换星级<\/span>[\s\S]{0,400}class="seg mini"/.test(upAllOps.html)
     && !/六星（\d+）/.test(upAllOps.html), true);
-  check('三个复选框的小字说明都已删掉（只看进店 / 隐藏已属中坚 / 间隔天数）',
+  check('复选框的小字说明都已删掉（只看进店 / 隐藏已属中坚 / 间隔天数）',
     !/上面的卡池类型不可能有进店记录的类型会置灰/.test(upAllOps.html)
     && !/判断该干员是否已移入中坚寻访/.test(upAllOps.html)
     && !/相隔 ≥ 41 天/.test(upAllOps.html), true);

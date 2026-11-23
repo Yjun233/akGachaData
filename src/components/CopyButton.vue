@@ -17,7 +17,8 @@
  * ⚠️ 行选中是**直接操作表格 DOM**（`tableId` 指向 `.tbl-scroll`）而不是把状态提上去：
  *    按钮在标题栏、表格是**兄弟节点**，提状态要改 3 个组件的 props 链；
  *    而 `.copy-mode` / `.row-out` 只是纯视觉，不进数据流，用 DOM 反而更省。
- *    代价：**只在客户端可用**（SSR 下 `mode` 恒 false，渲染出来的还是三个按钮 + 无选中态）。
+ *    代价：**只在客户端可用**（SSR 下 `mode` 恒 false，渲染出来的还是那几个按钮
+ *    —— 统计页 4 个、表格版 3 个 —— 且没有选中态）。
  * ⚠️ 复制结果的状态（已复制 / 复制失败 / 已下载图片）是**临时**的，1.6~2 秒后自己落回；
  *    组件卸载时清掉定时器，免得往已卸载的组件上写状态。
  * ⚠️ 状态类**只在 ok / fail / download 时加**（idle 不加空类），`verify-render` 能按整串数按钮。
@@ -30,9 +31,9 @@ import { copyRangeIndexes, sliceCopyRows } from '../lib/tableCopy.js';
 const props = defineProps({
   /** 含表头的二维数组，见 lib/clipboard.js 的 `toTSV` */
   rows: { type: Array, required: true },
-  /** 表格外层容器的 DOM id（`.tbl-scroll`）—— 复制模式与截图都靠它定位 */
+  /** 表格外层容器的 DOM id（`.tbl-scroll`）—— 屏蔽模式与截图都靠它定位 */
   tableId: { type: String, default: '' },
-  /** 复制模式选中某行后取哪一段：`above` = 该行及以上（统计页）/ `below` = 该行及以下（首次UP表格版） */
+  /** 屏蔽模式选中某行后取哪一段：`above` = 该行及以上（统计页）/ `below` = 该行及以下（首次UP表格版） */
   range: { type: String, default: 'above' },
   /** 「复制」的悬停提示 */
   title: { type: String, default: '复制为表格（可直接粘进 Excel）' },
@@ -47,7 +48,7 @@ const emit = defineEmits(['toggle-edit']);
 /** 文本 / 图片各自的临时状态：idle | ok | fail | working | download */
 const textState = ref('idle');
 const imgState = ref('idle');
-/** 复制模式开关 */
+/** 屏蔽模式开关 */
 const mode = ref(false);
 /** 选中的行（`tbody tr` 下标，0 起）；null = 未选（整表复制） */
 const sel = ref(null);
@@ -68,7 +69,7 @@ async function onCopy() {
   textTimer = setTimeout(() => { textState.value = 'idle'; }, 1600);
 }
 
-/** 行点击（只在复制模式下绑定）—— 选中行，并把**整个复制范围**涂成浅蓝底 */
+/** 行点击（只在屏蔽模式下绑定）—— 选中行，并把**整个复制范围**涂成浅蓝底 */
 function onRowClick(e) {
   const box = tableEl();
   if (!box) return;
