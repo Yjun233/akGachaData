@@ -2675,6 +2675,11 @@ try {
       rows.every((r) => r.type !== 'double' && r.type !== 'classic'), true);
     check('跨服页：排除了单六寻访的「返场」（复刻保留）',
       !rows.some((r) => Object.values(r.banners).some((b) => b?.rerunKind === '返场')), true);
+    /* 自定义卡池（2026-11-27 用户加）：只在「计入统计」开关打开时才传进配对，
+       关着必须传 null —— 否则默认口径会多出「自定义_」那些行。 */
+    check('跨服页：`crossEntries` 只在 `customInStats` 打开时把自设传进配对',
+      /buildCrossEntries\(s\.bannersByServer,\s*s\.customInStats\s*\?\s*s\.customByServer\s*:\s*null\)/
+        .test(fs.readFileSync(path.join(ROOT, 'src/stores/site.js'), 'utf8')), true);
 
     /* 「出率提升」列：常态只有按钮；三服 6★ 名单不一致时**按钮换色**（`.diff`）。
        ⚠️ 2026-11-04 由「旁边挂 `≠`」改成换色 —— 断言从数 `.xup-ne` 改成数 `.xup.diff`，

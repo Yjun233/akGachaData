@@ -23,11 +23,17 @@
  *   全 UP 集合不一致的行比 6★ 更多（`single` 有 29 条只是 5★ 换了人），
  *   那些不标（否则 30 个信号被稀释成 59 个）；5★ 只作弹窗里的旁注（`up5Same`）。
  * - 三服里缺那一期的行**照列**，缺的格显示 `—`，相关差值也是 `—`。
- * - **自定义卡池不参与**：它们按服存在浏览器本地，跨服配对没有意义。
+ * - **自定义卡池在「计入统计」开关打开时参与**（2026-11-27 用户加）：由 store 把
+ *   `customByServer`（各服已去重的自设，`{ sc|en|tc: banner[] }`）作为第二个参数传进来。
+ *   ⚠️ **配对键 = 去掉 `自定义_` 前缀后的名字** —— 自设「自定义_感谢庆典」要跟别服的
+ *   正式「感谢庆典」配成同一期，而不是另起一行。同服同名时**正式数据优先**（自设不覆盖已公布的）。
+ *   排除规则（常驻两类 / 单六返场）对自设同样生效。
+ *   ⚠️ 自设的**国服**行若配不上外服同名池 → 仍是「仅国服存在」，归 `showScOnly` 管（默认不显示）。
  *
  * ## 数据来源
  * 入参一律是 store 的 state **`bannersByServer`**（`{ sc|en|tc: { <id>: banner } }`，
- * 已由 `loadData` 合并中坚文件、**已 unwrap `.banners`**、**不含自定义**）。
+ * 已由 `loadData` 合并中坚文件、**已 unwrap `.banners`**、**不含自定义**；
+ * 自设走**第二个参数** `customByServer`，开关关着时传 `null`）。
  * ⚠️ 别在这里自己 fetch `banners_cla_*.json` —— 它顶层是
  * `{ generatedAt, dataVersion, source, banners }`，直接遍历会把 4 个元信息字段当卡池。
  *
@@ -35,6 +41,7 @@
  */
 import { TYPE_LABEL } from './constants.js';
 import { diffDays } from './date.js';
+import { stripPrefix } from './customBanners.js';
 
 /** 三服固定顺序 —— 列序、比较序、遍历序的唯一来源，别在各处再写 `['sc','en','tc']` */
 export const CROSS_SERVERS = ['sc', 'en', 'tc'];
@@ -152,10 +159,13 @@ function sameRoster(banners, servers, rarity) {
 
 /**
  * 三服卡池 → 按名称配对的行。**不筛选、不排序**（顺序 = 名字首次出现的顺序）。
- * @param {object} bannersByServer `{ sc|en|tc: { <id>: banner } }`
+ * @param {object} bannersByServer `{ sc|en|tc: { <id>: banner } }`（已公布，不含自设）
+ * @param {object|null} [customByServer] `{ sc|en|tc: banner[] }` 各服自定义卡池；
+ *        仅在「计入统计」开关打开时由 store 传入，关闭时传 `null` / 省略。
+ *        配对键 = `stripPrefix(scName)`（去掉 `自定义_` 前缀），同服同名时正式数据优先。
  * @returns {Array} CrossRow[]
  */
-export function buildCrossEntries(bannersByServer = {}) {
+export function buildCrossEntries(bannersByServer = {}, customByServer = null) {
   /** name → { name, type, banners: { sc, en, tc } } */
   const map = new Map();
   for (const server of CROSS_SERVERS) {
@@ -170,6 +180,20 @@ export function buildCrossEntries(bannersByServer = {}) {
       }
       /* 同一服里理论上不会重名（实测 438/396/376 条零重名）；真撞了以后来的为准 */
       g.banners[server] = banner;
+    }
+    /* 自定义卡池：**去掉 `自定义_` 前缀**当配对键，才能跟别服的正式同名池配成同一期。
+       ⚠️ 同服已经有正式数据时**不覆盖**（自设只是补缺，不能顶掉已公布的卡池）。 */
+    for (const raw of customByServer?.[server] || []) {
+      if (!isCrossEligible(raw)) continue;
+      const name = stripPrefix(raw?.scName);
+      if (!name) continue;
+      const banner = raw.id ? raw : { id: `custom_${server}_${name}`, ...raw };
+      let g = map.get(name);
+      if (!g) {
+        g = { name, type: banner.type, banners: { sc: null, en: null, tc: null } };
+        map.set(name, g);
+      }
+      if (!g.banners[server]) g.banners[server] = banner;
     }
   }
 
@@ -262,6 +286,11 @@ function sortValue(row, key) {
  *   ⚠️ 是追加不是筛选：别的行一条都不少，所以这里**不能**写 `if (f.showScOnly && !isScOnly) return false`。
  *   ⚠️ 判据必须写成「`servers` 恰好 `['sc']`」，不能写成「没有 en 或没有 tc」——
  *   那样会把「只有繁中」的行也算进来（它们同样没有差值可比）。
+ * - ⭐ **自设的国服行若配不上外服同名池，仍然算「仅国服存在」**（2026-11-27 用户定）：
+ *   归 `showScOnly` 管，默认同样被上界切掉；只有**对上外服正式卡池**之后它才是普通多服行。
+ *   ⚠️ 别按「含 `custom`」一刀切豁免 —— 那样会把用户瞎加的国服池也当成主表数据。
+ * - ⚠️ 但**自设已配上外服的 ≥2 服行不受 `to` 上界约束**（同日修的 bug）：那一期原本靠
+ *   `showScOnly` 显示，补完自设后变成两服行，再按上界切就会「补完就消失」（联合行动22 实测）。
  *
  * 排序口径：差值 / 日期按**数值**比（`-3` 排在 `-10` 前面，别用字符串比）；
  * 空值**恒排末尾**（与方向无关）；平局用 `scStart` 降序兜不住时按名字**码点序**
@@ -277,17 +306,23 @@ export function crossRows(entries = [], filters = {}, sort = {}) {
   const typeSet = f.types && f.types.length ? new Set(f.types) : null;
   const opSet = f.ops && f.ops.length ? new Set(f.ops) : null;
 
-  /** 「仅国服存在」= 只有国服这一服有（不是「缺某一服」） */
+  /** 「仅国服存在」= 只有国服这一服有（不是「缺某一服」）。
+      自设的国服行同样按这条判（2026-11-27 用户定）：配不上外服就是「仅国服存在」。 */
   const isScOnly = (r) => r.servers.length === 1 && r.servers[0] === 'sc';
+  /** 行里含自定义卡池（只在「计入统计」打开时才会出现）；`banners` 用可选链，兼容只造了最小字段的 fixture */
+  const hasCustom = (r) => CROSS_SERVERS.some((s) => r.banners?.[s]?.custom);
 
   const rows = entries.filter((r) => {
     if (typeSet && !typeSet.has(r.type)) return false;
     if (f.from && (!r.scStart || r.scStart < f.from)) return false;
     /* 上界 `to`：`showScOnly` 开启时**仅国服**的行豁免 —— 默认上界是「至少两服有数据」的最晚一期
        （2026-05-15），而那批池必然全在它之后（实测 11 条，2026-06-26 ~ 2026-11-15），
-       不豁免的话勾了等于没勾。其余行（≥2 服）仍按上界切。下界 `from` 对所有行都生效。 */
+       不豁免的话勾了等于没勾。其余行（≥2 服）仍按上界切。下界 `from` 对所有行都生效。
+       ⚠️ **自设已与外服配对的行也豁免**（2026-11-27 用户报的 bug）：那一期原本靠
+       `showScOnly` 显示，补上繁中服自设后就变成两服行 —— 再按上界切会让它「补完就消失」。 */
     const scOnlyExempt = f.showScOnly && isScOnly(r);
-    if (f.to && !scOnlyExempt && (!r.scStart || r.scStart > f.to)) return false;
+    const customPaired = hasCustom(r) && r.servers.length >= 2;
+    if (f.to && !scOnlyExempt && !customPaired && (!r.scStart || r.scStart > f.to)) return false;
     if (opSet && !CROSS_SERVERS.some((s) => (r.banners[s]?.upOperators || [])
       .some((o) => opSet.has(o.scCharName)))) return false;
     return true;

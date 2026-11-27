@@ -335,11 +335,15 @@ export const useSiteStore = defineStore('site', {
        ⚠️ 取数**只用 `bannersByServer`**（三服原始映射：已 merge 中坚文件、已 unwrap `.banners`、
           不含自定义）。别用 `banners` / `allBanners` —— 那两个是「当前服 + 自定义」，
           跨服配对会串出「自定义_常驻标准寻访197」这种三服对不上的行。
+       ⭐ 自定义卡池例外（2026-11-27 用户定）：「计入统计」开关**打开**时，把各服自设
+          （`customByServer`）作为第二个参数传给 `buildCrossEntries`，按**去掉 `自定义_` 前缀**
+          的名字与正式卡池配对 —— 于是「自定义_感谢庆典」能补上别服已有的那一期。
+          开关关着传 `null`，行为与以前一字不差。
        口径见 lib/crossServer.js 的文件头。 */
 
     /** 三服按名称配对后的全部行（不筛不排） */
     crossEntries(s) {
-      return buildCrossEntries(s.bannersByServer);
+      return buildCrossEntries(s.bannersByServer, s.customInStats ? s.customByServer : null);
     },
 
     /** 日期上下界：min = 有国服日期的最早；max = **至少两服有数据**的行里最晚的国服日期 */

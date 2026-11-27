@@ -2553,6 +2553,71 @@ for (const [srv, label] of [['en', '国际服'], ['tc', '繁中服']]) {
     (() => { const before = FIX_ROWS.map((r) => r.name).join(','); fixRows({}, { key: 'name' }); return before === FIX_ROWS.map((r) => r.name).join(','); })(),
     true);
 
+  /* ---- 自定义卡池（2026-11-27 用户加）：开关「计入统计」开着时由 store 传进来 ----
+     配对键 = 去掉 `自定义_` 前缀的名字；同服同名时**正式数据优先**（自设只补缺）。 */
+  const FIX_CUSTOM = {
+    sc: [
+      mk('自定义_P1', 'joint', '2026-01-11', ['甲', '乙'], ['丙'], { custom: true }),   // 同服同名 → 不许覆盖正式 P1
+      mk('自定义_新池', 'joint', '2026-05-01', ['子'], [], { custom: true }),           // 只有自设的一期 → 照样成行
+      mk('自定义_常驻标准寻访99', 'double', '2026-01-02', ['戊'], [], { custom: true }), // 常驻两类仍排除
+      mk('自定义_返场池 返场', 'single', '2026-02-02', ['己'], [], { custom: true, rerunKind: '返场' }),
+    ],
+    en: [],
+    tc: [
+      mk('自定义_P2', 'joint', '2026-02-27', ['丁', '戊'], [], { custom: true }),          // 补上 tc 缺的 P2
+      mk('自定义_复刻池 复刻', 'single', '2026-03-12', ['庚'], [], { custom: true }),      // 带后缀的名字也能对上
+    ],
+  };
+  const CUSTOM_ROWS = buildCrossEntries(FIX, FIX_CUSTOM);
+  const customOf = (n) => CUSTOM_ROWS.find((r) => r.name === n);
+  check('跨服（自定义）：开关关着（不传第二参）→ 行与以前一字不差',
+    buildCrossEntries(FIX).map((r) => r.name).sort().join(','), 'P1,P2,P3,复刻池 复刻');
+  check('跨服（自定义）：按去掉 `自定义_` 前缀的名字配对（不另起一行）',
+    CUSTOM_ROWS.map((r) => r.name).sort().join(','), 'P1,P2,P3,复刻池 复刻,新池');
+  check('跨服（自定义）：自设补上那一服缺的数据（tc 的 P2）',
+    `${customOf('P2').servers.join(',')}|${customOf('P2').gapTcSc}|${customOf('P2').gapTcEn}`,
+    'sc,en,tc|-2|1');
+  check('跨服（自定义）：同服同名 → 正式数据优先（自设不覆盖已公布的 P1）',
+    `${customOf('P1').scStart}|${customOf('P1').banners.sc.scName}`, '2026-01-10|P1');
+  check('跨服（自定义）：只有自设的那一期照样成行（单服、名字不带前缀）',
+    `${customOf('新池').servers.join(',')}|${customOf('新池').scStart}`, 'sc|2026-05-01');
+  check('跨服（自定义）：常驻两类 / 单六返场对自设同样排除',
+    CUSTOM_ROWS.some((r) => r.name.includes('常驻标准') || r.name.includes('返场')), false);
+  check('跨服（自定义）：行名不残留 `自定义_` 前缀',
+    CUSTOM_ROWS.every((r) => !r.name.startsWith('自定义_')), true);
+  check('跨服（自定义）：单服自设行不抬高日期上界',
+    crossBounds(CUSTOM_ROWS).max, '2026-03-01');
+  /* 2026-11-27 用户定：自设的**国服**行配不上外服同名池时，仍算「仅国服存在」——
+     归 `showScOnly` 管；配上外服的才是普通多服行。 */
+  const customFiltered = crossRows(CUSTOM_ROWS,
+    { ...emptyCrossFilters(), from: '2026-01-10', to: '2026-03-01' });
+  check('跨服（自定义）：国服独有（没配上外服）→ 仍算「仅国服存在」，默认被上界切掉',
+    customFiltered.some((r) => r.name === '新池'), false);
+  check('跨服（自定义）：勾上 showScOnly 后，国服独有的自设行才补进来',
+    crossRows(CUSTOM_ROWS, { ...emptyCrossFilters(), from: '2026-01-10', to: '2026-03-01', showScOnly: true })
+      .some((r) => r.name === '新池'), true);
+  check('跨服（自定义）：与外服配上之后就是普通多服行（不受 SC-only 规则影响）',
+    `${customFiltered.some((r) => r.name === 'P2')}|`
+      + `${customFiltered.find((r) => r.name === 'P2')?.servers.length}`, 'true|3');
+  check('跨服（自定义）：自设行仍受下界 / 类型 / UP 干员筛选约束',
+    `${crossRows(CUSTOM_ROWS, { ...emptyCrossFilters(), from: '2026-06-01' }).some((r) => r.name === '新池')}|`
+      + `${crossRows(CUSTOM_ROWS, { ...emptyCrossFilters(), types: ['single'] }).some((r) => r.name === '新池')}|`
+      + `${crossRows(CUSTOM_ROWS, { ...emptyCrossFilters(), ops: ['子'] }).map((r) => r.name).join(',')}`,
+    'false|false|新池');
+  /* 2026-11-27 用户实测的 bug：国服独有那期（如联合行动22）原本靠 showScOnly 显示，
+     给繁中服补上自设后变成两服行 → 又被 `to` 上界切掉，表现是「补完就消失」。 */
+  const PAIR_ROWS = buildCrossEntries(FIX, {
+    ...FIX_CUSTOM,
+    tc: [...FIX_CUSTOM.tc, mk('自定义_P3', 'joint', '2026-12-20', ['癸'], [], { custom: true })],
+  });
+  const pairFiltered = crossRows(PAIR_ROWS, { ...emptyCrossFilters(), from: '2026-01-10', to: '2026-03-01' });
+  check('跨服（自定义）：国服独有那期补上外服自设后**不再被上界切掉**（联合行动22 那类）',
+    `${pairFiltered.some((r) => r.name === 'P3')}|${pairFiltered.find((r) => r.name === 'P3')?.servers.join(',')}`,
+    'true|sc,tc');
+  check('跨服（自定义）：对照组 —— 没补外服时它确实被上界切掉',
+    crossRows(CUSTOM_ROWS, { ...emptyCrossFilters(), from: '2026-01-10', to: '2026-03-01' })
+      .some((r) => r.name === 'P3'), false);
+
   /* ---- 真实数据：不变量 + 抽样（不写死会随数据变的数字） ---- */
   const crossByServer = {};
   for (const srv of CROSS_SERVERS) {
